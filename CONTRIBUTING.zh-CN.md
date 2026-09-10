@@ -51,3 +51,43 @@ git diff --check
 
 保持改动聚焦，说明用户可见影响、契约影响和已知风险。贡献中不得包含凭据、
 私有 Endpoint、机器专用路径或生成的验收证据。
+
+
+## 提交信息与维护者推送
+
+Commit message 全部使用英文，采用 Conventional Commits：
+
+```text
+<type>[(<scope>)][!]: <subject>
+
+<body>
+
+<footer>
+```
+
+- type 限定为 `build`、`chore`、`ci`、`docs`、`feat`、`fix`、`perf`、
+  `refactor`、`revert`、`style`、`test`。
+- scope 仅用于稳定子系统，可以省略，不使用临时项目阶段名称。
+- 标题使用小写祈使句，尽量控制在 50 字符内，最长 72 字符，末尾不加句号。
+  描述改动结果，避免 `WIP`、`misc`、`updates` 等空泛措辞，不添加 AI 署名。
+- 非简单提交必须有正文，与标题空一行，按 72 字符换行。说明原因和主要结果，
+  再补充实质性的兼容性或迁移影响、实际验证。保持简短，按能力组织而非罗列文件，
+  不要求固定小标题。
+- 破坏性变更使用 `!` 和 `BREAKING CHANGE:` footer。只引用真实 Issue。
+  每个提交保持一个完整、聚焦的主题。
+
+示例：
+
+```text
+docs: make bilingual onboarding easy to follow
+
+Lead with startup commands and the first task workflow so new users can
+start without reading maintainer history. Keep both languages aligned.
+
+Validate documentation links and matching shell examples.
+```
+
+维护者开发默认按“验证 → 提交 → 普通推送到 main”完成，不要求另建 PR。
+外部贡献者通过 PR 提交；`main` 上的 CI 继续运行。
+提交前审阅暂存差异，保留无关工作，排除私有历史、秘密、本地 Agent 状态和生成产物。
+禁止强推或重写已发布提交；Tag、Release 和包发布仍是独立操作。

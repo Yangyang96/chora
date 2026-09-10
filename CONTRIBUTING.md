@@ -59,3 +59,47 @@ do not replace it with a weaker support claim.
 Keep changes focused, explain user-visible and contract effects, and document
 known risks. Never include credentials, private endpoints, machine-specific
 paths, or generated acceptance evidence in a contribution.
+
+
+## Commit messages and maintainer pushes
+
+Write commit messages entirely in English using Conventional Commits:
+
+```text
+<type>[(<scope>)][!]: <subject>
+
+<body>
+
+<footer>
+```
+
+- Allowed types: `build`, `chore`, `ci`, `docs`, `feat`, `fix`, `perf`,
+  `refactor`, `revert`, `style`, and `test`.
+- Use a scope only for a stable subsystem, never a temporary project phase.
+- Use a lowercase imperative subject. Aim for 50 characters, never exceed
+  72 characters, and omit the final period. Describe the outcome; avoid
+  vague subjects such as `WIP`, `misc`, or `updates` and AI attribution.
+- Non-trivial commits need a body, separated by a blank line and wrapped at
+  72 characters. Explain the reason and primary outcome, then material
+  compatibility or migration effects and actual validation. Keep it concise;
+  group by capability rather than listing files. Fixed headings are optional.
+- Mark breaking changes with `!` and a `BREAKING CHANGE:` footer. Reference
+  only real issues. Keep each commit focused on one coherent change.
+
+For example:
+
+```text
+docs: make bilingual onboarding easy to follow
+
+Lead with startup commands and the first task workflow so new users can
+start without reading maintainer history. Keep both languages aligned.
+
+Validate documentation links and matching shell examples.
+```
+
+The maintainer's development workflow is validate, commit, then push directly
+and without force to `main`; a separate PR is not required for maintainer work.
+External contributors should use pull requests. CI continues to run on `main`.
+Review the staged diff, preserve unrelated work, and exclude private history,
+secrets, local agent state, and generated artifacts. Never force-push or rewrite
+published commits. Tag, release, and package publication remain separate actions.
