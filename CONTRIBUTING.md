@@ -37,6 +37,7 @@ JavaScript dependencies before running focused checks:
 
 ```sh
 npm ci
+go mod download all
 ```
 
 Run the smallest relevant Go, Web, and end-to-end checks while iterating. Add or

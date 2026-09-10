@@ -32,6 +32,7 @@ Chora 采用 GNU Affero General Public License v3.0 开源。提交贡献即表�
 
 ```sh
 npm ci
+go mod download all
 ```
 
 迭代时运行与改动最相关的 Go、Web 和端到端检查。涉及可观察行为、持久化、API

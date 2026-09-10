@@ -257,6 +257,7 @@ Install dependencies before running repository checks:
 
 ~~~sh
 npm ci
+go mod download all
 make public-test
 make test
 make verify

@@ -136,6 +136,12 @@ func TestRenderIncludesOnlyCanonicalAbsoluteInputs(t *testing.T) {
 		LoopbackAddress: "127.0.0.1:1234",
 		OutsideWrite:    filepath.Join(root, "outside.txt"),
 	})
+	if runtime.GOOS != "darwin" {
+		if err == nil || err.Error() != "Darwin runtime boundary is unavailable; failing closed" {
+			t.Fatalf("Render() error = %v, want Darwin boundary unavailable", err)
+		}
+		return
+	}
 	if err != nil {
 		t.Fatal(err)
 	}

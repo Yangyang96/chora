@@ -172,6 +172,36 @@ func TestFingerprintRejectsActualButNonFrozenCodexSHA(t *testing.T) {
 	}
 }
 
+func TestFingerprintRejectsEnvironmentBytesThatDoNotMatchExpectedSHA(t *testing.T) {
+	config := testConfig(t, nil)
+	baseRead := config.ReadFile
+	config.ReadFile = func(path string) ([]byte, error) {
+		if path == EnvironmentExecutable {
+			return []byte("different environment executable"), nil
+		}
+		return baseRead(path)
+	}
+	adapter, err := New(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := adapter.Fingerprint(context.Background()); err == nil {
+		t.Fatal("Fingerprint accepted environment bytes that did not match the expected SHA-256")
+	}
+}
+
+func TestNormalizeConfigDefaultsToFrozenEnvironmentSHA(t *testing.T) {
+	input := testConfig(t, nil)
+	input.expectedEnvironmentSHA256 = ""
+	config, err := normalizeConfig(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.expectedEnvironmentSHA256 != requiredEnvironmentSHA256 {
+		t.Fatalf("expected environment SHA-256 = %q", config.expectedEnvironmentSHA256)
+	}
+}
+
 func TestPrepareStartUsesFrozenEnvelopeAndPerAttemptResult(t *testing.T) {
 	adapter, config := testAdapter(t, nil)
 	run, attempt := runAndAttempt(t)
@@ -956,7 +986,8 @@ func testConfig(t *testing.T, mutate func(*gateManifest)) Config {
 	}
 	config := Config{
 		RuntimeRoot: runtimeRoot, SchemaPath: schemaPath, GatePath: gatePath, ContractPath: contractPath, ManagedPath: testManagedPath,
-		expectedCodexSHA256: digestHex(codexBinary),
+		expectedCodexSHA256:       digestHex(codexBinary),
+		expectedEnvironmentSHA256: digestHex(environmentBinary),
 		ReadFile: func(path string) ([]byte, error) {
 			if data, ok := files[path]; ok {
 				return append([]byte(nil), data...), nil

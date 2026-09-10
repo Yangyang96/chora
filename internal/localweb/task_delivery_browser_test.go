@@ -180,7 +180,7 @@ func TestTaskBranchBrowserFullDeliveryPreservesOriginalsAndRepositoryIsolation(t
 	defer httpServer.Close()
 	script := filepath.Join(repositoryRoot, "e2e", "task-delivery-browser.mjs")
 	route := "/rooms/" + result.run.Room.ID + "/tasks/" + result.run.Task.ID + "/runs/" + result.run.ID
-	command := exec.Command("node", script, httpServer.URL, route, result.resources[0].RepoID, result.resources[1].RepoID, filepath.Join(taskRoot, result.resources[0].WorkspaceDirectory()), filepath.Join(taskRoot, result.resources[1].WorkspaceDirectory()))
+	command := exec.Command("node", script, httpServer.URL, route, result.resources[0].RepoID, result.resources[1].RepoID, filepath.Join(taskRoot, result.resources[0].WorkspaceDirectory()), filepath.Join(taskRoot, result.resources[1].WorkspaceDirectory()), strings.TrimPrefix(result.resources[0].BaseRef, "refs/heads/"), strings.TrimPrefix(result.resources[1].BaseRef, "refs/heads/"))
 	command.Dir = repositoryRoot
 	command.Env = os.Environ()
 	output, err := command.CombinedOutput()

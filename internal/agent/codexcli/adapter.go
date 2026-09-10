@@ -53,7 +53,8 @@ type Config struct {
 	RunCommand CommandRunner
 	OSBuild    func(context.Context) (string, error)
 
-	expectedCodexSHA256 string
+	expectedCodexSHA256       string
+	expectedEnvironmentSHA256 string
 }
 
 type Adapter struct {
@@ -101,6 +102,7 @@ func NewAdapter(config Config) *Adapter {
 	config, err := normalizeConfig(config)
 	contract := defaultManagedShellContract()
 	contract.CodexSHA256 = config.expectedCodexSHA256
+	contract.EnvironmentSHA256 = config.expectedEnvironmentSHA256
 	return &Adapter{config: config, configErr: err, contract: contract}
 }
 
@@ -697,7 +699,7 @@ func (adapter *Adapter) verifyGate(ctx context.Context, manifest gateManifest) e
 		manifest.ManagedLoopbackIsolation != "proven" || manifest.ManagedLocalBindingIsolation != "proven" ||
 		manifest.UpstreamProxy != "disabled" || manifest.SOCKS5 != "disabled" || manifest.SOCKS5UDP != "disabled" ||
 		manifest.NonLoopbackProxy != "disabled" || manifest.AllUnixSockets != "disabled" || manifest.UnixSocketAllowlist != "empty" ||
-		manifest.EnvironmentWrapper != "proven" || manifest.EnvironmentWrapperSHA256 != requiredEnvironmentSHA256 ||
+		manifest.EnvironmentWrapper != "proven" || manifest.EnvironmentWrapperSHA256 != adapter.config.expectedEnvironmentSHA256 ||
 		manifest.CodexExecutable != InnerCodexExecutable ||
 		manifest.CodexBinarySHA256 != adapter.contract.CodexSHA256 ||
 		manifest.AllowedDestinationPayloadIsolation != "unavailable" {
@@ -767,6 +769,12 @@ func normalizeConfig(config Config) (Config, error) {
 	}
 	if !sha256Pattern.MatchString(config.expectedCodexSHA256) {
 		return config, errors.New("Codex adapter expected Codex SHA-256 is invalid")
+	}
+	if config.expectedEnvironmentSHA256 == "" {
+		config.expectedEnvironmentSHA256 = requiredEnvironmentSHA256
+	}
+	if !sha256Pattern.MatchString(config.expectedEnvironmentSHA256) {
+		return config, errors.New("Codex adapter expected environment SHA-256 is invalid")
 	}
 	if config.ManagedPath == "" {
 		config.ManagedPath = os.Getenv("PATH")

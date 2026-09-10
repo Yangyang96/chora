@@ -2,9 +2,9 @@ import { chromium, expect } from '@playwright/test'
 import { existsSync, readFileSync, mkdirSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 
-const [baseURL, route, firstRepoID, secondRepoID, firstWorktree, secondWorktree] = process.argv.slice(2)
-if (![baseURL, route, firstRepoID, secondRepoID, firstWorktree, secondWorktree].every(Boolean)) {
-  throw new Error('usage: task-delivery-browser.mjs BASE_URL ROUTE FIRST_REPO_ID SECOND_REPO_ID FIRST_WORKTREE SECOND_WORKTREE')
+const [baseURL, route, firstRepoID, secondRepoID, firstWorktree, secondWorktree, firstBaseBranch, secondBaseBranch] = process.argv.slice(2)
+if (![baseURL, route, firstRepoID, secondRepoID, firstWorktree, secondWorktree, firstBaseBranch, secondBaseBranch].every(Boolean)) {
+  throw new Error('usage: task-delivery-browser.mjs BASE_URL ROUTE FIRST_REPO_ID SECOND_REPO_ID FIRST_WORKTREE SECOND_WORKTREE FIRST_BASE_BRANCH SECOND_BASE_BRANCH')
 }
 
 const browser = await chromium.launch({ headless: true })
@@ -113,7 +113,7 @@ try {
       await repo.getByRole('group', { name: 'Delivery preview', exact: true }).getByText('Create pull request', { exact: true }).waitFor()
       await expectPreviewRow(repo, 'GitHub repository', `browser/${branch.replaceAll('/', '-')}`)
       await expectPreviewRow(repo, 'Head branch', branch)
-      await expectPreviewRow(repo, 'Base branch', 'main')
+      await expectPreviewRow(repo, 'Base branch', name === firstRepoID ? firstBaseBranch : secondBaseBranch)
       await expectPreviewRow(repo, 'Title', 'fix: update reviewed repository content')
       await expectPreviewRow(repo, 'Description', expectedDescription)
     })

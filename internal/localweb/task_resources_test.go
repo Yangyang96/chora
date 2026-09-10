@@ -228,6 +228,8 @@ func newTaskResourcePathValidationFixture(t *testing.T) (*Server, domain.Room, t
 	service := app.NewService(app.Dependencies{Store: db, DataRoot: data, RepositorySource: source, Authorizer: localAuthorizer{}, TaskResourceWorkspaces: manager, SpecCodingEnvelopeResolver: &boundSpecCodingEnvelopeResolver{reader: db.Reader(), piVersion: "0.84.2"}})
 	server := &Server{store: db, service: service, repositorySource: source, pathPiEnabled: true}
 	root, _, _ := newTaskWorktreeTestRepository(t)
+	runTaskWorktreeGitTest(t, root, "config", "user.name", "Chora Test")
+	runTaskWorktreeGitTest(t, root, "config", "user.email", "chora@example.test")
 	var project resourceProjectTestView
 	requestJSON(t, server.Handler(), http.MethodPost, "/api/v2/projects", map[string]any{"name": "Check path validation"}, http.StatusCreated, &project)
 	var added struct {

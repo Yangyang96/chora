@@ -224,6 +224,7 @@ go run ./cmd/chora source-checkout \
 
 ~~~sh
 npm ci
+go mod download all
 make public-test
 make test
 make verify
