@@ -101,5 +101,9 @@ The maintainer's development workflow is validate, commit, then push directly
 and without force to `main`; a separate PR is not required for maintainer work.
 External contributors should use pull requests. CI continues to run on `main`.
 Review the staged diff, preserve unrelated work, and exclude private history,
-secrets, local agent state, and generated artifacts. Never force-push or rewrite
-published commits. Tag, release, and package publication remain separate actions.
+secrets, local agent state, and generated artifacts. Only repository
+administrators have permission to force-push `main`; an active ruleset blocks
+force pushes for every other role. Routine development still uses normal
+pushes. Agents must obtain explicit authorization for a specific history rewrite
+before using that permission. Branch deletion remains disabled. Tag, release,
+and package publication remain separate actions.

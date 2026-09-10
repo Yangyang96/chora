@@ -90,4 +90,6 @@ Validate documentation links and matching shell examples.
 维护者开发默认按“验证 → 提交 → 普通推送到 main”完成，不要求另建 PR。
 外部贡献者通过 PR 提交；`main` 上的 CI 继续运行。
 提交前审阅暂存差异，保留无关工作，排除私有历史、秘密、本地 Agent 状态和生成产物。
-禁止强推或重写已发布提交；Tag、Release 和包发布仍是独立操作。
+只有仓库管理员有权限强推 `main`；独立的生效规则阻止其他角色强推。
+日常开发仍使用普通推送。Agent 只有获得针对具体历史重写操作的明确授权后，
+才可使用强推权限。分支删除保持禁用；Tag、Release 和包发布仍是独立操作。
