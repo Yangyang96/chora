@@ -1,0 +1,56 @@
+{
+  "schema_version": "chora.m1-local-sandbox-policy.v1",
+  "provider": {
+    "name": "colima-docker",
+    "colima_version": "0.10.3",
+    "colima_sha256": "55278419bd4288e4ab11eb30be13f5e655f3886c0979b68e435df910dbc9bbdf",
+    "engine": "docker",
+    "engine_client_version": "29.6.1",
+    "engine_client_sha256": "e8a1e5351c4d12337a4ee2b54523bc0107b4d13f795c9d6e791b9e4cf835f385"
+  },
+  "attempt": {
+    "container_lifecycle": "one_disposable_container_per_attempt",
+    "workspace_lifecycle": "one_disposable_execution_workspace_per_attempt",
+    "workspace_mount": "/workspace",
+    "other_host_mounts": [],
+    "pi_agent_directory": "/run/chora/pi",
+    "working_directory": "/workspace",
+    "user": "1000:1000"
+  },
+  "isolation": {
+    "read_only_root": true,
+    "tmpfs": ["/tmp", "/run/chora/pi"],
+    "drop_all_capabilities": true,
+    "no_new_privileges": true,
+    "publish_ports": false,
+    "docker_socket_mounted": false,
+    "unrelated_host_paths_mounted": false,
+    "fail_closed": true
+  },
+  "network": {
+    "mode": "outbound_enabled_no_inbound",
+    "declared_model_endpoint": "http://host.docker.internal:11434/v1",
+    "default_behavior": "container egress enabled; no published ports; only the declared local model endpoint is required"
+  },
+  "resources": {
+    "cpus": 2,
+    "memory_mb": 4096,
+    "pids_limit": 256,
+    "timeout_seconds": 900
+  },
+  "credentials": {
+    "injection": "task_scoped_environment_only",
+    "declared_names": [],
+    "persist": false,
+    "log_values": false
+  },
+  "termination": {
+    "rpc_abort_is_cooperative_only": true,
+    "strict_cancel": "docker kill then docker rm force",
+    "timeout": "docker kill then docker rm force",
+    "abnormal_exit": "confirm process tree dead then docker rm force",
+    "require_process_tree_death_confirmation": true,
+    "remove_owned_workspace": true,
+    "uncertainty": "fail_closed"
+  }
+}

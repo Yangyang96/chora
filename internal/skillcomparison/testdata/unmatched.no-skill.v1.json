@@ -1,0 +1,92 @@
+{
+  "schema_version": "chora.core-skill-comparison.v1",
+  "comparison_id": "synthetic-unmatched-no-skill",
+  "baseline": {
+    "variant": "no_skill",
+    "real_task": true,
+    "run_id": "baseline-run",
+    "attempt_id": "baseline-attempt",
+    "binding": {
+      "task_id": "task-a",
+      "task_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "snapshot_id": "snapshot-a",
+      "snapshot_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "engine_identity_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "runtime_image_id": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "model_provider_id": "openai-codex",
+      "model_id": "gpt-5.6-sol",
+      "model_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "limits": {
+        "id": "synthetic-limits",
+        "sha256": "0ea15b3f04af01ceba0f677dca3925b22294a22f675b29fd3d29ec1291c606b3",
+        "max_total_tokens": 1000,
+        "max_tool_calls": 20,
+        "max_elapsed_millis": 60000,
+        "max_cost_microunits": 1000
+      },
+      "tool_bundle_id": "synthetic-tools",
+      "tool_bundle_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "candidate_id": "chora.core-workflow.v1",
+      "candidate_skill_sha256": "a39a78290abaa14c42fb90875611967297db66b6b41dba6040676d7a486ac67c"
+    },
+    "outcome": {
+      "success": true,
+      "manual_interventions": 0,
+      "tool_errors": 0,
+      "input_tokens": 500,
+      "output_tokens": 250,
+      "tool_calls": 10,
+      "elapsed_millis": 30000,
+      "cost_microunits": 500,
+      "attempt_count": 1,
+      "hidden_retry_count": 0,
+      "framework_retry_count": 0,
+      "result_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "evidence_sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+    }
+  },
+  "candidate": {
+    "variant": "candidate_skill",
+    "real_task": true,
+    "run_id": "candidate-run",
+    "attempt_id": "candidate-attempt",
+    "binding": {
+      "task_id": "task-b",
+      "task_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "snapshot_id": "snapshot-a",
+      "snapshot_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "engine_identity_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "runtime_image_id": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "model_provider_id": "openai-codex",
+      "model_id": "gpt-5.6-sol",
+      "model_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "limits": {
+        "id": "synthetic-limits",
+        "sha256": "0ea15b3f04af01ceba0f677dca3925b22294a22f675b29fd3d29ec1291c606b3",
+        "max_total_tokens": 1000,
+        "max_tool_calls": 20,
+        "max_elapsed_millis": 60000,
+        "max_cost_microunits": 1000
+      },
+      "tool_bundle_id": "synthetic-tools",
+      "tool_bundle_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "candidate_id": "chora.core-workflow.v1",
+      "candidate_skill_sha256": "a39a78290abaa14c42fb90875611967297db66b6b41dba6040676d7a486ac67c"
+    },
+    "outcome": {
+      "success": true,
+      "manual_interventions": 0,
+      "tool_errors": 0,
+      "input_tokens": 500,
+      "output_tokens": 250,
+      "tool_calls": 10,
+      "elapsed_millis": 30000,
+      "cost_microunits": 500,
+      "attempt_count": 1,
+      "hidden_retry_count": 0,
+      "framework_retry_count": 0,
+      "result_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+      "evidence_sha256": "4444444444444444444444444444444444444444444444444444444444444444"
+    }
+  }
+}

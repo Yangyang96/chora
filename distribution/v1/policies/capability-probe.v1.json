@@ -1,0 +1,11 @@
+{
+  "schema_version": "chora.capability-probe-role-policy.v1",
+  "agent_runtime_invoked": false,
+  "credentials": "none",
+  "workspace": "disposable_probe_workspace",
+  "resources": "disposable_chora_labeled_only",
+  "cleanup": "remove_and_prove_absent",
+  "image_alias_role": "managed_pi_runtime",
+  "provider_name_is_evidence": false,
+  "fail_closed": true
+}

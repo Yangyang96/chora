@@ -1,0 +1,138 @@
+{
+  "schema_version": "chora.release-assets-spec.v1",
+  "release_id": "chora-m1-alpha",
+  "platform": {
+    "os": "linux",
+    "architecture": "arm64"
+  },
+  "roles": [
+    {
+      "role": "managed_pi_runtime",
+      "artifact_id": "managed-pi-runtime",
+      "policy": {
+        "id": "chora.managed-pi-runtime.v1",
+        "path": "distribution/v1/policies/managed-pi-runtime.v1.json",
+        "sha256": "6bd3e6722331249cd39bb4da9cad364e44f523bd1e15fb2fdaa84738897225e9"
+      }
+    },
+    {
+      "role": "network_boundary",
+      "artifact_id": "network-boundary",
+      "policy": {
+        "id": "chora.network-boundary.v1",
+        "path": "distribution/v1/policies/network-boundary.v1.json",
+        "sha256": "82bb62fa3b2f9a64e3db53ebed79b6a644fa2ed540b352ae018219fca424d61a"
+      }
+    },
+    {
+      "role": "independent_verifier",
+      "artifact_id": "managed-pi-runtime",
+      "alias_of_role": "managed_pi_runtime",
+      "policy": {
+        "id": "chora.independent-verifier.v1",
+        "path": "distribution/v1/policies/independent-verifier.v1.json",
+        "sha256": "d72e61a6e7a3a384ee472d04e23b202aad5415efe00246a0b3665c02ea9f5d07"
+      }
+    },
+    {
+      "role": "capability_probe",
+      "artifact_id": "managed-pi-runtime",
+      "alias_of_role": "managed_pi_runtime",
+      "policy": {
+        "id": "chora.capability-probe.v1",
+        "path": "distribution/v1/policies/capability-probe.v1.json",
+        "sha256": "78de1275dce7b27b2f1128de1e7abbe9e6f0e9be0c9dfef2ebd351e6643ebb3e"
+      }
+    }
+  ],
+  "artifacts": [
+    {
+      "id": "managed-pi-runtime",
+      "recipe": {
+        "path": "distribution/v1/artifacts/managed-pi-runtime/context/Dockerfile",
+        "sha256": "a2a62ebc1130c2f6212dde58ec57396d1bbcc3091d5e4ffde0f23876db7595d7"
+      },
+      "context": {
+        "path": "distribution/v1/artifacts/managed-pi-runtime/context",
+        "sha256": "0febda8218473ac7fd2f13dd3b82e7aa3bf042ecbaf21ce401f563cf525346fe"
+      },
+      "recipe_provenance": [
+        {
+          "path": "spikes/g2-m2-entry-probe/v5/Dockerfile",
+          "sha256": "47656c6e2dd44465dc8d510f4a2d43bbfb8707cad650fee5ffea7cbed9b30b62"
+        }
+      ],
+      "build_inputs": [
+        {
+          "name": "GO_BASE_PULL_REFERENCE",
+          "oci_pull_reference": "golang@sha256:1ecb7edf62a0408027bd5729dfd6b1b8766e578e8df93995b225dfd0944eb651"
+        },
+        {
+          "name": "NODE_BASE_PULL_REFERENCE",
+          "oci_pull_reference": "node@sha256:4a4884e8a44826194dff92ba316264f392056cbe243dcc9fd3551e71cea02b90"
+        }
+      ],
+      "runtime": {
+        "pi": {
+          "name": "@earendil-works/pi-coding-agent",
+          "version": "0.84.2",
+          "npm_integrity": "sha512-l4E+B7hgXKWddRo8bC/eSue2aWZjEgJ9xIpf5p0Og+lq8a2TArCwJ0HCoCPCgaBP/tN4zbYH/wOwvx9pJpeLCA=="
+        },
+        "node": {
+          "version": "22.19.0",
+          "executable": "/usr/local/bin/node",
+          "version_output": "v22.19.0"
+        }
+      },
+      "entrypoint": [
+        "pi"
+      ],
+      "license_inventory": {
+        "path": "distribution/v1/artifacts/managed-pi-runtime/context/LICENSES.json",
+        "sha256": "efea60d022865205fb3ea38ad53582a17b66240300cc18f726225f0eecb9248c"
+      },
+      "sbom": {
+        "path": "distribution/v1/artifacts/managed-pi-runtime/context/sbom.cdx.json",
+        "sha256": "7f69c7334cf2cdfacb43ffbf6c99773bb4f3cb3ab5bac2fca863c035b8f5b086"
+      }
+    },
+    {
+      "id": "network-boundary",
+      "recipe": {
+        "path": "distribution/v1/artifacts/network-boundary/context/Dockerfile",
+        "sha256": "0c0606260cd950d58a208ca13e7a5d2217210c92e86f3c20a8ec72651811deb3"
+      },
+      "context": {
+        "path": "distribution/v1/artifacts/network-boundary/context",
+        "sha256": "67bd84b2c061c7656cf8c9139704224f23ddcc458b203896b8ce55ea7a0f50cf"
+      },
+      "recipe_provenance": [
+        {
+          "path": "spikes/g2-m2-entry-probe/v4/Dockerfile",
+          "sha256": "9eb936b0a65c041a376bc95844cad74c50b5d48a8c7def64e588af1791db6380"
+        },
+        {
+          "path": "spikes/g2-m2-entry-probe/v4/codex-boundary.go",
+          "sha256": "a5a326e1d50d64d08e0179890ce41d1a9c7aa3548c35cec16b3fa990697d4818"
+        }
+      ],
+      "build_inputs": [
+        {
+          "name": "GO_BASE_PULL_REFERENCE",
+          "oci_pull_reference": "golang@sha256:1ecb7edf62a0408027bd5729dfd6b1b8766e578e8df93995b225dfd0944eb651"
+        }
+      ],
+      "entrypoint": [
+        "/codex-boundary"
+      ],
+      "license_inventory": {
+        "path": "distribution/v1/artifacts/network-boundary/context/LICENSES.json",
+        "sha256": "af5821e45d2ce754b5a6d062e504701c5fd748bac82c2e6492286bb2151c95f3"
+      },
+      "sbom": {
+        "path": "distribution/v1/artifacts/network-boundary/context/sbom.cdx.json",
+        "sha256": "4e8475098713a04cdb102097b2d1ef9988e1f3bb05ac254b57fd3f51af29a7f2"
+      }
+    }
+  ]
+}

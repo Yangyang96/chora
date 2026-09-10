@@ -1,0 +1,21 @@
+# Exact fixture exceptions; all default detection rules remain enabled.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "curl-auth-header"
+[[rules.allowlists]]
+description = "Synthetic decoder redaction fixture"
+condition = "AND"
+paths = ['''(^|/)internal/agent/pi/adapter_test\.go$''']
+regexTarget = "line"
+regexes = ['''^\s*first := \[\]byte\(`\{"type":"agent_start","message":\{"thinking":"secret"\}\}` \+ "\\n" \+ `\{"type":"tool_execution_start","toolName":"bash","args":\{"command":"curl -H '[A]uthorization: Bearer swordfish' https://example\.test","password":"secret"\}\}`\)$''']
+
+[[rules]]
+id = "generic-api-key"
+[[rules.allowlists]]
+description = "HTTP idempotency key in cancellation fixture"
+condition = "AND"
+paths = ['''(^|/)internal/localweb/u3_preflight_gate_test\.go$''']
+regexTarget = "line"
+regexes = ['''^\s*map\[string\]string\{"Idempotency-[K]ey": "u3-cancel-verification"\}, http\.StatusAccepted, nil\)$''']

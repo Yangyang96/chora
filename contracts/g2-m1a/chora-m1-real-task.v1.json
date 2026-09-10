@@ -1,0 +1,227 @@
+{
+  "schema_version": "chora.spec-coding-core.v1",
+  "contract_id": "chora-m1-real-task-001",
+  "revision": 1,
+  "task": {
+    "id": "task_018f0c4a-1a2c-7c3d-8e4f-1234567890ab",
+    "room_id": "room_018f0c4a-1a2b-7c3d-8e4f-1234567890ab",
+    "title": "Reject blank acceptance criterion descriptions",
+    "goal": "Keep Chora acceptance criteria reviewable by requiring a non-blank description.",
+    "repository": {
+      "name": "chora",
+      "locator": ".",
+      "base_revision": "67b83d9ed8c4bdc17fa4d16da53c9943b255c222"
+    }
+  },
+  "requirement": {
+    "statement": "An acceptance criterion must explain what its title means; blank or whitespace-only descriptions are rejected.",
+    "constraints": [
+      "Preserve existing valid acceptance criterion behavior.",
+      "Do not change persistence, Public API, UI, Runtime, or Sandbox code.",
+      "Return a reviewable patch limited to the declared files."
+    ]
+  },
+  "spec": {
+    "desired_behavior": [
+      "NewAcceptanceCriterion accepts a non-blank title and description.",
+      "NewAcceptanceCriterion rejects an empty or whitespace-only description.",
+      "Task construction and existing Domain tests remain green."
+    ],
+    "out_of_scope": [
+      "Editing existing persisted criteria.",
+      "Changing acceptance criterion IDs or serialization.",
+      "Adding a generalized validation framework."
+    ]
+  },
+  "acceptance": {
+    "criteria": [
+      {
+        "id": "criterion_018f0c4a-1a2d-7c3d-8e4f-1234567890ab",
+        "title": "Blank descriptions fail closed",
+        "description": "Empty and whitespace-only descriptions return domain.ErrInvalidArgument.",
+        "verification": "go test ./internal/domain -run 'TestNewAcceptanceCriterion'"
+      },
+      {
+        "id": "criterion_018f0c4a-1a2e-7c3d-8e4f-1234567890ab",
+        "title": "Valid criteria remain stable",
+        "description": "A valid title and description are retained without unrelated behavior changes.",
+        "verification": "go test ./internal/domain"
+      }
+    ]
+  },
+  "technical_plan": {
+    "summary": "Tighten the existing AcceptanceCriterion constructor and add focused regression coverage.",
+    "steps": [
+      {
+        "id": "plan-1",
+        "description": "Add focused constructor tests for valid, empty, and whitespace-only descriptions.",
+        "files": ["internal/domain/task_test.go"]
+      },
+      {
+        "id": "plan-2",
+        "description": "Require a trimmed non-empty description in NewAcceptanceCriterion.",
+        "files": ["internal/domain/task.go"]
+      },
+      {
+        "id": "plan-3",
+        "description": "Format both files and run the declared Domain test command.",
+        "files": ["internal/domain/task.go", "internal/domain/task_test.go"]
+      }
+    ]
+  },
+  "decisions": [
+    {
+      "id": "decision-real-task",
+      "question": "Which repository task proves the first real coding path?",
+      "resolution": "Use the Chora Domain validation task pinned in this contract.",
+      "rationale": "It is a real, reviewable product change with a two-file boundary and deterministic tests."
+    },
+    {
+      "id": "decision-primary-candidate",
+      "question": "Which single Runtime and Sandbox combination enters the fresh Entry Probe?",
+      "resolution": "Pi Coding Agent 0.84.1 over JSONL RPC in one disposable Colima-backed Docker container per Attempt.",
+      "rationale": "Runtime, model, Sandbox, base images, configuration, and policy identities remain separate and immutable."
+    }
+  ],
+  "risks": [
+    {
+      "id": "risk-model-compatibility",
+      "severity": "high",
+      "description": "The local model may fail Pi tool calling or the container may not reach the host endpoint.",
+      "mitigation": "Keep provider/model identity separate and classify fresh Probe incompatibility as CANDIDATE_OR_ENV_FAILURE."
+    },
+    {
+      "id": "risk-isolation",
+      "severity": "critical",
+      "description": "A host mount, process, or cleanup mistake could violate the Sandbox boundary.",
+      "mitigation": "Fail closed on host access, process-tree death, identity, or cleanup uncertainty."
+    }
+  ],
+  "unknowns": [
+    {
+      "id": "unknown-entry-viability",
+      "question": "Can the pinned Pi RPC and local model combination edit one file and cleanly terminate under the declared policy on this host?",
+      "resolution_gate": "G2-M2E Entry Probe"
+    }
+  ],
+  "execution": {
+    "input": {
+      "context_snapshot_id": "context_snapshot_018f0c4a-1a2f-7c3d-8e4f-1234567890ab",
+      "context_snapshot_digest": "80b62373d85c6d6676a935b2ba1487f8466530aa7fc5d506decf4839a27b336d"
+    },
+    "boundary": {
+      "writable_files": ["internal/domain/task.go", "internal/domain/task_test.go"],
+      "commands": [
+        {
+          "id": "format",
+          "argv": ["gofmt", "-w", "internal/domain/task.go", "internal/domain/task_test.go"]
+        },
+        {
+          "id": "domain-tests",
+          "argv": ["go", "test", "./internal/domain"]
+        }
+      ],
+      "test_command_ids": ["domain-tests"]
+    },
+    "output": {
+      "result_schema_version": "chora.agent-result.v1",
+      "artifact_locator_scope": "execution_workspace_relative",
+      "check_binding": "acceptance_criterion_id",
+      "unknown_policy": "explicit"
+    },
+    "required_capabilities": [
+      "runtime.agent_loop",
+      "runtime.jsonl_rpc",
+      "runtime.file_edit",
+      "runtime.command_execution",
+      "runtime.progress_events",
+      "runtime.terminal_result",
+      "runtime.cooperative_abort",
+      "sandbox.workspace_only_writes",
+      "sandbox.unrelated_host_unreadable",
+      "sandbox.unrelated_host_unwritable",
+      "sandbox.task_scoped_credentials",
+      "sandbox.explicit_network_policy",
+      "sandbox.cpu_limit",
+      "sandbox.memory_limit",
+      "sandbox.elapsed_time_limit",
+      "sandbox.process_limit",
+      "sandbox.container_kill_remove",
+      "sandbox.process_tree_termination",
+      "sandbox.cleanup",
+      "sandbox.traceable_identity",
+      "sandbox.fail_closed"
+    ]
+  },
+  "candidate": {
+    "runtime": {
+      "package": "@earendil-works/pi-coding-agent",
+      "version": "0.84.1",
+      "npm_integrity": "sha512-ncAqFrG+iybuPGOhMiZoEHkEzTpJgz3guYD32pD+M7ucc0WeHmauP6wa7qwP8V/KWvsZDVNa5XGsdZ7fkC7w7A==",
+      "transport": [
+        "pi", "--mode", "rpc", "--no-session", "--no-extensions", "--no-skills",
+        "--no-prompt-templates", "--no-themes", "--no-context-files", "--no-approve",
+        "--provider", "ollama", "--model", "minimax-m3:cloud"
+      ],
+      "config": {
+        "path": "contracts/g2-m1a/pi-runtime-config.v1.json",
+        "sha256": "f6b471245c4213d6b6bc1470d7b687e7f28642754c0b3f67c2e2a6165d623f39"
+      }
+    },
+    "sandbox": {
+      "provider": "colima-docker",
+      "version": "0.10.3",
+      "sha256": "55278419bd4288e4ab11eb30be13f5e655f3886c0979b68e435df910dbc9bbdf",
+      "engine": "docker",
+      "engine_version": "29.6.1",
+      "engine_sha256": "e8a1e5351c4d12337a4ee2b54523bc0107b4d13f795c9d6e791b9e4cf835f385"
+    },
+    "model": {
+      "provider": "ollama",
+      "model_id": "minimax-m3:cloud",
+      "model_digest": "sha256:8cd948b96f47afd232cef7d49faf65791d22bd9dbbef74add3b9355d9d75f765",
+      "identity_status": "RESOLVED",
+      "endpoint": "http://host.docker.internal:11434/v1",
+      "authentication_type": "host_ollama_cloud_session"
+    },
+    "base_images": [
+      {
+        "reference": "node:22.19.0-bookworm-slim",
+        "digest": "sha256:4a4884e8a44826194dff92ba316264f392056cbe243dcc9fd3551e71cea02b90",
+        "platform": "linux/arm64",
+        "purpose": "Pi install stage"
+      },
+      {
+        "reference": "golang:1.26.5-bookworm",
+        "digest": "sha256:1ecb7edf62a0408027bd5729dfd6b1b8766e578e8df93995b225dfd0944eb651",
+        "platform": "linux/arm64",
+        "purpose": "Runtime and Chora test stage"
+      }
+    ],
+    "policy": {
+      "path": "contracts/g2-m1a/sandbox-policy.v1.json",
+      "sha256": "0685f0735edaec36c1f1d7aaaacce04206246af9476d2ad8d76a01f2e386e210"
+    }
+  },
+  "entry_probe": {
+    "pass_criteria": [
+      "real_pi_rpc_reached",
+      "workspace_write_succeeds",
+      "deterministic_command_succeeds",
+      "unrelated_host_read_denied",
+      "unrelated_host_write_denied",
+      "strict_container_termination_kills_process_tree",
+      "owned_workspace_cleanup_succeeds",
+      "runtime_model_sandbox_image_config_policy_identities_recorded"
+    ],
+    "failure_classes": ["CANDIDATE_OR_ENV_FAILURE", "CONTRACT_INVALIDATION"],
+    "stop_criteria": [
+      "hard_candidate_incompatibility",
+      "core_contract_input_changed",
+      "isolation_uncertain",
+      "termination_or_cleanup_uncertain"
+    ],
+    "capsule_change_behavior": "MARK_STALE_AND_RESTART",
+    "fallback_candidate_requires_user_approval": true
+  }
+}

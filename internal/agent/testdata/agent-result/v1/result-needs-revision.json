@@ -1,0 +1,21 @@
+{
+  "schema_version": "chora.agent-result.v1",
+  "summary": "Revision is required before review.",
+  "review_ready": false,
+  "outputs": [],
+  "artifact_candidates": [],
+  "checks": [
+    {
+      "criterion_id": "contract.review_ready",
+      "status": "FAIL",
+      "evidence": "A required criterion remains unresolved."
+    }
+  ],
+  "unknowns": [
+    "Required evidence is unavailable."
+  ],
+  "handoff": {
+    "requested": false,
+    "reason": ""
+  }
+}

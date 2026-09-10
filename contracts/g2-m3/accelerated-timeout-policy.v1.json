@@ -1,0 +1,17 @@
+{
+  "schema_version": "chora.g2-m3-acceptance-timeout-policy.v1",
+  "scope": "acceptance_only",
+  "task_id": "task_018f0c4a-1a2c-7c3d-8e4f-1234567890ab",
+  "context_snapshot_id": "context_snapshot_018f0c4a-1a2f-7c3d-8e4f-1234567890ab",
+  "context_snapshot_digest": "cc3f993e53e357c8b1a03ccfea74c3853adaf60c947777f3f0ab8b580a7279ad",
+  "accelerated_attempt_timeout_ms": 3000,
+  "production_command_timeout_seconds": 600,
+  "production_attempt_timeout_seconds": 1200,
+  "claim_boundary": [
+    "timeout_projection",
+    "process_tree_death",
+    "no_patch",
+    "no_automatic_retry",
+    "resource_cleanup"
+  ]
+}

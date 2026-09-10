@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chora.local/schemas/chora.agent-result.v1.schema.json",
+  "title": "Chora Agent Result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "summary",
+    "review_ready",
+    "outputs",
+    "artifact_candidates",
+    "checks",
+    "unknowns",
+    "handoff"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "const": "chora.agent-result.v1" },
+    "summary": { "type": "string", "minLength": 1 },
+    "review_ready": { "type": "boolean" },
+    "outputs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/workspaceArtifact" }
+    },
+    "artifact_candidates": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/workspaceArtifact" }
+    },
+    "checks": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/check" }
+    },
+    "unknowns": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "handoff": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requested", "reason"],
+      "properties": {
+        "requested": { "type": "boolean" },
+        "reason": { "type": "string" }
+      }
+    }
+  },
+  "$defs": {
+    "relativeWorkspacePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_-][A-Za-z0-9._-]*(/[A-Za-z0-9_-][A-Za-z0-9._-]*)*$"
+    },
+    "workspaceArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["locator", "description"],
+      "properties": {
+        "locator": { "$ref": "#/$defs/relativeWorkspacePath" },
+        "description": { "type": "string", "minLength": 1 }
+      }
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["criterion_id", "status", "evidence"],
+      "properties": {
+        "criterion_id": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["PASS", "FAIL", "UNKNOWN"] },
+        "evidence": { "type": "string" }
+      }
+    }
+  }
+}

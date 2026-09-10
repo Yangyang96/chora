@@ -1,0 +1,69 @@
+{
+  "schema_version": "chora.source-path-policy.v1",
+  "roots": [
+    ".gitignore",
+    ".npmrc",
+    ".nvmrc",
+    "AGENTS.md",
+    "CODE_OF_CONDUCT.md",
+    "CODE_OF_CONDUCT.zh-CN.md",
+    "CONTRIBUTING.md",
+    "CONTRIBUTING.zh-CN.md",
+    "LICENSE",
+    "Makefile",
+    "README.md",
+    "README.zh-CN.md",
+    "SECURITY.md",
+    "SECURITY.zh-CN.md",
+    "SUPPORT.md",
+    "SUPPORT.zh-CN.md",
+    "cmd",
+    "contracts",
+    "distribution",
+    "docs",
+    "e2e",
+    "go.mod",
+    "go.sum",
+    "internal",
+    "migrations",
+    "package-lock.json",
+    "package.json",
+    "playwright.config.ts",
+    "playwright.intent-real.config.ts",
+    "playwright.joined.config.ts",
+    "playwright.pi-local-connected.config.ts",
+    "playwright.project-entry.config.ts",
+    "playwright.u4-real.config.ts",
+    "schemas",
+    "testdata",
+    "tools",
+    "vendor",
+    "web"
+  ],
+  "excluded_directory_names": [
+    ".vite",
+    "coverage",
+    "dist",
+    "node_modules",
+    "test-results"
+  ],
+  "excluded_file_suffixes": [
+    ".tsbuildinfo"
+  ],
+  "declared_files": 3145,
+  "declared_paths_sha256": "da2398c89ff769a1b7f99a4677322df81ca46b676dbdb6bf1d77a8c785f38531",
+  "install_only_roots": [
+    "vendor"
+  ],
+  "install_only_paths": [
+    "contracts/g2-m4/source-baseline-v4/delta/web/src/App.tsx",
+    "contracts/g2-m4/source-baseline-v5/delta/internal/domain/authorization_external_test.go",
+    "contracts/g2-m4/source-baseline-v5/delta/web/src/App.tsx",
+    "contracts/g2-m4/source-baseline-v6/delta/internal/domain/authorization_external_test.go",
+    "contracts/g2-m4/source-baseline-v6/delta/web/src/App.tsx"
+  ],
+  "install_only_files": 1998,
+  "install_only_paths_sha256": "75f970f9d4ce557d7cd574b10d6f60041555b2404760724eea5911449abdb912",
+  "model_readable_files": 1147,
+  "model_readable_paths_sha256": "62347545716368b68491626cb04ddda946e59c6d27288aad8cff7e7596cb8c11"
+}

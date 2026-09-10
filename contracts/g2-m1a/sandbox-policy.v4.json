@@ -1,0 +1,139 @@
+{
+  "schema_version": "chora.m1-local-sandbox-policy.v4",
+  "provider": {
+    "name": "colima-docker",
+    "colima_version": "0.10.3",
+    "colima_sha256": "55278419bd4288e4ab11eb30be13f5e655f3886c0979b68e435df910dbc9bbdf",
+    "engine": "docker",
+    "engine_client_version": "29.6.1",
+    "engine_client_sha256": "e8a1e5351c4d12337a4ee2b54523bc0107b4d13f795c9d6e791b9e4cf835f385"
+  },
+  "attempt": {
+    "container_lifecycle": "one_disposable_container_per_attempt",
+    "workspace_lifecycle": "fresh_copy_per_attempt_removed_on_terminal",
+    "workspace_mount": "/workspace",
+    "repository_path": "/workspace/repository",
+    "context_mount": "/input/context",
+    "context_read_only": true,
+    "original_repository_writable_mounted": false,
+    "source_materialization": "fresh_copy_from_frozen_revision_plus_selected_dirty_input",
+    "reuse_previous_attempt": false,
+    "other_host_mounts": [],
+    "pi_agent_directory": "/run/chora/pi",
+    "working_directory": "/workspace",
+    "user": "1000:1000"
+  },
+  "isolation": {
+    "read_only_root": true,
+    "tmpfs": ["/tmp", "/run/chora/pi", "/run/chora/trust"],
+    "drop_all_capabilities": true,
+    "no_new_privileges": true,
+    "seccomp_profile": "docker_default",
+    "privileged": false,
+    "device_mounts": [],
+    "host_network": false,
+    "publish_ports": false,
+    "docker_socket_mounted": false,
+    "normal_bridge_fallback": false,
+    "unrelated_host_paths_mounted": false,
+    "fail_closed": true
+  },
+  "network": {
+    "mode": "attempt_private_internal_with_fixed_codex_proxy_and_enterprise_upstream",
+    "attempt_network_internal": true,
+    "general_egress": false,
+    "host_network": false,
+    "published_ports": false,
+    "docker_socket_mounted": false,
+    "normal_bridge_fallback": false,
+    "proxy": {
+      "endpoint": "http://codex-boundary:8080",
+      "protocol": "http_connect",
+      "allowed_hosts": ["auth.openai.com", "chatgpt.com"],
+      "allowed_ports": [443],
+      "deny_ip_literal": true,
+      "resolve_dns_at_boundary": false,
+      "dns_resolution_owner": "fixed_enterprise_upstream",
+      "task_scoped": true,
+      "traceable": true,
+      "upstream": {
+        "kind": "fixed_enterprise_http_connect_proxy",
+        "endpoint": "http://host.docker.internal:9981",
+        "accessible_from_attempt": false,
+        "task_scoped": true,
+        "traceable": true
+      },
+      "tls": {
+        "codex_boundary_terminates": false,
+        "enterprise_upstream_terminates": true,
+        "verification_required": true,
+        "trust_anchor_path": "/run/chora/trust/starpoint-root-ca-2048-g2.pem",
+        "trust_anchor_sha256": "3444d3f6d9ef36946ff29ef382e402017a96ff6c97f7b8ae08643acceb2e0dac"
+      }
+    }
+  },
+  "resources": {
+    "cpus": 2,
+    "memory_mib": 4096,
+    "memory_swap_mib": 4096,
+    "pids_limit": 256,
+    "file_descriptors": 1024,
+    "command_timeout_seconds": 600,
+    "attempt_timeout_seconds": 1200
+  },
+  "credentials": {
+    "injection": "task_scoped_explicit_file_projection",
+    "declared_names": ["CHORA_PI_CODEX_AUTH_FILE"],
+    "persist": false,
+    "log_values": false,
+    "mount_source_file": false,
+    "remove_attempt_copy": true,
+    "refresh_failure": "AUTH_EXPIRED_FAIL_CLOSED"
+  },
+  "trust": {
+    "projection": "task_scoped_stdin_projection",
+    "source_path": "contracts/g2-m1a/starpoint-root-ca-2048-g2.pem",
+    "source_sha256": "3444d3f6d9ef36946ff29ef382e402017a96ff6c97f7b8ae08643acceb2e0dac",
+    "container_path": "/run/chora/trust/starpoint-root-ca-2048-g2.pem",
+    "directory_path": "/run/chora/trust",
+    "directory_owner": "0:0",
+    "directory_mode_before_projection": "0755",
+    "directory_mode_after_projection": "0555",
+    "file_owner": "0:0",
+    "file_mode": "0444",
+    "projection_before_runtime_start": true,
+    "runtime_write_probe_required": true,
+    "source_mounted": false,
+    "agent_writable": false,
+    "persist": false,
+    "remove_attempt_copy": true
+  },
+  "termination": {
+    "rpc_abort_is_cooperative_only": true,
+    "cooperative_abort_wait_seconds": 2,
+    "death_confirmation_seconds": 5,
+    "force_container_removal": true,
+    "require_process_tree_death": true,
+    "revoke_network_before_kill": true,
+    "uncertainty": "recovery_required_fail_closed"
+  },
+  "limits": {
+    "persisted_log_bytes": 10485760,
+    "artifact_bytes": 104857600
+  },
+  "identity": {
+    "required_labels": [
+      "chora.run_id", "chora.attempt_id", "chora.task_id",
+      "chora.image_digest", "chora.policy_digest"
+    ],
+    "policy_digest_required": true
+  },
+  "cleanup": {
+    "remove_container": true,
+    "remove_internal_network": true,
+    "remove_upstream_boundary": true,
+    "remove_workspace": true,
+    "all_terminal_paths": true,
+    "recovery_enumerates_labeled_resources_only": true
+  }
+}

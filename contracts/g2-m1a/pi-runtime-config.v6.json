@@ -1,0 +1,125 @@
+{
+  "schema_version": "chora.pi-runtime-config.v6",
+  "runtime": {
+    "package": "@earendil-works/pi-coding-agent",
+    "version": "0.84.2",
+    "npm_integrity": "sha512-l4E+B7hgXKWddRo8bC/eSue2aWZjEgJ9xIpf5p0Og+lq8a2TArCwJ0HCoCPCgaBP/tN4zbYH/wOwvx9pJpeLCA==",
+    "transport": [
+      "pi", "--mode", "rpc", "--no-session", "--no-extensions", "--no-skills",
+      "--no-prompt-templates", "--no-themes", "--no-context-files", "--no-approve",
+      "--provider", "openai-codex", "--model", "gpt-5.6-sol"
+    ]
+  },
+  "environment": {
+    "PI_CODING_AGENT_DIR": "/run/chora/pi",
+    "PI_OFFLINE": "1",
+    "PI_SKIP_VERSION_CHECK": "1",
+    "PI_TELEMETRY": "0",
+    "HTTP_PROXY": "http://codex-boundary:8080",
+    "HTTPS_PROXY": "http://codex-boundary:8080",
+    "NO_PROXY": "localhost,127.0.0.1",
+    "NODE_EXTRA_CA_CERTS": "/run/chora/trust/starpoint-root-ca-2048-g2.pem"
+  },
+  "agent_directory": {
+    "lifecycle": "new_empty_directory_per_attempt",
+    "allowed_generated_files": ["auth.json"],
+    "inherit_host_state": false,
+    "retain_after_attempt": false
+  },
+  "resources": {
+    "third_party_packages": false,
+    "extensions": false,
+    "skills": false,
+    "prompt_templates": false,
+    "themes": false,
+    "project_context_files": false,
+    "undeclared_project_resources": false,
+    "host_pi_state": false
+  },
+  "model": {
+    "provider": "openai-codex",
+    "api": "openai-codex-responses",
+    "base_url": "https://chatgpt.com/backend-api",
+    "id": "gpt-5.6-sol",
+    "catalog_sha256": "4a73818291987693fcb53e9e61b4be3429ffd78b3f64ea877a34c5f9928c89e1",
+    "catalog_identity_kind": "pi_builtin_provider_catalog_sha256"
+  },
+  "authentication": {
+    "type": "openai_codex_oauth",
+    "source_environment_name": "CHORA_PI_CODEX_AUTH_FILE",
+    "source_default_forbidden": true,
+    "task_projection": "openai-codex_entry_only",
+    "credential_file": "/run/chora/pi/auth.json",
+    "credential_file_mode": "0600",
+    "persist_credential_values": false,
+    "log_credential_values": false,
+    "copy_back_to_host": false
+  },
+  "trust": {
+    "source": {
+      "path": "contracts/g2-m1a/starpoint-root-ca-2048-g2.pem",
+      "sha256": "3444d3f6d9ef36946ff29ef382e402017a96ff6c97f7b8ae08643acceb2e0dac"
+    },
+    "container_path": "/run/chora/trust/starpoint-root-ca-2048-g2.pem",
+    "projection": "task_scoped_stdin_projection",
+    "directory_path": "/run/chora/trust",
+    "directory_owner": "0:0",
+    "directory_mode_before_projection": "0755",
+    "directory_mode_after_projection": "0555",
+    "file_owner": "0:0",
+    "file_mode": "0444",
+    "projection_before_runtime_start": true,
+    "runtime_write_probe_required": true,
+    "source_mounted": false,
+    "persist": false,
+    "agent_writable": false,
+    "system_store_modified": false,
+    "tls_verification_required": true
+  },
+  "context": {
+    "explicit_source": "digest_bound_context_snapshot_only",
+    "working_directory": "/workspace",
+    "repository_child": "/workspace/repository",
+    "inherit_host_pi_state": false,
+    "load_project_instructions": false,
+    "load_packages": false,
+    "load_extensions": false,
+    "load_skills": false,
+    "load_prompts": false,
+    "load_context_files": false
+  },
+  "event_projection": {
+    "allowed_events": [
+      "agent_start", "agent_end", "assistant_message", "tool_start", "tool_end",
+      "file_path", "command_summary", "exit_code", "error", "model_identity", "usage"
+    ],
+    "allowed_fields": [
+      "event_type", "timestamp", "text", "truncated", "tool_name",
+      "workspace_relative_path", "redacted_command_summary", "exit_code",
+      "error_class", "model_id", "model_digest", "usage"
+    ],
+    "persist_thinking": false,
+    "persist_raw_prompt": false,
+    "persist_credential_values": false,
+    "canonical_event_owner": "chora"
+  },
+  "result_authority": {
+    "owner": "chora",
+    "terminal_result_count": 1,
+    "pi_agent_end_means_success": false,
+    "pi_final_text_role": "completed_assistant_text_only",
+    "requires_baseline_diff": true,
+    "requires_command_bound_checks": true,
+    "requires_sandbox_reconciliation": true,
+    "missing_evidence_policy": "explicit_unknown_or_failure"
+  },
+  "model_dependency": {
+    "provider": "openai-codex",
+    "model_id": "gpt-5.6-sol",
+    "model_digest": "sha256:4a73818291987693fcb53e9e61b4be3429ffd78b3f64ea877a34c5f9928c89e1",
+    "scope": "replaceable_task_dependency",
+    "product_interface_exposure": "none",
+    "replacement_authority": "explicit_user_new_capsule",
+    "semantic_failure_limit": 2
+  }
+}

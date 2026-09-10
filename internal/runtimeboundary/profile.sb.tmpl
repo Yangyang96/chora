@@ -1,0 +1,14 @@
+(version 1)
+(allow default)
+
+; Chora product data is outside the runtime's authority.
+(deny file-read-data (literal {{.ForbiddenRead}}))
+
+; The runtime may not invoke the Chora control plane.
+(deny process-exec (literal {{.ControlPlane}}))
+
+; The frozen boundary permits no outbound network, including loopback.
+(deny network-outbound)
+
+; Writes are confined to the explicit workspace.
+(deny file-write* (require-not (subpath {{.Workspace}})))

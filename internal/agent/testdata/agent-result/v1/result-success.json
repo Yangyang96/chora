@@ -1,0 +1,29 @@
+{
+  "schema_version": "chora.agent-result.v1",
+  "summary": "Validation completed.",
+  "review_ready": true,
+  "outputs": [
+    {
+      "locator": "reports/result.md",
+      "description": "Primary run report."
+    }
+  ],
+  "artifact_candidates": [
+    {
+      "locator": "patches/change.diff",
+      "description": "Candidate patch for review."
+    }
+  ],
+  "checks": [
+    {
+      "criterion_id": "criterion_1",
+      "status": "PASS",
+      "evidence": "Structured result produced."
+    }
+  ],
+  "unknowns": ["Runtime timing was not measured."],
+  "handoff": {
+    "requested": false,
+    "reason": ""
+  }
+}

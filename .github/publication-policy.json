@@ -1,0 +1,39 @@
+{
+  "schema_version": "chora.publication-boundary.v1",
+  "repository": "github.com/Yangyang96/chora",
+  "license": "AGPL-3.0-only",
+  "required_files": [
+    "LICENSE",
+    "README.md",
+    "README.zh-CN.md",
+    "SECURITY.md",
+    "SECURITY.zh-CN.md"
+  ],
+  "forbidden_prefixes": [
+    "AGENTS.md",
+    ".agent/",
+    ".agents/",
+    ".codex/",
+    ".playwright-cli/",
+    "cmd/o4-service-controller/",
+    "contracts/g2-m4/source-baseline-",
+    "distribution/v1/artifacts/",
+    "docs/handoffs/",
+    "docs/superpowers/",
+    "docs/validation/",
+    "node_modules/",
+    "output/",
+    "vendor/"
+  ],
+  "allowed_spike_files": [
+    "spikes/runtime-boundary/probe.go",
+    "spikes/runtime-boundary/probe_test.go"
+  ],
+  "forbidden_suffixes": [
+    ".crt",
+    ".key",
+    ".p12",
+    ".pem",
+    ".pfx"
+  ]
+}

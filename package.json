@@ -1,0 +1,44 @@
+{
+  "name": "chora",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "workspaces": [
+    "web"
+  ],
+  "scripts": {
+    "serve": "npm run web:build && go run ./cmd/chora serve",
+    "web:dev": "npm --workspace web run dev",
+    "web:test": "npm --workspace web run test",
+    "web:typecheck": "npm --workspace web run typecheck",
+    "web:build": "npm --workspace web run build",
+    "publication:check": "node e2e/publication-boundary.mjs",
+    "publication:test": "node --test e2e/publication-boundary.test.mjs",
+    "publication:export:dry-run": "node e2e/publication-candidate-export.mjs --dry-run",
+    "publication:export:test": "node --test e2e/publication-candidate-export.test.mjs",
+    "dependency-metadata:check": "node e2e/dependency-metadata-preflight.mjs",
+    "dependency-metadata:test": "node --test e2e/dependency-metadata-preflight.test.mjs",
+    "docs:links": "node e2e/documentation-links.mjs",
+    "docs:links:test": "node --test e2e/documentation-links.test.mjs",
+    "disclosure:test": "node --test e2e/disclosure-gate.test.mjs",
+    "u4:evidence:test": "node --test e2e/u4-evidence-gate.test.mjs",
+    "u4:browser-record:test": "node --test e2e/u4-browser-matrix-record.test.mjs",
+    "u4:real-route": "playwright test --config playwright.u4-real.config.ts",
+    "e2e:intent-real": "playwright test --config playwright.intent-real.config.ts",
+    "e2e:standard": "playwright test",
+    "e2e:oss-alpha-closure": "npm run disclosure:test && CHORA_E2E_SCENARIO=oss-alpha-closure playwright test e2e/oss-alpha-closure.spec.ts",
+    "e2e:joined": "bash e2e/run-joined-room.sh 1",
+    "e2e:joined:3": "bash e2e/run-joined-room.sh 3",
+    "test:e2e:project-entry": "bash e2e/run-project-entry.sh",
+    "test:e2e:pi-local-connected": "bash e2e/run-pi-local-connected.sh",
+    "e2e": "npm run e2e:oss-alpha-closure && npm run e2e:standard && npm run e2e:joined",
+    "e2e:public": "npm run web:build && node e2e/public-journey.mjs && npm run test:e2e:project-entry"
+  },
+  "engines": {
+    "node": ">=22.12.0",
+    "npm": ">=11"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.0"
+  }
+}

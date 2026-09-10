@@ -1,0 +1,110 @@
+{
+  "schema_version": "chora.pi-runtime-config.v2",
+  "runtime": {
+    "package": "@earendil-works/pi-coding-agent",
+    "version": "0.84.1",
+    "npm_integrity": "sha512-ncAqFrG+iybuPGOhMiZoEHkEzTpJgz3guYD32pD+M7ucc0WeHmauP6wa7qwP8V/KWvsZDVNa5XGsdZ7fkC7w7A==",
+    "transport": [
+      "pi", "--mode", "rpc", "--no-session", "--no-extensions", "--no-skills",
+      "--no-prompt-templates", "--no-themes", "--no-context-files", "--no-approve",
+      "--provider", "ollama", "--model", "minimax-m3:cloud"
+    ]
+  },
+  "environment": {
+    "PI_CODING_AGENT_DIR": "/run/chora/pi",
+    "PI_OFFLINE": "1",
+    "PI_SKIP_VERSION_CHECK": "1",
+    "PI_TELEMETRY": "0"
+  },
+  "agent_directory": {
+    "lifecycle": "new_empty_directory_per_attempt",
+    "allowed_generated_files": ["models.json"],
+    "inherit_host_state": false,
+    "retain_after_attempt": false
+  },
+  "resources": {
+    "third_party_packages": false,
+    "extensions": false,
+    "skills": false,
+    "prompt_templates": false,
+    "themes": false,
+    "project_context_files": false,
+    "undeclared_project_resources": false,
+    "host_pi_state": false
+  },
+  "model_config": {
+    "providers": {
+      "ollama": {
+        "baseUrl": "http://ollama-boundary:11434/v1",
+        "api": "openai-completions",
+        "apiKey": "ollama",
+        "compat": {
+          "supportsDeveloperRole": false,
+          "supportsReasoningEffort": false
+        },
+        "models": [
+          {
+            "id": "minimax-m3:cloud",
+            "name": "MiniMax M3",
+            "reasoning": true,
+            "contextWindow": 524288,
+            "maxTokens": 8192
+          }
+        ]
+      }
+    }
+  },
+  "authentication": {
+    "type": "host_ollama_cloud_session",
+    "credential_environment_names": [],
+    "dummy_provider_key_is_secret": false,
+    "container_receives_cloud_credential": false,
+    "host_daemon_owns_cloud_session": true
+  },
+  "context": {
+    "explicit_source": "digest_bound_context_snapshot_only",
+    "working_directory": "/workspace",
+    "repository_child": "/workspace/repository",
+    "inherit_host_pi_state": false,
+    "load_project_instructions": false,
+    "load_packages": false,
+    "load_extensions": false,
+    "load_skills": false,
+    "load_prompts": false,
+    "load_context_files": false
+  },
+  "event_projection": {
+    "allowed_events": [
+      "agent_start", "agent_end", "tool_start", "tool_end", "file_path",
+      "command_summary", "exit_code", "error", "model_identity", "usage"
+    ],
+    "allowed_fields": [
+      "event_type", "timestamp", "tool_name", "workspace_relative_path",
+      "redacted_command_summary", "exit_code", "error_class", "model_id",
+      "model_digest", "usage"
+    ],
+    "persist_thinking": false,
+    "persist_raw_prompt": false,
+    "persist_credential_values": false,
+    "canonical_event_owner": "chora"
+  },
+  "result_authority": {
+    "owner": "chora",
+    "terminal_result_count": 1,
+    "pi_agent_end_means_success": false,
+    "pi_final_text_role": "agent_summary_only",
+    "requires_baseline_diff": true,
+    "requires_command_bound_checks": true,
+    "requires_sandbox_reconciliation": true,
+    "missing_evidence_policy": "explicit_unknown_or_failure"
+  },
+  "model_dependency": {
+    "provider": "ollama",
+    "model_id": "minimax-m3:cloud",
+    "model_digest": "sha256:8cd948b96f47afd232cef7d49faf65791d22bd9dbbef74add3b9355d9d75f765",
+    "scope": "replaceable_task_dependency",
+    "product_interface_exposure": "none",
+    "replacement_authority": "explicit_user_new_capsule",
+    "semantic_failure_limit": 2
+  }
+}

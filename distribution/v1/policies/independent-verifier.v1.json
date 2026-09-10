@@ -1,0 +1,10 @@
+{
+  "schema_version": "chora.independent-verifier-role-policy.v1",
+  "execution_policy": "contracts/g2-m4/verifier-policy.v1.json",
+  "agent_runtime_invoked": false,
+  "network": "none",
+  "credentials": "none",
+  "workspace": "fresh_per_verification_attempt",
+  "image_alias_role": "managed_pi_runtime",
+  "fail_closed": true
+}

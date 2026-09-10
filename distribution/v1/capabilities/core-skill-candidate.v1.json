@@ -1,0 +1,11 @@
+{
+  "schema_version": "chora.core-skill-candidate.v1",
+  "candidate_id": "chora.core-workflow.v1",
+  "skill_path": "distribution/v1/capabilities/core-skill.v1.md",
+  "skill_sha256": "a39a78290abaa14c42fb90875611967297db66b6b41dba6040676d7a486ac67c",
+  "comparison_schema_path": "distribution/v1/capabilities/core-skill-comparison.schema.v1.json",
+  "comparison_schema_sha256": "335c7c9ea72865fe7a7de399aac7402eb7930807d1db648e8f846a7ce673c895",
+  "capability_bundle_id": "chora.standard-core.v1",
+  "standard_policy_id": "chora.standard.v1",
+  "activation": "conditional_comparison_required"
+}

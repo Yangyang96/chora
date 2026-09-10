@@ -1,0 +1,133 @@
+{
+  "schema_version": "chora.m1-verifier-policy.v1",
+  "policy_mode": "full_verification",
+  "provider": {
+    "name": "colima-docker",
+    "colima_version": "0.10.3",
+    "engine": "docker",
+    "engine_version": "29.6.1"
+  },
+  "image": {
+    "reference": "chora/g2-m2e-pi-codex:0.84.2-v5",
+    "id": "sha256:91698efead5641a633519f5f229373e08a59264045ca27f6d01fc06505deeea7",
+    "agent_runtime_invoked": false
+  },
+  "workspace": {
+    "lifecycle": "fresh_per_verification_attempt_removed_after_cleanup",
+    "source_materialization": "frozen_baseline_plus_final_patch",
+    "mount": "/workspace",
+    "repository_path": "/workspace",
+    "working_directory": "/workspace",
+    "user": "1000:1000",
+    "allowed_write_roots": ["/workspace", "/tmp", "/workspace/.chora-cache", "/workspace/.chora-tmp"],
+    "reuse_agent_workspace": false,
+    "reuse_previous_verification_workspace": false,
+    "load_pi_session": false,
+    "load_model_credentials": false,
+    "load_host_agent_state": false,
+    "load_implicit_context": false,
+    "load_agent_packages": false,
+    "load_agent_extensions": false,
+    "load_agent_skills": false,
+    "load_agent_prompts": false,
+    "patch_digest_required": true,
+    "patch_must_be_nonempty": true,
+    "patch_must_apply": true,
+    "patch_target_boundary_required": true,
+    "fail_closed": true
+  },
+  "command": {
+    "authority": "frozen_acceptance_verification_commands",
+    "execution": "direct_argv",
+    "shell": false,
+    "display_text_authority": false,
+    "agent_command_authority": false,
+    "all_criteria_bound": true,
+    "evidence_availability": "execute_frozen_commands",
+    "environment": {
+      "HOME": "/tmp",
+      "GOCACHE": "/workspace/.chora-cache/go-build",
+      "GOTMPDIR": "/workspace/.chora-tmp",
+      "GOPROXY": "off",
+      "GOSUMDB": "off",
+      "GOTOOLCHAIN": "local"
+    }
+  },
+  "isolation": {
+    "read_only_root": true,
+    "tmpfs": ["/tmp"],
+    "drop_all_capabilities": true,
+    "no_new_privileges": true,
+    "seccomp_profile": "docker_default",
+    "privileged": false,
+    "device_mounts": [],
+    "docker_socket_mounted": false,
+    "unrelated_host_paths_mounted": false,
+    "fail_closed": true
+  },
+  "network": {
+    "mode": "none",
+    "general_egress": false,
+    "host_network": false,
+    "published_ports": false,
+    "normal_bridge_fallback": false
+  },
+  "credentials": {
+    "injection": "none",
+    "declared_names": [],
+    "inherit_host_environment": false,
+    "mount_source_files": false,
+    "persist": false,
+    "log_values": false
+  },
+  "resources": {
+    "cpus": 2,
+    "memory_mib": 4096,
+    "memory_swap_mib": 4096,
+    "pids_limit": 256,
+    "file_descriptors": 1024,
+    "command_timeout_seconds": 600,
+    "attempt_timeout_seconds": 1200
+  },
+  "evidence": {
+    "persisted_log_bytes": 10485760,
+    "artifact_bytes": 104857600,
+    "redaction_policy_version": "chora.verifier-redaction.v1",
+    "full_stream_sha256_required": true,
+    "total_stream_bytes_required": true,
+    "retained_redacted_body_required": true,
+    "truncation_flag_required": true,
+    "truncation_boundary_required": true,
+    "allowed_check_statuses": ["passed", "failed", "unknown"],
+    "allowed_command_classifications": ["exited", "timed_out", "cancelled", "launch_failed", "unavailable"]
+  },
+  "termination": {
+    "death_confirmation_seconds": 5,
+    "force_container_removal": true,
+    "require_process_tree_death": true,
+    "uncertainty": "verification_recovery_required"
+  },
+  "identity": {
+    "required_labels": ["chora.run_id", "chora.verification_run_id", "chora.verification_attempt_id", "chora.task_id", "chora.image_digest", "chora.verifier_policy_digest", "chora.baseline_digest", "chora.patch_digest", "chora.acceptance_contract_digest", "chora.workspace_id"],
+    "policy_digest_required": true,
+    "workspace_identity_required": true
+  },
+  "cleanup": {
+    "remove_container": true,
+    "remove_workspace": true,
+    "remove_attempt_temp_and_cache": true,
+    "all_terminal_paths": true,
+    "prove_before_result": true,
+    "recovery_enumerates_labeled_resources_only": true
+  },
+  "result_authority": {
+    "owner": "chora",
+    "unique_per_run": true,
+    "atomic_commit": true,
+    "requires_complete_evidence": true,
+    "requires_cleanup_proof": true,
+    "cancel_creates_result": false,
+    "process_uncertainty_creates_result": false,
+    "trusted_unknown_may_create_needs_revision": true
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "schema_version": "chora.managed-pi-runtime-policy.v1",
+  "runtime": "@earendil-works/pi-coding-agent@0.84.2",
+  "state": "fresh_per_attempt",
+  "workspace": "/workspace",
+  "agent_directory": "/run/chora/pi",
+  "ambient_agent_configuration": false,
+  "attempt_time_image_operations": false,
+  "network": "fixed_model_boundary_only",
+  "cleanup": "container_process_tree_and_writable_state_required"
+}

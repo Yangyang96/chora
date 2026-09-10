@@ -1,0 +1,51 @@
+name: Bug report
+description: Report one reproducible Chora problem.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include credentials, private paths, company data, or vulnerability details. Use private vulnerability reporting for security issues.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Provide the smallest reproducible sequence with sensitive values removed.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, CPU architecture, Node.js, npm, Go, Docker, and Colima versions that matter.
+    validations:
+      required: true
+  - type: dropdown
+    id: path
+    attributes:
+      label: Execution path
+      options:
+        - Fake-Agent demo
+        - Source-checkout Local Alpha
+        - Development test or build
+        - Other
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed credentials, private assets, personal paths, and confidential data.
+          required: true
+        - label: This is not a security vulnerability report.
+          required: true
