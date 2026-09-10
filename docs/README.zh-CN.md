@@ -1,10 +1,12 @@
 # Chora 文档
 
-[English](README.md) | [简体中文](README.zh-CN.md)
+[English](README.md) | **简体中文**
 
-本索引区分当前产品指引与保留的计划、决策、研究和验证证据。文档仍在仓库中，
-不代表其中描述的每条路径都已成为验收通过的产品路径。当前里程碑与开发入口请先看
-仓库[中文 README](../README.zh-CN.md)。
+
+首次使用请从[快速开始](../README.zh-CN.md#快速开始)启动 Chora，再按
+[第一个任务](../README.zh-CN.md#第一个任务)尝试一次代码改动。
+日常维护请看[备份、恢复与诊断](workbench-maintenance.zh-CN.md)。
+下方参考资料保留产品计划和维护者历史记录。
 
 ## 当前产品与验收指引
 

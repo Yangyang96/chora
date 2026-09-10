@@ -1,17 +1,18 @@
 # Chora documentation
 
-[English](README.md) | [简体中文](README.zh-CN.md)
+**English** | [简体中文](README.zh-CN.md)
 
-This index separates current product guidance from retained plans, decisions,
-research, and validation evidence. A document's presence does not make every
-path it describes an accepted product path. Start with the repository
-[README](../README.md) for the current milestone and development entry point.
+
+Start with [Quick start](../README.md#quick-start) to run Chora and
+[Your first task](../README.md#your-first-task) to try a code change.
+For ongoing use, see [backup, recovery, and diagnostics](workbench-maintenance.md).
+The references below cover product plans and maintainer history.
 
 ## Current product and acceptance guidance
 
 - [Public roadmap](../ROADMAP.md) — accepted slice versus planned foundations,
   SCM, public usability and exact candidate release gates.
-- [Current local Pi Workbench](../README.md#local-pi-workbench-and-retained-m1-path)
+- [Current local Pi Workbench](../README.md#quick-start)
   — multi-repository Task entry, automatic/named/no-check selection, managed or
   PATH Pi, model provenance and Task-branch delivery, distinct from retained
   private M1 inputs.
