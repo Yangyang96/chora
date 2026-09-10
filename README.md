@@ -1,17 +1,20 @@
 # Chora
 
-**A local workspace for turning requests into reviewed code with an AI coding agent.**
+**An open-source workspace for people and AI agents to build software together.**
 
 **English** | [简体中文](README.zh-CN.md)
 
-[Quick start](#quick-start) · [Your first task](#your-first-task) · [FAQ](#faq) · [Documentation](docs/README.md)
+[Quick start](#quick-start) · [Your first task](#your-first-task) · [FAQ](#faq) · [Project status](#project-status) · [Documentation](docs/README.md)
 
 Describe a change, watch the agent work, inspect the diff and checks, then decide
 what to commit and publish. Chora keeps your repositories, conversations, tasks,
 and review history together in a browser-based workspace on your machine.
 
-**Developer Alpha:** available from source. The real-agent workflow currently
-supports Apple Silicon macOS and Pi. There is no packaged desktop installer yet.
+Chora's destination is a self-hostable, model-neutral development workspace for
+people and agents to plan, build, review, and deliver software across projects
+and repositories. The current release scope is a **source-based Developer Alpha**
+for Apple Silicon macOS with Pi. See [project status](#project-status) for what
+is implemented and what is still planned.
 
 ## What you can do
 
@@ -161,6 +164,24 @@ repositories. Changes to binary files, Git LFS content, submodules, and executab
 modes are currently rejected. Dependencies are not installed automatically;
 declare any setup commands your task needs. Multi-repository delivery proceeds
 one repository at a time, without an atomic cross-repository merge.
+
+## Project status
+
+**As of September 10, 2026:** source code is public; Chora is in Developer Alpha.
+Source availability does not mean a stable release or completed user acceptance.
+
+| Area | Progress |
+| --- | --- |
+| Personal workspace | Implemented: multi-repository projects, topic rooms, task branches/worktrees, visible execution, review, retry, and restart recovery. |
+| Code delivery | Implemented: per-repository Commit → Push → GitHub PR → Merge → cleanup, with separate confirmations. |
+| Getting started and maintenance | Implemented: Pi installation/configuration guidance, model provenance, backup/restore, and local diagnostics. |
+| Current supported setup | Source checkout on Apple Silicon macOS, local Git repositories, and Pi in explicit Local Connected / No Sandbox mode. |
+| Release readiness | Public source and local validation are available. Final user acceptance and a tagged release remain pending; there is no packaged desktop installer. |
+| Planned expansion | Public sandbox setup, richer model controls, team and agent collaboration, background/remote work, and broader provider support. |
+
+The full workspace described above is the product direction. Team permissions,
+multi-agent delegation, and remote execution are future work. The
+[roadmap](ROADMAP.md) explains the longer-term stages and their historical context.
 
 ## Documentation and contributing
 
