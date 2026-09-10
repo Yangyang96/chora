@@ -35,7 +35,7 @@ jobs:
       - name: Install JavaScript dependencies
         run: npm ci
       - name: Download locked Go dependencies
-        run: go mod download
+        run: go mod download all
       - name: Run public-source checks
         run: make public-test
 
