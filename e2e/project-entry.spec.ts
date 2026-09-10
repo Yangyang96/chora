@@ -214,17 +214,38 @@ test('a project survives a same-data-root server restart', async ({ page, reques
 test('missing Project stays readable and external opening waits for the exact directory', async ({ page, request }) => {
   const repo = await createGitRepo(`missing-${runSuffix}`)
   const opened = await addProject(request, repo)
+  const continuityURL = `/api/projects/${opened.repositoryBinding.roomId}/continuity`
+  const applications = (await getJSON(request, continuityURL)).applications ?? []
   await rename(repo, `${repo}-held`)
   try {
     await stopServer('SIGTERM')
     await startServer()
     await page.goto(`/rooms/${opened.repositoryBinding.roomId}`)
     await expect(page.getByLabel('External tools').getByRole('alert')).toHaveText(/Project repository is unavailable; restore it/)
-    await expect(page.getByRole('button', { name: 'Open in Terminal' })).toBeDisabled()
+    const unavailable = await getJSON(request, continuityURL)
+    expect(unavailable.ready).toBe(false)
+    await page.getByLabel('Open with…', { exact: true }).click()
+    for (const application of applications) {
+      await expect(page.getByRole('button', { name: application.name, exact: true })).toBeDisabled()
+    }
+    if (applications.length === 0) {
+      await expect(page.getByText('No supported applications found', { exact: true })).toBeVisible()
+    }
+    await page.getByLabel('Open with…', { exact: true }).click()
   } finally { await rename(`${repo}-held`, repo) }
   await page.getByLabel('Open with…', { exact: true }).click()
   await page.getByRole('button', { name: 'Check again', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Open in Terminal' })).toBeEnabled()
+  await expect(page.getByLabel('External tools').getByRole('alert')).toHaveCount(0)
+  const restored = await getJSON(request, continuityURL)
+  expect(restored.ready).toBe(true)
+  expect(restored.path).toBe(repo)
+  await page.getByLabel('Open with…', { exact: true }).click()
+  for (const application of applications) {
+    await expect(page.getByRole('button', { name: application.name, exact: true })).toBeEnabled()
+  }
+  if (applications.length === 0) {
+    await expect(page.getByText('No supported applications found', { exact: true })).toBeVisible()
+  }
 })
 
 test('untrusted web requests cannot bypass native project selection', async ({ request }) => {
