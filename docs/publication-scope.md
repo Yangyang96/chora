@@ -84,3 +84,16 @@ these historical tests with their original inputs. The public result ledger is
 `output/public-go-tests.json`; runtime skips are reported separately and do not
 qualify the real Pi, installer, browser or private hosting journeys. Candidate
 acceptance must include their applicable separate evidence.
+
+## Public browser test scope
+
+Keep current UI regressions, deterministic CI journeys, their minimal fixtures,
+and the configurable Pi Local Connected tests. Historical O4/U4 acceptance
+campaigns, the old private installed/Docker journeys, and their dedicated OCR
+tool are excluded together with their npm commands and Playwright configs.
+Reports, traces, screenshots, and caches are local output, not source inputs.
+The publication policy rejects reintroducing these excluded paths.
+
+Frozen source-bundle manifests and their original path lists remain historical
+compatibility records; they do not define the current public test inventory.
+Private copies and acceptance evidence stay outside this repository.

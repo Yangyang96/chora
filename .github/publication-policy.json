@@ -23,7 +23,20 @@
     "docs/validation/",
     "node_modules/",
     "output/",
-    "vendor/"
+    "vendor/",
+    "e2e/o4-",
+    "e2e/u4-",
+    "e2e/local-alpha-",
+    "e2e/prepare-local-alpha-install.sh",
+    "e2e/intent-first-real.spec.ts",
+    "playwright.o4-",
+    "playwright.u4-real.config.ts",
+    "playwright.intent-real.config.ts",
+    "tools/o4visionocr/",
+    "playwright-report/",
+    "test-results/",
+    "blob-report/",
+    "playwright/.cache/"
   ],
   "allowed_spike_files": [
     "spikes/runtime-boundary/probe.go",

@@ -38,3 +38,20 @@ coverage/
 *.key
 *.p12
 *.pfx
+
+# Generated Playwright artifacts (keep test source files tracked).
+playwright-report/
+test-results/
+blob-report/
+playwright/.cache/
+
+# Historical private acceptance tools stay outside the public repository.
+/e2e/o4-*
+/e2e/u4-*
+/e2e/local-alpha-*
+/e2e/prepare-local-alpha-install.sh
+/e2e/intent-first-real.spec.ts
+/playwright.o4-*
+/playwright.u4-real.config.ts
+/playwright.intent-real.config.ts
+/tools/o4visionocr/

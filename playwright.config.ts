@@ -7,11 +7,6 @@ export default defineConfig({
   testMatch: '**/*.spec.ts',
   testIgnore: [
     '**/joined-room.spec.ts',
-    '**/u4-real-rejection-route.spec.ts',
-    '**/intent-first-real.spec.ts',
-    '**/o4-profile-reuse-real.spec.ts',
-    '**/o4-recovery-residue-real.spec.ts',
-    '**/o4-final-evidence-real.spec.ts',
     // These suites boot their own Workbench and use dedicated runner inputs.
     '**/project-entry.spec.ts',
     '**/pi-local-connected.spec.ts',

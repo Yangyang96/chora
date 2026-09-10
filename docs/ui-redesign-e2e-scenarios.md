@@ -3,7 +3,11 @@
 > 状态：已决策并执行（2026-08-21）
 > 背景：新 UI 把旧的多步仪式（手动计划编辑/评审、手动验证、Room 归档）简化成了侧边栏会话流。M1-U1/U2/U3 的 e2e 场景因此不再一一对应，需要逐条重定义，而不是简单改选择器。
 
-## 现状
+> 历史记录：本文保留 2026-08-21 的验收边界。旧 U4、O4 和私有安装旅程的
+> 脚本已移出公开源码，仅在维护者本地保留；下文旧命令不是当前公开入口。
+> 当前浏览器回归运行 `npm run e2e:public` 或 `npm run e2e`。
+
+## 当时的验证入口
 
 - `e2e:standard` 跑公开新 UI 的 Plan 展示/自动启动、Patch Review、Accept、
   Ask Agent to fix、Change requirement 与 Task Archive/Restore。
