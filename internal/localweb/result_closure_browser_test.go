@@ -3,6 +3,8 @@ package localweb
 import (
 	"context"
 	"errors"
+	"net"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
@@ -44,7 +46,15 @@ func TestResultClosureBrowserTwoRepositories(t *testing.T) {
 	f.server.pathPiEnabled = true
 	hosting := newBrowserDeliveryHosting()
 	installDeliveryTestService(t, f, taskRoot, hosting)
-	server := httptest.NewServer(f.server.Handler())
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := &httptest.Server{
+		Listener: listener,
+		Config:   &http.Server{Handler: f.server.Handler()},
+	}
+	server.Start()
 	defer server.Close()
 	route := "/rooms/" + f.run.Room.ID + "/tasks/" + f.run.Task.ID + "/runs/" + f.run.ID
 	command := exec.Command("node", filepath.Join(root, "e2e", "result-closure-browser.mjs"), server.URL, route, filepath.Join(taskRoot, f.resources[0].WorkspaceDirectory()), filepath.Join(taskRoot, f.resources[1].WorkspaceDirectory()))

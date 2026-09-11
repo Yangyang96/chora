@@ -112,6 +112,14 @@
       ]
     },
     {
+      "package": "github.com/Yangyang96/chora/cmd/chora",
+      "reason": "Historical SourceCheckout documentation contract for the managed Colima/Docker development path, which is retained for maintainer checks but is not the supported public Local Connected onboarding path.",
+      "applicability": "maintainer_historical_source_checkout_only",
+      "tests": [
+        "TestSourceCheckoutDocumentationUsesColimaVisibleStateAndCleanTarget"
+      ]
+    },
+    {
       "package": "github.com/Yangyang96/chora/internal/app",
       "reason": "These tests instantiate LoadInstalledEnvelope from the frozen V6 installed/M1 baseline removed from the public export. They fail in fixture setup before exercising an assertion. Current task-first and BoundEnvelope tests cover the exported provider-first path.",
       "applicability": "maintainer_historical_installed_envelope_only",
