@@ -91,7 +91,10 @@ Keep current UI regressions, deterministic CI journeys, their minimal fixtures,
 and the configurable Pi Local Connected tests. Historical O4/U4 acceptance
 campaigns, the old private installed/Docker journeys, and their dedicated OCR
 tool are excluded together with their npm commands and Playwright configs.
-Reports, traces, screenshots, and caches are local output, not source inputs.
+Test reports, traces, raw screenshots, and caches are local output. Curated
+product screenshots in `docs/images/` are documentation assets: use fictional
+example data and review each image for private paths or credentials before
+publication.
 The publication policy rejects reintroducing these excluded paths.
 
 Frozen source-bundle manifests and their original path lists remain historical

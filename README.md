@@ -4,49 +4,42 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-[Quick start](#quick-start) · [Your first task](#your-first-task) · [FAQ](#faq) · [Project status](#project-status) · [Documentation](docs/README.md)
+[Quick start](#quick-start) · [Your first task](#your-first-task) · [Project status](#project-status) · [FAQ](#faq)
 
-Describe a change, watch the agent work, inspect the diff and checks, then decide
-what to commit and publish. Chora keeps your repositories, conversations, tasks,
-and review history together in a browser-based workspace on your machine.
+Bring repositories and conversations into one project. Describe a change, follow
+the agent's work, then review the code and decide what to ship. The long-term
+vision is a self-hostable, model-neutral collaborative development workspace.
 
-Chora's destination is a self-hostable, model-neutral development workspace for
-people and agents to plan, build, review, and deliver software across projects
-and repositories. The current release scope is a **source-based Developer Alpha**
-for Apple Silicon macOS with Pi. See [project status](#project-status) for what
-is implemented and what is still planned.
+> **Today: Developer Alpha.** Run from source on Apple Silicon macOS with Pi. A desktop installer is not available yet.
 
-## What you can do
+![Chora project home: switch topics on the left and manage repositories and rooms on the right](docs/images/project-en.png)
 
-- **Work across repositories.** Group local Git repositories in a project and
-  choose which ones each task uses.
-- **Follow the work.** See the plan, progress, checks, and questions as the agent
-  works. Cancel or retry when needed.
-- **Review before publishing.** Inspect changes on a separate task branch and
-  worktree, then confirm Commit, Push, PR, and Merge individually.
-- **Pick up where you left off.** Reopen projects, topic conversations, and task
-  history after restarting Chora.
+*Actual Workbench UI with a fictional Orbit Notes project, shown just after creation and before adding repositories.*
 
-```text
-Describe a change → Agent works → Review diff and checks → Commit → Push → PR
+## How a task works
+
+```mermaid
+flowchart LR
+    A[Describe a change] --> B[Agent builds and checks]
+    B --> C[You review the diff]
+    C --> D[Commit, push and PR]
 ```
+
+| What you want to do | What Chora provides |
+| --- | --- |
+| Organize a project | Multiple repositories in one project; rooms group tasks by topic. |
+| Follow the work | Visible plans, activity, and checks, with cancel and retry. |
+| Decide what ships | Separate task branches and worktrees; confirm each delivery step. |
+| Resume later | Saved task and review history across restarts. |
 
 ## Quick start
 
 ### 1. Get the prerequisites
 
-Use an **Apple Silicon Mac** with these tools available in your terminal:
+**Apple Silicon Mac · Git · Node.js 22.19+ · npm 11+ · Go 1.26+**
 
-| Tool | Required version / purpose |
-| --- | --- |
-| Git | Clone Chora and work with local repositories |
-| Node.js | 22.19 or newer, required for Pi |
-| npm | 11 or newer |
-| Go | 1.26 or newer |
-| Model access | Your own provider credentials or subscription configured in Pi |
-
-Docker is not required for this setup. GitHub CLI (`gh`) is optional until you
-want to create or merge GitHub PRs from Chora.
+Bring your own model access, configured in Pi. Docker is not required.
+Install `gh` only if you want to create or merge GitHub PRs from Chora.
 
 ### 2. Build and start Chora
 
@@ -85,30 +78,29 @@ your configured provider.
 
 ## Your first task
 
-Start with a small change in a repository you trust, such as fixing a validation
-message or adding a focused test.
+**1. Create a project and add a repository.** Choose a local Git repository with
+at least one commit, then open its General room. Add more repositories or topic
+rooms whenever you need them.
 
-1. **Create a project.** Use the folder chooser to select an existing local Git
-   repository with at least one commit. You can add more repositories later.
-2. **Open its General room.** A room groups conversations and tasks around a
-   topic; you can create other rooms as your project grows.
-3. **Describe the change.** Select the repository and target branch. Leave checks
-   on automatic discovery, or choose named checks or explicitly no checks.
-   You do not need to list every file the agent may edit.
-4. **Start and follow the task.** Chora creates a task branch and worktree. Watch
-   the plan and progress, and respond if a decision is needed.
-5. **Review the result.** Read the diff and check results. Accept it or ask for a
-   fix. Acceptance retains reviewed changes in the task worktree; it does not
-   commit, push, or write them back into your original checkout.
-6. **Deliver when ready.** For each repository, preview and confirm **Commit →
-   Push → GitHub PR → Merge**. PR actions require authenticated `gh`; Commit and
-   Push use your Git configuration. Cleanup is offered after a confirmed merge
-   when the task worktree is clean.
+**2. Describe a small change.** Click **New task** and start with one clear request:
 
-Checks reported by Pi are labeled **Agent-reported**. Missing or unobserved checks
-remain **Unverified**. Review the actual results before deciding to publish.
+![Task input example: add title search to the notes list and include tests](docs/images/task-en.png)
 
-## Try the interface without a model
+*Close-up of the actual task input. This example is a draft, not an executed task.*
+
+**3. Choose the scope and start.** Confirm the repository, target branch, and
+check policy; automatic checks are a good starting point. Select and acknowledge
+Local Connected, then follow progress and answer any questions that need you.
+
+**4. Review, then deliver.** Read the diff and check results. Accept the change
+or ask for a fix. Accepted edits stay in the task worktree; Commit, Push, PR,
+Merge, and Cleanup each require confirmation. Uncommitted changes in your
+original checkout are not copied into a new task.
+
+> **Accepting a review does not publish code.** Pi checks are labeled **Agent-reported**; unobserved checks remain **Unverified**.
+
+<details>
+<summary>Try the interface without a model</summary>
 
 After the clone, install, and build steps above, run this instead of Workbench:
 
@@ -125,7 +117,26 @@ no model calls; it does not perform real AI coding. Stop any other Chora server
 on port 8787 first. Press `Ctrl-C` to stop; the temporary data is not removed
 automatically.
 
+</details>
+
+## Project status
+
+As of **September 11, 2026**, source is public and Chora remains in Developer Alpha.
+
+| Status | Scope |
+| --- | --- |
+| Implemented | Multi-repository projects, rooms and tasks, visible execution, review/recovery, and per-repository delivery. |
+| Implemented | Pi setup guidance, model provenance, backup/restore, and local diagnostics. |
+| Current limits | Apple Silicon macOS + Pi; Local Connected has no sandbox. No desktop installer yet. |
+| Pending | Final user acceptance and a tagged release. Public source is not a stable-release claim. |
+| Planned | Public sandbox setup, more providers, team and multi-agent collaboration, background and remote tasks. |
+
+See the [roadmap](ROADMAP.md) for the longer-term direction.
+
 ## FAQ
+
+<details>
+<summary>Data, troubleshooting, and supported changes</summary>
 
 ### Does Chora change my original checkout?
 
@@ -165,23 +176,7 @@ modes are currently rejected. Dependencies are not installed automatically;
 declare any setup commands your task needs. Multi-repository delivery proceeds
 one repository at a time, without an atomic cross-repository merge.
 
-## Project status
-
-**As of September 10, 2026:** source code is public; Chora is in Developer Alpha.
-Source availability does not mean a stable release or completed user acceptance.
-
-| Area | Progress |
-| --- | --- |
-| Personal workspace | Implemented: multi-repository projects, topic rooms, task branches/worktrees, visible execution, review, retry, and restart recovery. |
-| Code delivery | Implemented: per-repository Commit → Push → GitHub PR → Merge → cleanup, with separate confirmations. |
-| Getting started and maintenance | Implemented: Pi installation/configuration guidance, model provenance, backup/restore, and local diagnostics. |
-| Current supported setup | Source checkout on Apple Silicon macOS, local Git repositories, and Pi in explicit Local Connected / No Sandbox mode. |
-| Release readiness | Public source and local validation are available. Final user acceptance and a tagged release remain pending; there is no packaged desktop installer. |
-| Planned expansion | Public sandbox setup, richer model controls, team and agent collaboration, background/remote work, and broader provider support. |
-
-The full workspace described above is the product direction. Team permissions,
-multi-agent delegation, and remote execution are future work. The
-[roadmap](ROADMAP.md) explains the longer-term stages and their historical context.
+</details>
 
 ## Documentation and contributing
 
