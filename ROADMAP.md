@@ -4,8 +4,9 @@
 
 Status, 2026-09-11: Developer Alpha with public source. Real multi-repository delivery
 qualification, `M2_S3_PASS` and local DA-1/O5 preparation are complete. Source was
-published on 2026-09-10; remote Tag / Release creation remains pending. M2 as a
-whole is still active, with M2-S4 the next planned feature milestone.
+published on 2026-09-10; versioned prereleases are recorded on the
+[Releases page](https://github.com/Yangyang96/chora/releases). M2 as a whole is
+still active, with M2-S4 the next planned feature milestone.
 
 Project is the long-lived owner of repository resources and topic Rooms. A Task
 belongs to one Room and selects its repository scope. Empty Projects, multiple

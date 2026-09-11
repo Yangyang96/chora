@@ -3,7 +3,8 @@
 [English](release-process.md) | [简体中文](release-process.zh-CN.md) |
 [文档索引](README.zh-CN.md)
 
-Chora 尚未公开发布。这个维护者流程把稳定准备工作与只有产品候选字节冻结后才有意义的
+Chora 源码已公开，版本化预发布见 [Releases 页面](https://github.com/Yangyang96/chora/releases)。
+这个维护者流程把稳定准备工作与只有产品候选字节冻结后才有意义的
 检查分开。它落实当前 O5 v2 计划，不会恢复已被取代的 Installed-profile O4 Gate。
 
 ## 当前产品前置与范围
@@ -16,7 +17,7 @@ Local Connected 公开复现不要求 M1 私有镜像或维护者 OAuth。
 
 `PREPUBLICATION_READY_FOR_USER_ACCEPTANCE` 表示发布前技术准备完成；用户接受
 准确候选后才可记录 `PUBLIC_DEVELOPER_ALPHA_READY`。本地冻结和验证不代表发布，
-实际公开 Push/Merge、远端发布 Tag、Release/包/网站、仓库公开化和公告由用户执行。
+实际公开 Push/Merge、远端发布 Tag、Release/包/网站、仓库公开化和公告须由用户明确授权。
 验收反馈产生修改时重验受影响内容并更新交付包。
 
 ## 什么事情何时可以做

@@ -3,8 +3,8 @@
 [English](ROADMAP.md) · [README](README.zh-CN.md)
 
 状态（2026-09-11）：源码已公开的 Developer Alpha。真实多仓库交付技术验收、
-`M2_S3_PASS` 和本地 DA-1/O5 准备已完成。源码于 2026-09-10 公开，远端 Tag / Release
-仍待创建。整个 M2 继续进行，下一计划功能里程碑为 M2-S4。
+`M2_S3_PASS` 和本地 DA-1/O5 准备已完成。源码于 2026-09-10 公开，版本化预发布见
+[Releases 页面](https://github.com/Yangyang96/chora/releases)。整个 M2 继续进行，下一计划功能里程碑为 M2-S4。
 
 Project 长期拥有仓库资源和多个主题 Room；Task 属于一个 Room，并选择本次仓库范围。
 空 Project、多 Repo、独立 Room 历史和 Task worktree 已属于当前基础。Chora 拥有

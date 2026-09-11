@@ -3,10 +3,11 @@
 [English](open-source-readiness.md) | [简体中文](open-source-readiness.zh-CN.md) |
 [Documentation index](README.md)
 
-Status: **not ready for public release**. M2-S1 local Pi product acceptance
-passed; daily-use foundations, public onboarding, exact candidate and release
-checks remain pending under the [Roadmap](../ROADMAP.md). Private M1 isolated
-inputs and unaccepted installed lifecycle are not Local Connected prerequisites.
+Status: **source public; M2-S3 technical acceptance complete**. The
+[Roadmap](../ROADMAP.md) records the frozen acceptance baseline. Each subsequent
+release must verify its exact candidate and affected changes; source publication
+does not qualify arbitrary later commits. Private M1 isolated inputs and
+unaccepted installed lifecycle are not Local Connected prerequisites.
 
 This is a readiness checklist, not a replacement for the repository license,
 security policy, support promise, or publication approval. It records the
@@ -32,14 +33,15 @@ Follow the [public source release process](release-process.md) for their order.
 - [x] Provide bilingual documentation navigation and label live guidance,
   historical records, and version-pinned evidence.
 
-## Pending product and public-route gates
+## Accepted product and public-route baseline
 
-- [ ] M2-S2-P1..P4 HTTP/baseline/file/check foundations accepted.
-- [ ] M2-S3 documented startup, repeated tasks, data maintenance and public CI accepted.
-- [ ] Included Commit/Push accepted, or external Git handoff tested and claims narrowed.
-- [ ] Exact exported candidate reproduces its documented local Pi route without private M1 inputs.
+- [x] M2-S2-P1..P4 HTTP/baseline/file/check foundations accepted.
+- [x] M2-S3 documented startup, repeated tasks, data maintenance and public CI accepted.
+- [x] Included Commit/Push/PR/Merge/cleanup and legacy Apply accepted.
+- [x] Exact exported acceptance candidate reproduces its documented local Pi route without private M1 inputs.
 
-These are planned gates, not assertions that every implementation item is absent.
+These completed gates bind the retained acceptance candidate, not every later
+HEAD. The unchecked release checks above must be evaluated for each new candidate.
 
 ## Accepted owner decisions
 

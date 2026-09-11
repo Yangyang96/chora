@@ -3,7 +3,8 @@
 [English](release-process.md) | [简体中文](release-process.zh-CN.md) |
 [Documentation index](README.md)
 
-Chora is not publicly released. This maintainer process separates stable
+Chora source is public; versioned prereleases are listed on the
+[Releases page](https://github.com/Yangyang96/chora/releases). This maintainer process separates stable
 preparation from checks that are meaningful only after product candidate bytes
 are frozen. It implements the current O5 v2 plan; it does not revive the
 superseded installed-profile O4 gate.
@@ -19,7 +20,7 @@ Public Local Connected reproduction does not require private M1 images/maintaine
 
 `PREPUBLICATION_READY_FOR_USER_ACCEPTANCE` means prepublication technical work is
 complete. `PUBLIC_DEVELOPER_ALPHA_READY` additionally requires the user to accept
-the exact candidate. Local freeze/verification is not publication; the user performs
+the exact candidate. Local freeze/verification is not publication; the user explicitly authorizes
 public Push/Merge, remote release tags, Release/package/site publication, visibility
 changes and announcements. Feedback changes rerun affected gates and update the package.
 
