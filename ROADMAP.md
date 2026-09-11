@@ -2,10 +2,10 @@
 
 [简体中文](ROADMAP.zh-CN.md) · [README](README.md)
 
-Status, 2026-09-09: pre-publication Developer Alpha. Multi-repository foundations
-and Task-branch delivery are implemented with scoped verification; full real
-continuous-use qualification and release preparation are not complete. This page
-does not announce a release or turn a planned stage into an implemented guarantee.
+Status, 2026-09-11: Developer Alpha with public source. Real multi-repository delivery
+qualification, `M2_S3_PASS` and local DA-1/O5 preparation are complete. Source was
+published on 2026-09-10; remote Tag / Release creation remains pending. M2 as a
+whole is still active, with M2-S4 the next planned feature milestone.
 
 Project is the long-lived owner of repository resources and topic Rooms. A Task
 belongs to one Room and selects its repository scope. Empty Projects, multiple
@@ -20,11 +20,20 @@ Local Connected / No Sandbox. It is not a stable or installed release.
 | --- | --- | --- |
 | M0/M1 | Deterministic foundation and one real isolated local coding journey | Accepted at its historical maintainer boundary; private M1 assets are not publicly distributed. |
 | M2-S1 | Local Pi Task worktrees, visible work, Review and Resume | Technical checkpoints retained; final product user acceptance pending. |
-| M2-S2-P1/P2/P2A | Request boundaries, immutable Task bases, Project/Room ownership and migration | Implemented with retained technical evidence; qualify the current integrated candidate. |
-| P3/P4 redesign | Multi-repository Tasks, text/new-file review, automatic checks, large-repository policy and partial recovery | Implemented; real continuous multi-repository qualification remains open. |
-| M2-S2 delivery | Task-branch Commit -> Push -> GitHub PR -> Merge -> safe cleanup, consistent task status/progress | Implemented with scoped checks; complete real integrated qualification and required repairs. |
-| M2-S3-0..3 | Close unwanted results, Pi onboarding/model provenance, maintenance/recovery and public journey/CI | Next engineering scope; complete remaining gaps and integrated acceptance. |
-| DA-1 / O5 v2 | Exact local candidate, public checks, licenses/SBOM, secret scans and release materials | Preparation pending completion; candidate and final user acceptance are separate gates. |
+| M2-S2-P1/P2/P2A | Request boundaries, immutable Task bases, Project/Room ownership and migration | Qualified in the integrated prepublication candidate; historical evidence retained. |
+| P3/P4 redesign | Multi-repository Tasks, text/new-file review, automatic checks, large-repository policy and partial recovery | Real continuous multi-repository technical qualification passed. |
+| M2-S2 delivery | Task-branch Commit -> Push -> GitHub PR -> Merge -> safe cleanup, consistent task status/progress | Integrated real multi-repository qualification and repairs passed; legacy Apply retained. |
+| M2-S3-0..3 | Close unwanted results, Pi onboarding/model provenance, maintenance/recovery and public journey/CI | `M2_S3_PASS`: S3-0..3 technical acceptance and consolidated independent review complete. |
+| DA-1 / O5 v2 | Exact local candidate, public checks, licenses/SBOM, secret scans and release materials | Local candidate preparation passed; final user acceptance and publication actions are recorded separately. |
+
+Technical acceptance was frozen on 2026-09-09, followed by identity and publication
+repairs. The published verification baseline is [commit `7aaea26`](https://github.com/Yangyang96/chora/commit/7aaea26cbd67c44ce94c70d017c09ca116ab6e6a):
+[Linux/macOS tests and browser CI](https://github.com/Yangyang96/chora/actions/runs/34440033315)
+and [secret scanning](https://github.com/Yangyang96/chora/actions/runs/34440033375)
+passed. The full real-Pi and recovery acceptance records are retained separately
+by the maintainer; credential-free CI does not replace them. Skips and historical
+N/A cases are not PASS. This is a source-bound milestone record, not a claim that
+later HEADs have repeated all acceptance runs or that the user signed acceptance.
 
 ## First public Alpha gate
 
@@ -68,7 +77,7 @@ inventory and dedicated source/history secret scans follow the
 identify genuinely release-time checks explicitly instead of claiming them passed.
 The public Local Connected route does not require private M1 images or maintainer OAuth.
 
-## Remaining first-Alpha usability work
+## Completed first-Alpha usability: M2-S3
 
 S3-0 closes unwanted undelivered results while retaining history and all existing
 Commit/Push/PR/Merge/Apply facts. It neither undoes delivered changes nor deletes
@@ -76,7 +85,7 @@ worktrees automatically. Partial/uncertain operations require reconciliation;
 archive and cleanup retain their own eligibility checks. S3-1 adds qualified Pi
 onboarding and actual model provenance/native configuration guidance. S3-2 covers
 source updates, compatibility, backup and recovery. S3-3 qualifies the integrated
-public journey and maintained CI. Reuse any already implemented, verified behavior.
+public journey and maintained CI. All four slices passed technical acceptance.
 
 Later M2 work includes full model controls, in-flight steering, local app
 run/preview, native Skills/MCP setup and packaged installation/lifecycle. M3 owns
