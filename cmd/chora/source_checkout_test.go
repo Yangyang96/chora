@@ -69,7 +69,7 @@ func TestSourceCheckoutRejectsUnsafeOAuthBeforeDocker(t *testing.T) {
 	}
 }
 
-func TestSourceCheckoutDocumentationUsesColimaVisibleStateAndCleanTarget(t *testing.T) {
+func TestWorkbenchDocumentationUsesLocalConnectedEntry(t *testing.T) {
 	for _, name := range []string{"README.md", "README.zh-CN.md"} {
 		data, err := os.ReadFile(filepath.Join("..", "..", name))
 		if err != nil {
@@ -78,27 +78,31 @@ func TestSourceCheckoutDocumentationUsesColimaVisibleStateAndCleanTarget(t *test
 		text := string(data)
 		for _, forbidden := range []string{
 			"/private/tmp/chora-source-checkout-data",
-			"--repository \"$PWD\"",
+			`--repository "$PWD"`,
 			"mkdir -m 700 /private/tmp",
+			"colima ssh -- test -d",
 		} {
 			if strings.Contains(text, forbidden) {
-				t.Fatalf("%s retains non-reproducible SourceCheckout command %q", name, forbidden)
+				t.Fatalf("%s retains obsolete or unsafe startup command %q", name, forbidden)
 			}
 		}
 		for _, required := range []string{
-			`CHORA_SOURCE_ROOT="$(pwd -P)"`,
-			`CHORA_TARGET_ROOT="$(dirname "$CHORA_SOURCE_ROOT")/chora-source-alpha-target"`,
-			`CHORA_DATA_ROOT="$(dirname "$CHORA_SOURCE_ROOT")/chora-source-alpha-data"`,
-			`install -d -m 700 "$CHORA_DATA_ROOT"`,
-			`colima ssh -- test -d "$CHORA_DATA_ROOT"`,
-			`--repository "$CHORA_TARGET_ROOT"`,
-			`--data "$CHORA_DATA_ROOT"`,
-			"sha256:91698efead5641a633519f5f229373e08a59264045ca27f6d01fc06505deeea7",
-			"sha256:4f7746f3cdbe55dc454775ead5958a9ed8a78b93776ea1df598255c1606b25c6",
+			`go run ./cmd/chora workbench --source "$(pwd -P)"`,
+			"npm ci",
+			"/login",
+			"/model",
+			"Local Connected",
 		} {
 			if !strings.Contains(text, required) {
-				t.Fatalf("%s is missing SourceCheckout contract %q", name, required)
+				t.Fatalf("%s is missing the supported Workbench contract %q", name, required)
 			}
+		}
+		disclosure := "No Sandbox"
+		if name == "README.zh-CN.md" {
+			disclosure = "无沙箱"
+		}
+		if !strings.Contains(text, disclosure) {
+			t.Fatalf("%s is missing the local execution disclosure %q", name, disclosure)
 		}
 	}
 }
