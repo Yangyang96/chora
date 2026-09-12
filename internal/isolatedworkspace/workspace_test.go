@@ -95,19 +95,149 @@ func TestCollectRejectsUnsafeResultsAndSourceDrift(t *testing.T) {
 	}
 }
 
-func TestCollectRecoversInterruptedImportBeforeApplying(t *testing.T) {
+func TestRecoverInterruptedImportAcrossRepositories(t *testing.T) {
 	source, dest, state := t.TempDir(), t.TempDir(), t.TempDir()
-	r := makeRepository(t, source, "repo", "write", domain.TaskRepositoryScope{Mode: "repository"}, map[string]string{"a.txt": "base\n"})
-	if err := Prepare(context.Background(), source, dest, state, []domain.TaskRepositoryResource{r}); err != nil {
+	resources := []domain.TaskRepositoryResource{
+		makeRepository(t, source, "one", "write", domain.TaskRepositoryScope{Mode: "repository"}, map[string]string{"a.txt": "one base\n", "removed.txt": "base\n"}),
+		makeRepository(t, source, "two", "write", domain.TaskRepositoryScope{Mode: "repository"}, map[string]string{"b.txt": "two base\n"}),
+	}
+	if err := Prepare(context.Background(), source, dest, state, resources); err != nil {
 		t.Fatal(err)
 	}
-	mustWrite(t, filepath.Join(source, r.WorkspaceDirectory(), "a.txt"), "partial import\n")
+	mustWrite(t, filepath.Join(dest, resources[0].WorkspaceDirectory(), "a.txt"), "one result\n")
+	if err := os.Remove(filepath.Join(dest, resources[0].WorkspaceDirectory(), "removed.txt")); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, filepath.Join(dest, resources[0].WorkspaceDirectory(), "added.txt"), "added\n")
+	mustWrite(t, filepath.Join(dest, resources[1].WorkspaceDirectory(), "b.txt"), "two result\n")
+	writeInterruptedJournal(t, state, dest)
+
+	// Simulate process death after the first repository was fully imported and
+	// before the second repository was touched.
+	after, err := scanTree(filepath.Join(dest, resources[0].WorkspaceDirectory()), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := replaceWorktree(filepath.Join(source, resources[0].WorkspaceDirectory()), after); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Recover(context.Background(), state); err != nil {
+		t.Fatal(err)
+	}
+	assertBytes(t, filepath.Join(source, resources[0].WorkspaceDirectory(), "a.txt"), []byte("one base\n"))
+	assertBytes(t, filepath.Join(source, resources[0].WorkspaceDirectory(), "removed.txt"), []byte("base\n"))
+	if _, err := os.Lstat(filepath.Join(source, resources[0].WorkspaceDirectory(), "added.txt")); !os.IsNotExist(err) {
+		t.Fatalf("added file survived rollback: %v", err)
+	}
+	assertBytes(t, filepath.Join(source, resources[1].WorkspaceDirectory(), "b.txt"), []byte("two base\n"))
+	if _, err := os.Lstat(filepath.Join(state, "import-journal.json")); !os.IsNotExist(err) {
+		t.Fatalf("resolved journal retained: %v", err)
+	}
+	if err := Recover(context.Background(), state); err != nil {
+		t.Fatalf("repeated recovery: %v", err)
+	}
+}
+
+func TestRecoverRejectsMissingOrTamperedManifestWithoutWriting(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		tamper func(t *testing.T, state string)
+	}{
+		{"missing", func(t *testing.T, state string) {
+			if err := os.Remove(filepath.Join(state, "manifest.json")); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"tampered", func(t *testing.T, state string) {
+			var m manifest
+			if err := readJSONRegular(filepath.Join(state, "manifest.json"), &m); err != nil {
+				t.Fatal(err)
+			}
+			entry := m.Repositories[0].Source["a.txt"]
+			entry.Data = []byte("attacker\n")
+			m.Repositories[0].Source["a.txt"] = entry
+			if err := os.Remove(filepath.Join(state, "manifest.json")); err != nil {
+				t.Fatal(err)
+			}
+			if err := writeJSONExclusive(filepath.Join(state, "manifest.json"), m); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"escape path", func(t *testing.T, state string) {
+			var m manifest
+			if err := readJSONRegular(filepath.Join(state, "manifest.json"), &m); err != nil {
+				t.Fatal(err)
+			}
+			m.Repositories[0].Source["../outside"] = m.Repositories[0].Source["a.txt"]
+			delete(m.Repositories[0].Source, "a.txt")
+			if err := os.Remove(filepath.Join(state, "manifest.json")); err != nil {
+				t.Fatal(err)
+			}
+			if err := writeJSONExclusive(filepath.Join(state, "manifest.json"), m); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			source, dest, state := t.TempDir(), t.TempDir(), t.TempDir()
+			resources := []domain.TaskRepositoryResource{
+				makeRepository(t, source, "one", "write", domain.TaskRepositoryScope{Mode: "repository"}, map[string]string{"a.txt": "one base\n"}),
+				makeRepository(t, source, "two", "write", domain.TaskRepositoryScope{Mode: "repository"}, map[string]string{"b.txt": "two base\n"}),
+			}
+			if err := Prepare(context.Background(), source, dest, state, resources); err != nil {
+				t.Fatal(err)
+			}
+			mustWrite(t, filepath.Join(dest, resources[0].WorkspaceDirectory(), "a.txt"), "one result\n")
+			writeInterruptedJournal(t, state, dest)
+			mustWrite(t, filepath.Join(source, resources[0].WorkspaceDirectory(), "a.txt"), "one result\n")
+			tc.tamper(t, state)
+
+			if err := Recover(context.Background(), state); err == nil {
+				t.Fatal("Recover accepted unavailable or tampered manifest")
+			}
+			assertBytes(t, filepath.Join(source, resources[0].WorkspaceDirectory(), "a.txt"), []byte("one result\n"))
+			assertBytes(t, filepath.Join(source, resources[1].WorkspaceDirectory(), "b.txt"), []byte("two base\n"))
+			if _, err := os.Lstat(filepath.Join(state, "import-journal.json")); err != nil {
+				t.Fatalf("unresolved journal was not preserved: %v", err)
+			}
+		})
+	}
+}
+
+func TestRecoverRejectsExternalDriftBeforeWritingAnyRepository(t *testing.T) {
+	source, dest, state := t.TempDir(), t.TempDir(), t.TempDir()
+	resources := []domain.TaskRepositoryResource{
+		makeRepository(t, source, "one", "write", domain.TaskRepositoryScope{Mode: "repository"}, map[string]string{"a.txt": "one base\n"}),
+		makeRepository(t, source, "two", "write", domain.TaskRepositoryScope{Mode: "repository"}, map[string]string{"b.txt": "two base\n"}),
+	}
+	if err := Prepare(context.Background(), source, dest, state, resources); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, filepath.Join(dest, resources[0].WorkspaceDirectory(), "a.txt"), "one result\n")
+	writeInterruptedJournal(t, state, dest)
+	mustWrite(t, filepath.Join(source, resources[0].WorkspaceDirectory(), "a.txt"), "one result\n")
+	mustWrite(t, filepath.Join(source, resources[1].WorkspaceDirectory(), "b.txt"), "external edit\n")
+
+	if err := Recover(context.Background(), state); err == nil {
+		t.Fatal("Recover overwrote external drift")
+	}
+	assertBytes(t, filepath.Join(source, resources[0].WorkspaceDirectory(), "a.txt"), []byte("one result\n"))
+	assertBytes(t, filepath.Join(source, resources[1].WorkspaceDirectory(), "b.txt"), []byte("external edit\n"))
+	if _, err := os.Lstat(filepath.Join(state, "import-journal.json")); err != nil {
+		t.Fatalf("unresolved journal was not preserved: %v", err)
+	}
+}
+
+func TestRecoverPreservesLegacyUnprovenJournal(t *testing.T) {
+	state := t.TempDir()
 	mustWrite(t, filepath.Join(state, "import-journal.json"), `{"state":"applying"}`)
-	mustWrite(t, filepath.Join(dest, r.WorkspaceDirectory(), "a.txt"), "result\n")
-	if err := Collect(context.Background(), source, dest, state, []domain.TaskRepositoryResource{r}); err != nil {
-		t.Fatal(err)
+	if err := Recover(context.Background(), state); err == nil {
+		t.Fatal("Recover accepted legacy journal without rollback authority")
 	}
-	assertBytes(t, filepath.Join(source, r.WorkspaceDirectory(), "a.txt"), []byte("result\n"))
+	if _, err := os.Lstat(filepath.Join(state, "import-journal.json")); err != nil {
+		t.Fatalf("legacy journal was not preserved: %v", err)
+	}
 }
 
 func TestCollectIgnoresReadonlySealAndPreservesReferenceModes(t *testing.T) {
@@ -155,6 +285,26 @@ func TestCollectTreatsExecutableBitAsGitChange(t *testing.T) {
 	if info.Mode().Perm() != 0755 {
 		t.Fatalf("source mode=%o", info.Mode().Perm())
 	}
+}
+
+func writeInterruptedJournal(t *testing.T, state, dest string) manifest {
+	t.Helper()
+	var m manifest
+	if err := readJSONRegular(filepath.Join(state, "manifest.json"), &m); err != nil {
+		t.Fatal(err)
+	}
+	j := importJournal{Version: journalVersion, ManifestDigest: manifestDigest(m)}
+	for _, rs := range m.Repositories {
+		after, err := scanTree(filepath.Join(dest, rs.Resource.WorkspaceDirectory()), false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		j.Repositories = append(j.Repositories, journalRepo{RepoID: rs.Resource.RepoID, After: after})
+	}
+	if err := writeJSONExclusive(filepath.Join(state, "import-journal.json"), j); err != nil {
+		t.Fatal(err)
+	}
+	return m
 }
 
 func makeRepository(t *testing.T, source, name, role string, scope domain.TaskRepositoryScope, files map[string]string) domain.TaskRepositoryResource {

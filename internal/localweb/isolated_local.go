@@ -166,7 +166,7 @@ func composeIsolatedLocal(ctx context.Context, composition piComposition, runtim
 		Runner: record.Runner, RuntimeRoot: filepath.Join(runtimeRoot, "pi-isolated"), ArtifactRoot: filepath.Join(runtimeRoot, "artifacts-isolated"),
 		PolicyDigest: record.Source.PolicySHA256(), AttemptImageID: record.Source.ImageID(), RuntimeSourceIdentity: fmt.Sprintf("%x", record.Source.SourceIdentity()),
 		CredentialSource: filepath.Join(authHome, "auth.json"), AttemptTimeout: 20 * time.Minute, CapabilityContract: record.Capability, EngineQualification: record.Qualification,
-		Workbench: &dockersupervisor.WorkbenchConfig{Arguments: agentpi.IsolatedRPCArguments(), RuntimeVersion: agentpi.IsolatedPiVersion, ObserverSHA256: agentpi.ResourceObserverSHA256(), HelperSHA256: record.Source.HelperSHA256(), RuntimeFingerprint: hex.EncodeToString(fp.Digest[:]), PrepareWorkspace: workspace.prepare, CollectWorkspace: workspace.collect, ReadOnlyWorkspacePaths: workspace.readonly},
+		Workbench: &dockersupervisor.WorkbenchConfig{Arguments: agentpi.IsolatedRPCArguments(), RuntimeVersion: agentpi.IsolatedPiVersion, ObserverSHA256: agentpi.ResourceObserverSHA256(), HelperSHA256: record.Source.HelperSHA256(), RuntimeFingerprint: hex.EncodeToString(fp.Digest[:]), PrepareWorkspace: workspace.prepare, CollectWorkspace: workspace.collect, RecoverWorkspace: isolatedworkspace.Recover, ReadOnlyWorkspacePaths: workspace.readonly},
 	})
 	if err != nil {
 		return composition, err

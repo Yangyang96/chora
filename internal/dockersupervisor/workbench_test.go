@@ -472,6 +472,55 @@ func workbenchArguments() []string {
 	return []string{"--mode", "rpc", "--no-session", "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files", "--provider", "deepseek", "--model", "deepseek-v4-flash", "--extension", "/opt/chora/resource_check_observer.mjs"}
 }
 
+func TestWorkbenchRecoveryPreservesInterruptedImportUntilReconciled(t *testing.T) {
+	for _, failure := range []string{"missing_callback", "rollback_failed", "journal_retained", "success"} {
+		t.Run(failure, func(t *testing.T) {
+			supervisor := newWorkbenchTestSupervisor(t, &fakeRunner{}, func(context.Context, execution.Invocation, string) error { return nil })
+			root := createOwnedAttemptRoot(t, supervisor, "1", "interrupted-import")
+			state := filepath.Join(root, "import-state")
+			if err := os.Mkdir(state, 0700); err != nil {
+				t.Fatal(err)
+			}
+			journal := filepath.Join(state, "import-journal.json")
+			if err := os.WriteFile(journal, []byte("interrupted"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			called := false
+			if failure != "missing_callback" {
+				supervisor.config.Workbench.RecoverWorkspace = func(_ context.Context, got string) error {
+					called = true
+					if got != state {
+						t.Fatalf("recovery state = %q", got)
+					}
+					if failure == "rollback_failed" {
+						return errors.New("source authority drift")
+					}
+					if failure == "journal_retained" {
+						return nil
+					}
+					return os.Remove(journal)
+				}
+			}
+			err := supervisor.Recover(context.Background())
+			if failure == "success" {
+				if err != nil || !called || !supervisor.recoveryComplete {
+					t.Fatalf("recovery = %v, called=%v, complete=%v", err, called, supervisor.recoveryComplete)
+				}
+				if _, err := os.Lstat(root); !os.IsNotExist(err) {
+					t.Fatalf("reconciled runtime root retained: %v", err)
+				}
+				return
+			}
+			if err == nil || supervisor.recoveryComplete {
+				t.Fatalf("unresolved import accepted: %v", err)
+			}
+			if data, err := os.ReadFile(journal); err != nil || string(data) != "interrupted" {
+				t.Fatalf("recovery destroyed journal: %q, %v", data, err)
+			}
+		})
+	}
+}
+
 func newWorkbenchTestSupervisor(t *testing.T, runner *fakeRunner, collect func(context.Context, execution.Invocation, string) error) *Supervisor {
 	t.Helper()
 	root := t.TempDir()

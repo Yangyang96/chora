@@ -141,6 +141,7 @@ type WorkbenchConfig struct {
 	RuntimeFingerprint     string
 	PrepareWorkspace       func(context.Context, execution.Invocation, string) error
 	CollectWorkspace       func(context.Context, execution.Invocation, string) error
+	RecoverWorkspace       func(context.Context, string) error
 	ReadOnlyWorkspacePaths func(execution.Invocation) ([]string, error)
 }
 
@@ -1929,7 +1930,43 @@ func (supervisor *Supervisor) cleanup(_ context.Context, record *attemptRecord) 
 	if dockerErr := errors.Join(inventoryErr, exactInventoryErr, ownershipErr, operationErr, proofErr); dockerErr != nil {
 		return dockerErr
 	}
+	if err := supervisor.recoverWorkspaceImport(cleanupContext, record.root); err != nil {
+		return err
+	}
 	return removeAndProveAbsent(record.root, "runtime workspace")
+}
+
+// Import state is host-owned and must survive cleanup until an interrupted
+// multi-repository import has been reconciled. Call only after Docker death proof.
+func (supervisor *Supervisor) recoverWorkspaceImport(ctx context.Context, root string) error {
+	state := filepath.Join(root, "import-state")
+	info, err := os.Lstat(state)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return errors.New("preserve unsafe workspace import state")
+	}
+	journal := filepath.Join(state, "import-journal.json")
+	if _, err := os.Lstat(journal); os.IsNotExist(err) {
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("preserve unreadable workspace import journal: %w", err)
+	}
+	if supervisor.config.Workbench == nil || supervisor.config.Workbench.RecoverWorkspace == nil {
+		return errors.New("preserve interrupted workspace import: recovery callback unavailable")
+	}
+	// Docker's short death-proof timeout is not a budget for scanning and
+	// restoring bounded repository snapshots. Recovery owns a separate limit.
+	recoveryContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
+	defer cancel()
+	if err := supervisor.config.Workbench.RecoverWorkspace(recoveryContext, state); err != nil {
+		return fmt.Errorf("preserve unresolved workspace import: %w", err)
+	}
+	if _, err := os.Lstat(journal); !os.IsNotExist(err) {
+		return errors.New("preserve unresolved workspace import journal")
+	}
+	return nil
 }
 
 func (supervisor *Supervisor) Recover(ctx context.Context) error {
@@ -1962,6 +1999,10 @@ func (supervisor *Supervisor) Recover(ctx context.Context) error {
 		path := filepath.Join(supervisor.config.RuntimeRoot, entry.Name())
 		if markerErr := supervisor.validateAttemptRoot(path, entry); markerErr != nil {
 			preservedErrors = append(preservedErrors, fmt.Errorf("preserve unowned runtime entry %q: %w", entry.Name(), markerErr))
+			continue
+		}
+		if err := supervisor.recoverWorkspaceImport(recoveryContext, path); err != nil {
+			rootErrors = append(rootErrors, err)
 			continue
 		}
 		rootErrors = append(rootErrors, removeAndProveAbsent(path, "orphan runtime root"))
