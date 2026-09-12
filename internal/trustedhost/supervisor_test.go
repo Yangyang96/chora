@@ -1108,7 +1108,8 @@ func TestTERMLeaderReapWithholdsKILLFromReusedGroup(t *testing.T) {
 	platform.termReapsLeader = true
 	supervisor, config, source := newTestSupervisor(t, platform, realTimerFactory{}, 64)
 	launch := execution.LaunchToken{Value: "launch-term-reaps-leader"}
-	outcome := supervisor.Start(context.Background(), invocationFor(t, config, source, launch, nil, trustedEnvironment()), newRecordingSink(launch))
+	sink := newRecordingSink(launch)
+	outcome := supervisor.Start(context.Background(), invocationFor(t, config, source, launch, nil, trustedEnvironment()), sink)
 	if outcome.Kind != execution.Started {
 		t.Fatalf("Start = %#v", outcome)
 	}
@@ -1118,6 +1119,13 @@ func TestTERMLeaderReapWithholdsKILLFromReusedGroup(t *testing.T) {
 	}
 	if signals := platform.snapshotSignals(); !reflect.DeepEqual(signals, []syscall.Signal{syscall.SIGTERM}) {
 		t.Fatalf("post-reap group signals = %#v", signals)
+	}
+	// StopUncertain can return before the reaper persists its final state.
+	// Wait for that writer before TempDir cleanup removes the runtime root.
+	select {
+	case <-sink.exited:
+	case <-time.After(time.Second):
+		t.Fatal("leader reaper did not finish")
 	}
 }
 
