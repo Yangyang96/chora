@@ -25,12 +25,32 @@ func TestRuntimePolicyViolationRecognizesUndeclaredCommand(t *testing.T) {
 	}
 }
 
-func TestLocalConnectedDelegatesPiCommandPermissionPolicy(t *testing.T) {
+func TestCurrentLocalModesDoNotUseLegacyDeclaredCommandWhitelist(t *testing.T) {
 	if choraEnforcesDeclaredPiCommands(domain.CapabilityEnvelope{speccoding.LocalConnectedNoSandboxCapability: true}) {
 		t.Fatal("Local Connected must use Pi's native command/file permission policy")
 	}
-	if !choraEnforcesDeclaredPiCommands(domain.CapabilityEnvelope{"runtime.command_execution": true}) {
-		t.Fatal("managed Pi execution must retain Chora's declared-command boundary")
+	if choraEnforcesDeclaredPiCommands(domain.CapabilityEnvelope{speccoding.IsolatedLocalCapability: true}) {
+		t.Fatal("Isolated Local auto checks must not be rejected by the legacy direct argv whitelist")
+	}
+	for _, capabilities := range []domain.CapabilityEnvelope{
+		{"runtime.command_execution": true},
+		{},
+	} {
+		if !choraEnforcesDeclaredPiCommands(capabilities) {
+			t.Fatalf("unrelated managed capabilities must retain the legacy declared-command boundary: %#v", capabilities)
+		}
+	}
+}
+
+func TestAgentReportedWithoutVerifierIncludesBothLocalModes(t *testing.T) {
+	if !agentReportedWithoutVerifier(domain.CapabilityEnvelope{speccoding.LocalConnectedNoSandboxCapability: true}) {
+		t.Fatal("Local Connected must retain direct human review semantics")
+	}
+	if !agentReportedWithoutVerifier(domain.CapabilityEnvelope{speccoding.IsolatedLocalCapability: true}) {
+		t.Fatal("Isolated Local must use agent-reported review without an independent verifier")
+	}
+	if agentReportedWithoutVerifier(domain.CapabilityEnvelope{"runtime.command_execution": true}) {
+		t.Fatal("unrelated managed capability must not bypass verification")
 	}
 }
 

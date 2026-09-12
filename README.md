@@ -38,7 +38,7 @@ flowchart LR
 
 **Apple Silicon Mac · Git · Node.js 22.19+ · npm 11+ · Go 1.26+**
 
-Bring your own model access, configured in Pi. Docker is not required.
+Bring your own model access, configured in Pi. Local Connected does not require Docker.
 Install `gh` only if you want to create or merge GitHub PRs from Chora.
 
 ### 2. Build and start Chora
@@ -75,6 +75,15 @@ acknowledge the in-app disclosure before starting: Pi runs on your host with
 access to local tools, files, credentials, and the network. Task worktrees
 separate code changes; they are not a security sandbox. Model requests go to
 your configured provider.
+
+### 4. Select an execution mode
+
+**Isolated Local** uses a publicly built, pinned Pi/Docker environment. Its initial
+project scope is Node.js standard-library code. Prepare it in New Task and restart
+Workbench; unavailable isolation never falls back to the host. See the
+[Isolated Local guide](docs/isolated-local.md) for platforms, Codex login, resources
+and network policy. You can also explicitly select and acknowledge
+**Trusted Local · No Sandbox** to use your configured host Pi.
 
 ## Your first task
 

@@ -179,7 +179,7 @@ func TestV17UpgradeAddsImmutableSpecCodingIntentTable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(available) != 41 {
+	if len(available) != 42 {
 		t.Fatalf("migration count = %d", len(available))
 	}
 	if _, err := raw.ExecContext(ctx, `CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, checksum BLOB NOT NULL CHECK(length(checksum)=32), applied_at TEXT NOT NULL)`); err != nil {
@@ -216,7 +216,7 @@ func TestV17UpgradeAddsImmutableSpecCodingIntentTable(t *testing.T) {
 	if err := raw.QueryRowContext(ctx, `SELECT count(*) FROM tasks WHERE id=?`, taskID.String()).Scan(&taskCount); err != nil {
 		t.Fatal(err)
 	}
-	if version != 41 || taskCount != 1 {
+	if version != 42 || taskCount != 1 {
 		t.Fatalf("version=%d preserved tasks=%d", version, taskCount)
 	}
 	if _, err := raw.ExecContext(ctx, `UPDATE user_spec_coding_intents SET created_at=? WHERE task_id=?`, timeText(now.Add(time.Second)), taskID.String()); err == nil {

@@ -44,7 +44,17 @@ export type TechnicalPlanAcceptance = { revisionId: string; reviewId: string; sn
 export type TechnicalPlanning = { draft?: TechnicalPlanDraft; revisions: TechnicalPlanRevision[]; acceptance?: TechnicalPlanAcceptance }
 export type FrozenSnapshotRef = { id: string; digest: string; status: 'materialized' | 'registered' }
 export type TaskExecutionProfile = 'diagnostic_fake' | 'real_spec_coding'
-export type AgentExecutionProfile = 'minimal' | 'standard' | 'trusted_local'
+export type AgentExecutionProfile = 'minimal' | 'standard' | 'isolated_local' | 'trusted_local'
+export type IsolatedLocalState = 'not_prepared' | 'preparing' | 'ready' | 'failed' | 'restart_required'
+export type IsolatedLocalView = {
+  state: IsolatedLocalState
+  reason: string
+  preparationAvailable: boolean
+  imageId?: string
+  piVersion: '0.85.1'
+  nodeVersion: '22.19.0'
+  policy: { network: string; resources: string; files: string; credentials: string }
+}
 export type AgentExecution = {
   attemptTimeoutSeconds?: number
   costStatus?: string

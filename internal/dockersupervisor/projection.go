@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -26,6 +27,24 @@ type taskProjection struct {
 }
 
 func loadTaskProjection(credentialSource, trustSource string) (taskProjection, error) {
+	projection, err := loadOAuthProjection(credentialSource)
+	if err != nil {
+		return taskProjection{}, err
+	}
+
+	trust, _, err := readProjectionSource(trustSource)
+	if err != nil {
+		return taskProjection{}, errors.New("enterprise trust source must be a regular file")
+	}
+	digest := sha256.Sum256(trust)
+	if hex.EncodeToString(digest[:]) != trustAnchorDigest {
+		return taskProjection{}, errors.New("enterprise trust source identity mismatch")
+	}
+	projection.trust = trust
+	return projection, nil
+}
+
+func loadOAuthProjection(credentialSource string) (taskProjection, error) {
 	authSource, authInfo, err := readProjectionSource(credentialSource)
 	if err != nil || authInfo.Mode().Perm()&0o077 != 0 {
 		return taskProjection{}, errors.New("Pi OAuth source must be a regular owner-only file")
@@ -49,15 +68,61 @@ func loadTaskProjection(credentialSource, trustSource string) (taskProjection, e
 		return taskProjection{}, errors.New("Pi OAuth source has no redaction-safe credential values")
 	}
 
-	trust, _, err := readProjectionSource(trustSource)
+	return taskProjection{auth: auth, secrets: secrets}, nil
+}
+
+func loadWorkbenchAPIKeyProjection(credentialSource string) (taskProjection, error) {
+	authSource, authInfo, err := readProjectionSource(credentialSource)
+	if err != nil || authInfo.Mode().Perm()&0o077 != 0 {
+		return taskProjection{}, errors.New("Pi DeepSeek API key source must be a regular owner-only file")
+	}
+	var document map[string]json.RawMessage
+	if json.Unmarshal(authSource, &document) != nil {
+		return taskProjection{}, errors.New("Pi DeepSeek API key source is invalid JSON")
+	}
+	entry := bytes.TrimSpace(document["deepseek"])
+	var fields map[string]json.RawMessage
+	if len(entry) == 0 || json.Unmarshal(entry, &fields) != nil || len(fields) != 2 {
+		return taskProjection{}, errors.New("public Workbench requires an exact native Pi deepseek API key entry")
+	}
+	var credentialType, key string
+	if json.Unmarshal(fields["type"], &credentialType) != nil || json.Unmarshal(fields["key"], &key) != nil ||
+		credentialType != "api_key" || key == "" || strings.TrimSpace(key) != key || strings.HasPrefix(key, "!") ||
+		strings.HasPrefix(key, "$") || looksLikeEnvironmentReference(key) || strings.ContainsAny(key, "\r\n\x00") {
+		return taskProjection{}, errors.New("public Workbench requires a literal deepseek API key")
+	}
+	projected, err := json.Marshal(map[string]any{"deepseek": map[string]string{"type": credentialType, "key": key}})
 	if err != nil {
-		return taskProjection{}, errors.New("enterprise trust source must be a regular file")
+		return taskProjection{}, err
 	}
-	digest := sha256.Sum256(trust)
-	if hex.EncodeToString(digest[:]) != trustAnchorDigest {
-		return taskProjection{}, errors.New("enterprise trust source identity mismatch")
+	return taskProjection{auth: append(projected, '\n'), secrets: [][]byte{[]byte(key)}}, nil
+}
+
+func looksLikeEnvironmentReference(value string) bool {
+	for index, character := range value {
+		if index == 0 {
+			if character != '_' && (character < 'A' || character > 'Z') {
+				return false
+			}
+			continue
+		}
+		if character != '_' && (character < 'A' || character > 'Z') && (character < '0' || character > '9') {
+			return false
+		}
 	}
-	return taskProjection{auth: auth, trust: trust, secrets: secrets}, nil
+	return value != ""
+}
+
+func (supervisor *Supervisor) injectWorkbenchAPIKeyProjection(ctx context.Context, name string, projection taskProjection) error {
+	authCommand := "set -eu; umask 077; cat > /run/chora/pi/auth.json.tmp; chmod 0600 /run/chora/pi/auth.json.tmp; mv /run/chora/pi/auth.json.tmp /run/chora/pi/auth.json"
+	if err := supervisor.runOKInput(ctx, []string{"exec", "--user", "1000:1000", "-i", name, "/bin/sh", "-c", authCommand}, projection.auth); err != nil {
+		return fmt.Errorf("project Pi DeepSeek API key: %w", err)
+	}
+	authProbe := "const f=require('fs'),p='/run/chora/pi/auth.json',v=JSON.parse(f.readFileSync(p)),e=v.deepseek;if(Object.keys(v).length!==1||!e||Object.keys(e).length!==2||e.type!=='api_key'||typeof e.key!=='string'||!e.key||(f.statSync(p).mode&511)!==384)process.exit(2)"
+	if err := supervisor.runOK(ctx, []string{"exec", "--user", "1000:1000", name, "node", "-e", authProbe}); err != nil {
+		return fmt.Errorf("verify Pi DeepSeek API key projection: %w", err)
+	}
+	return nil
 }
 
 func credentialScalarValues(entry []byte) ([][]byte, error) {
@@ -156,7 +221,7 @@ func (supervisor *Supervisor) injectTaskProjection(ctx context.Context, name str
 func (supervisor *Supervisor) runOKInput(ctx context.Context, args []string, input []byte) error {
 	result, err := supervisor.config.Runner.Run(ctx, Command{Args: args, Stdin: bytes.NewReader(input)})
 	if err != nil {
-		return err
+		return fmt.Errorf("docker command: %w: %s", err, boundedDiagnostic(result.Stderr))
 	}
 	if result.ExitCode != 0 {
 		return fmt.Errorf("docker exit %d: %s", result.ExitCode, boundedDiagnostic(result.Stderr))

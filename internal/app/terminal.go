@@ -99,15 +99,15 @@ func (s *Service) applyTerminalTx(ctx context.Context, tx storecontract.WriteTx,
 		eventType = "attempt.failed"
 		attemptEvent = domain.AttemptEventAttemptFailed
 	}
-	// Local Connected (No Sandbox) has no independent verifier: a review-ready
-	// Result moves directly to human Review instead of awaiting verification.
-	if terminal.Kind == execution.TerminalReviewReady && s.deps.Verifier == nil && charter.CapabilityEnvelope()[speccoding.LocalConnectedNoSandboxCapability] {
+	// Local Connected and Isolated Local currently have no independent verifier:
+	// a review-ready Result moves directly to human Review.
+	if terminal.Kind == execution.TerminalReviewReady && s.deps.Verifier == nil && agentReportedWithoutVerifier(charter.CapabilityEnvelope()) {
 		command = domain.CommandSubmitAgentReportDirectReview
 		eventType = "run.awaiting_review"
 	}
 	if terminal.Kind == execution.TerminalCompletedNoChange || terminal.Kind == execution.TerminalChecksFailed || terminal.Kind == execution.TerminalChecksIncomplete {
-		if s.deps.Verifier != nil || !charter.CapabilityEnvelope()[speccoding.LocalConnectedNoSandboxCapability] {
-			return SubmitTerminalResult{}, fmt.Errorf("%w: no-change completion requires Local Connected authority", ErrInvalidCommand)
+		if s.deps.Verifier != nil || !agentReportedWithoutVerifier(charter.CapabilityEnvelope()) {
+			return SubmitTerminalResult{}, fmt.Errorf("%w: no-change completion requires agent-reported local authority", ErrInvalidCommand)
 		}
 		if terminal.Kind == execution.TerminalCompletedNoChange {
 			command = domain.CommandCompleteNoChange

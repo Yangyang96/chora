@@ -152,6 +152,13 @@ func (server *Server) requireAgentExecutionRoute(writer http.ResponseWriter, req
 		writeError(writer, http.StatusServiceUnavailable, errors.New("selected Agent execution route is unavailable"))
 		return false
 	}
+	if binding.Profile() == domain.AgentExecutionProfileIsolatedLocal {
+		if err := server.isolatedLocal.available(request.Context()); err != nil {
+			writeError(writer, http.StatusServiceUnavailable, err)
+			return false
+		}
+		return true
+	}
 	if binding.ExecutionProvider() == domain.DockerExecutionProvider {
 		if err := server.requireManagedGenerationConfiguration(); err != nil {
 			writeError(writer, http.StatusServiceUnavailable, errors.New("selected Agent execution route is unavailable"))

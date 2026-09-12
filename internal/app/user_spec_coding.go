@@ -49,7 +49,7 @@ func emptyTechnicalPlanContent(content domain.TechnicalPlanContent) bool {
 	return len(content.TechnicalSteps) == 0 && len(content.Decisions) == 0 && len(content.Risks) == 0 && len(content.Unknowns) == 0
 }
 
-func (s *Service) declareRealSpecCodingTask(ctx context.Context, room domain.Room, request CreateTaskRequest) (domain.Task, speccoding.DeclaredUserTask, error) {
+func (s *Service) declareRealSpecCodingTask(ctx context.Context, room domain.Room, request CreateTaskRequest, profile domain.AgentExecutionProfile) (domain.Task, speccoding.DeclaredUserTask, error) {
 	input := request.RealSpecCoding
 	criteria := make([]domain.AcceptanceCriterion, 0, len(input.Criteria))
 	declaredCriteria := make([]speccoding.UserAcceptanceCriterion, 0, len(input.Criteria))
@@ -84,7 +84,7 @@ func (s *Service) declareRealSpecCodingTask(ctx context.Context, room domain.Roo
 			return domain.Task{}, speccoding.DeclaredUserTask{}, err
 		}
 		resources = &snapshot
-		envelope, err = s.resolveResourceSpecCodingEnvelope(ctx, room, snapshot)
+		envelope, err = s.resolveResourceSpecCodingEnvelope(ctx, room, snapshot, profile)
 	} else {
 		envelope, err = s.resolveSpecCodingEnvelope(ctx, room)
 	}
@@ -190,7 +190,7 @@ func (s *Service) acceptRealSpecCodingResources(
 		return domain.RunCharter{}, contextcore.Snapshot{}, err
 	}
 	expectedOutput := "non-empty patch"
-	if envelope.CapabilityEnvelope()[speccoding.LocalConnectedNoSandboxCapability] {
+	if agentReportedWithoutVerifier(envelope.CapabilityEnvelope()) {
 		expectedOutput = "reviewable patch or successful no-change result; report checks separately"
 	}
 	charter, err := domain.NewRunCharter(domain.RunCharterParams{

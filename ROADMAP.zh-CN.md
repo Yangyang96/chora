@@ -2,9 +2,9 @@
 
 [English](ROADMAP.md) · [README](README.zh-CN.md)
 
-状态（2026-09-11）：源码已公开的 Developer Alpha。真实多仓库交付技术验收、
+状态（2026-09-12）：源码已公开的 Developer Alpha。真实多仓库交付技术验收、
 `M2_S3_PASS` 和本地 DA-1/O5 准备已完成。源码于 2026-09-10 公开，版本化预发布见
-[Releases 页面](https://github.com/Yangyang96/chora/releases)。整个 M2 继续进行，下一计划功能里程碑为 M2-S4。
+[Releases 页面](https://github.com/Yangyang96/chora/releases)。整个 M2 继续进行；M2-S4-1 正在最终真实环境验收，M2-S4-2 暂缓。
 
 Project 长期拥有仓库资源和多个主题 Room；Task 属于一个 Room，并选择本次仓库范围。
 空 Project、多 Repo、独立 Room 历史和 Task worktree 已属于当前基础。Chora 拥有
@@ -76,14 +76,15 @@ S3-0 结束不需要的未交付结果，保留历史和全部已有 Commit/Push
 
 ## 首次公开 Alpha 后的第一个功能里程碑：M2-S4
 
-计划，尚未开始。M2-S4-1 将一种完整 Isolated Local 模式接入 Workbench，复用
-已采用 Sandbox，覆盖公开环境准备、认证、执行、检查、Review/Apply、取消、清理
-和 Resume。M2-S4-2 在工具/依赖、网络、资源策略有清晰且经过验证的区别时开放
+M2-S4-1 已实现一种 [Isolated Local 模式](docs/isolated-local.zh-CN.md)，
+采用公开 Pi 0.85.1、DeepSeek/deepseek-v4-flash 与本地 arm64 Docker，最终验收进行中。
+覆盖公开准备、凭据、执行、检查、Review → Commit → Push → PR → Merge → 清理、
+取消、重启及 Resume；保留不可变多仓库任务基线与旧 Apply。M2-S4-2 在工具/依赖、网络、资源策略有清晰且经过验证的区别时开放
 Minimal/Standard，可先发布一种已验证模式。隔离失败绝不回退宿主执行。
 
 默认顺序：M2-S3 → 公开候选检查 → 首次 Alpha 发布 → M2-S4。不新增首版 Alpha
 要求，不等待 M3/M4。复用已有隔离证据和当前 Project/Room/Task 契约，不重建
-Runtime 或 Sandbox。这是后续版本规划，不代表当前不可用的执行选项已经开放。
+Runtime 或 Sandbox。本次实施不创建 Tag、Release 或安装包。M2 整体未完成，S4-2 未实施。
 
 ## 开源后优先级排期
 

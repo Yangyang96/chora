@@ -8,6 +8,8 @@ import (
 	"strings"
 )
 
+type isolatedRepositoryCopyContextKey struct{}
+
 const isolatedGitExecutable = "/usr/bin/git"
 
 // isolatedGitCommand makes every product-owned Git operation independent of
@@ -21,6 +23,9 @@ func isolatedGitCommand(ctx context.Context, root string, arguments ...string) *
 		"-c", "protocol.allow=never",
 		"-c", "gc.auto=0",
 		"-C", root,
+	}
+	if ctx.Value(isolatedRepositoryCopyContextKey{}) == true {
+		args = append(args, "-c", "safe.directory="+root)
 	}
 	args = append(args, arguments...)
 	command := exec.CommandContext(ctx, isolatedGitExecutable, args...)

@@ -6,7 +6,7 @@ import { api, commandKey, message } from './api'
 import { LanguageProvider, useI18n } from './i18n'
 import { defaultAcceptReviewComment } from './runProvenance'
 import type { TaskResourceSelection } from './taskFirstTypes'
-import type { AgentExecutionProfile, PiDiscoveryView, ProjectView, RoomRef, RoomWorkspace, RunView, TaskRef, TaskSummary, TrustedLocalAcknowledgement, TrustedLocalAcknowledgementState } from './types'
+import type { AgentExecutionProfile, IsolatedLocalView, PiDiscoveryView, ProjectView, RoomRef, RoomWorkspace, RunView, TaskRef, TaskSummary, TrustedLocalAcknowledgement, TrustedLocalAcknowledgementState } from './types'
 import { ExternalHandoff } from './ui/ExternalHandoff'
 import { AddProject } from './ui/AddProject'
 import { AppShell } from './ui/AppShell'
@@ -38,6 +38,11 @@ type TaskResourcesProgress = {
   worktrees: Array<{ repoId: string; state: string; reason?: string; updatedAt?: string }>
 }
 
+const unavailableIsolatedLocal = (reason: string): IsolatedLocalView => ({
+  state: 'failed', reason, preparationAvailable: false, piVersion: '0.85.1', nodeVersion: '22.19.0',
+  policy: { network: '', resources: '', files: '', credentials: '' },
+})
+
 function routeFromLocation(): Route {
   const parts = window.location.pathname.split('/').filter(Boolean).map(decodeURIComponent)
   if (parts.length === 2 && parts[0] === 'projects') return { kind: 'project', projectID: parts[1] }
@@ -63,6 +68,7 @@ function NewAppContent() {
   const [trustedLocalSelectionReady, setTrustedLocalSelectionReady] = useState(false)
   const [trustedLocalAcknowledgementPolicy, setTrustedLocalAcknowledgementPolicy] = useState('')
   const [piDiscovery, setPiDiscovery] = useState<PiDiscoveryFetch>({ phase: 'loading' })
+  const [isolatedLocal, setIsolatedLocal] = useState<IsolatedLocalView>(() => unavailableIsolatedLocal('Checking Isolated Local readiness…'))
   const [resourcePreparation, setResourcePreparation] = useState<ResourcePreparation>()
   const automaticVerification = useRef(new Set<string>())
   const taskWorkflow = useRef<AbortController | undefined>(undefined)
@@ -83,6 +89,43 @@ function NewAppContent() {
     window.addEventListener('popstate', onPopState)
     return () => window.removeEventListener('popstate', onPopState)
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      try {
+        const next = await api<IsolatedLocalView>('/api/isolated-local')
+        if (cancelled) return
+        setIsolatedLocal(next)
+      } catch (reason) {
+        if (!cancelled) setIsolatedLocal(unavailableIsolatedLocal(message(reason)))
+      }
+    }
+    void load()
+    return () => { cancelled = true }
+  }, [])
+
+  useEffect(() => {
+    if (isolatedLocal.state !== 'preparing') return
+    let cancelled = false
+    const timer = window.setInterval(() => {
+      api<IsolatedLocalView>('/api/isolated-local')
+        .then((next) => { if (!cancelled) setIsolatedLocal(next) })
+        .catch((reason) => { if (!cancelled) setIsolatedLocal(unavailableIsolatedLocal(message(reason))) })
+    }, 1000)
+    return () => { cancelled = true; window.clearInterval(timer) }
+  }, [isolatedLocal.state])
+
+  async function prepareIsolatedLocal() {
+    if (!isolatedLocal.preparationAvailable || isolatedLocal.state === 'preparing') return
+    setIsolatedLocal((current) => ({ ...current, state: 'preparing', reason: t('Preparing Isolated Local…') }))
+    try {
+      const next = await api<IsolatedLocalView>('/api/isolated-local/prepare', { method: 'POST', body: '{}' })
+      setIsolatedLocal(next)
+    } catch (reason) {
+      setIsolatedLocal((current) => ({ ...current, state: 'failed', reason: message(reason) }))
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -716,7 +759,10 @@ function NewAppContent() {
     navigate(`/rooms/${encodeURIComponent(roomID)}`, 'newTask')
   }
 
-  const unsupportedTaskProfile = localWorkbench && task?.executionProfile === 'real_spec_coding' && task.agentExecutionProfile !== 'trusted_local'
+  const unsupportedTaskProfile = localWorkbench && task?.executionProfile === 'real_spec_coding' && !['trusted_local', 'isolated_local'].includes(task.agentExecutionProfile ?? '')
+  const frozenTaskProfileUnavailable = task?.agentExecutionProfile === 'isolated_local'
+    ? isolatedLocal.state !== 'ready'
+    : task?.agentExecutionProfile === 'trusted_local' && piDiscovery.phase !== 'loaded'
   const workBlocked = route.kind !== 'directory' && route.kind !== 'project' && (roomDetail === null || (roomDetail.ownershipKind === 'project' && routeProject === null) || routeProject?.state === 'archived' || roomDetail.state === 'archived' || roomDetail.ownershipKind === 'unclassified')
 
   const taskPlan = task?.planning?.draft?.content ?? task?.planning?.revisions.at(-1)?.content
@@ -742,6 +788,8 @@ function NewAppContent() {
         trustedLocalSelectionReady={trustedLocalSelectionReady}
         trustedLocalAcknowledgementPolicy={trustedLocalAcknowledgementPolicy}
         piDiscovery={piDiscovery}
+        isolatedLocal={isolatedLocal}
+        onPrepareIsolatedLocal={prepareIsolatedLocal}
         onCancel={resourcePreparation ? cancelTaskWorkflow : () => setView('home')}
         onSubmit={createTask}
         onAcknowledgeTrustedLocal={acknowledgeTrustedLocal}
@@ -758,7 +806,7 @@ function NewAppContent() {
         {unsupportedTaskProfile ? <>
           <p role="status">{t('This task selected a Docker Sandbox profile, which this local workbench cannot start. Keep this task and reuse its requirement to explicitly choose Local Connected for a new task.')}</p>
           <ActionButton type="button" className="btn-primary" disabled={busy} disabledReason={'Wait for the current operation to finish.'} onClick={recoverExecutionChoice}>{t('Reuse requirement and choose execution mode')}</ActionButton>
-        </> : task && <ActionButton type="button" className="btn-primary" disabled={busy || piDiscovery.phase !== 'loaded' || workBlocked} disabledReason={busy ? 'Wait for the current operation to finish.' : piDiscovery.phase !== 'loaded' ? 'Checking Pi availability. Please wait.' : 'Restore the Project and Room before starting new work.'} onClick={() => void startExistingTask(task)}>{t('Start Run')}</ActionButton>}
+        </> : task && <ActionButton type="button" className="btn-primary" disabled={busy || frozenTaskProfileUnavailable || workBlocked} disabledReason={busy ? 'Wait for the current operation to finish.' : frozenTaskProfileUnavailable ? 'The selected execution profile is not ready.' : 'Restore the Project and Room before starting new work.'} onClick={() => void startExistingTask(task)}>{t('Start Run')}</ActionButton>}
         {workBlocked && <p role="status">{t('New work is blocked by the current Project or Room state.')}</p>}
         {task?.agentExecutionProfile && <p>Agent profile · <AgentExecutionDisclosure profile={task.agentExecutionProfile} /></p>}
       </div>

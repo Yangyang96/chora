@@ -82,3 +82,33 @@ func TestAgentExecutionProfileBindingRoundTripsForCharterAndAttempt(t *testing.T
 		t.Fatal("persisted Attempt binding became mutable")
 	}
 }
+
+func TestIsolatedProfileSQLConstraintAcceptsOnlyExactBindingTuple(t *testing.T) {
+	db, seeded := openSeeded(t)
+	defer db.Close()
+	ctx := context.Background()
+	raw, err := sql.Open("sqlite", seeded.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	insert := `INSERT INTO run_charters(id,task_id,task_goal,workspace_root,adapter_id,sandbox_mode,expected_output,responsible_human,initiator,created_at,agent_execution_profile,agent_runtime_source,agent_execution_provider,agent_capability_policy,agent_trust_disclosure_policy) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+	values := []any{domain.NewCharterID().String(), seeded.task.ID().String(), "Goal", seeded.room.WorkspaceRoot(), "pi", "colima-docker", "patch", "owner", "test", seeded.now.Format(time.RFC3339Nano), "isolated_local", "public_pi_image", "docker", "chora.isolated-local.v1", ""}
+	if _, err = raw.ExecContext(ctx, insert, values...); err != nil {
+		t.Fatalf("exact Isolated Local tuple rejected: %v", err)
+	}
+	for index, invalid := range []struct {
+		column int
+		value  string
+	}{{11, "local_pi"}, {12, "trusted_host"}, {13, "pi.native"}, {14, "chora.trusted-local-disclosure.v1"}} {
+		candidate := append([]any(nil), values...)
+		candidate[0] = domain.NewCharterID().String()
+		candidate[invalid.column] = invalid.value
+		if _, err = raw.ExecContext(ctx, insert, candidate...); err == nil {
+			t.Fatalf("invalid Isolated Local tuple %d was accepted", index)
+		}
+	}
+	if _, err = raw.ExecContext(ctx, `UPDATE run_charters SET agent_capability_policy='chora.standard.v1' WHERE id=?`, values[0]); err == nil {
+		t.Fatal("persisted Isolated Local binding became mutable")
+	}
+}

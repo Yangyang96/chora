@@ -12,7 +12,7 @@ function SelectorHarness({ acknowledgement = '', onAcknowledge }: {
   acknowledgement?: string
   onAcknowledge: () => Promise<boolean>
 }) {
-  const [profile, setProfile] = useState<AgentExecutionProfile>('standard')
+  const [profile, setProfile] = useState<AgentExecutionProfile>('isolated_local')
   return (
     <AgentExecutionProfileSelector
       value={profile}
@@ -24,11 +24,13 @@ function SelectorHarness({ acknowledgement = '', onAcknowledge }: {
 }
 
 describe('AgentExecutionProfileSelector', () => {
-  test('defaults to Standard and cancellation retains it without acknowledgement', async () => {
+  test('offers only Isolated Local and Trusted Local while retaining the isolated selection on disclosure cancellation', async () => {
     const acknowledge = vi.fn(async () => true)
     render(<SelectorHarness onAcknowledge={acknowledge} />)
 
-    expect(screen.getByRole('radio', { name: 'Standard' })).toBeChecked()
+    expect(screen.getByRole('radio', { name: 'Isolated Local' })).toBeChecked()
+    expect(screen.queryByRole('radio', { name: 'Standard' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('radio', { name: 'Minimal' })).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('radio', { name: TRUSTED_LOCAL_LABEL }))
 
     const disclosure = screen.getByRole('dialog', { name: TRUSTED_LOCAL_LABEL })
@@ -39,7 +41,7 @@ describe('AgentExecutionProfileSelector', () => {
     expect(within(disclosure).getByText(/There is no Sandbox/)).toBeInTheDocument()
 
     await userEvent.click(within(disclosure).getByRole('button', { name: 'Cancel' }))
-    expect(screen.getByRole('radio', { name: 'Standard' })).toBeChecked()
+    expect(screen.getByRole('radio', { name: 'Isolated Local' })).toBeChecked()
     expect(acknowledge).not.toHaveBeenCalled()
   })
 
@@ -58,7 +60,7 @@ describe('AgentExecutionProfileSelector', () => {
     const { unmount } = render(<SelectorHarness onAcknowledge={rejected} />)
     await userEvent.click(screen.getByRole('radio', { name: TRUSTED_LOCAL_LABEL }))
     await userEvent.click(screen.getByRole('button', { name: 'Acknowledge and use Trusted Local' }))
-    expect(screen.getByRole('radio', { name: 'Standard' })).toBeChecked()
+    expect(screen.getByRole('radio', { name: 'Isolated Local' })).toBeChecked()
     unmount()
 
     const proven = vi.fn(async () => true)
@@ -104,9 +106,9 @@ describe('Run Agent execution profile surfaces', () => {
     expect(retry).toHaveBeenCalledWith('Resolve the rejected acceptance gap and return an updated result.')
     expect(switchProfile).not.toHaveBeenCalled()
 
-    await userEvent.click(screen.getByRole('radio', { name: 'Minimal' }))
+    await userEvent.click(screen.getByRole('radio', { name: 'Isolated Local' }))
     await userEvent.click(screen.getByRole('button', { name: 'Create successor with selected profile' }))
-    expect(switchProfile).toHaveBeenCalledWith('minimal', 'Use this profile for a fresh successor Attempt.')
+    expect(switchProfile).toHaveBeenCalledWith('isolated_local', 'Use this profile for a fresh successor Attempt.')
     expect(retry).toHaveBeenCalledOnce()
   })
 })
@@ -146,14 +148,15 @@ describe('Local Workbench startup guard', () => {
   test('requires explicit local choice and disclosure; cancel cannot start Standard', async () => {
     const submit = vi.fn()
     render(<NewTask roomName="Local" busy={false} initialRequirement="Add one unit test" trustedLocalSelectionReady
+      isolatedLocal={{ state: 'ready', reason: 'Ready', preparationAvailable: true, piVersion: '0.85.1', nodeVersion: '22.19.0', policy: { network: 'restricted', resources: 'selected', files: 'worktree', credentials: 'Codex OAuth' } }} onPrepareIsolatedLocal={vi.fn()}
       piDiscovery={{ phase: 'loaded', discovery: { state: 'ready', readyProviders: ['provider'], notReadyProviders: [] } }}
       onCancel={vi.fn()} onSubmit={submit} onAcknowledgeTrustedLocal={async () => true} />)
-    expect(screen.getByRole('radio', { name: 'Standard' })).toBeDisabled()
-    expect(screen.getByRole('radio', { name: 'Standard' })).not.toBeChecked()
-    expect(screen.getByRole('button', { name: 'Start' })).toBeDisabled()
+    expect(screen.queryByRole('radio', { name: 'Standard' })).not.toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: 'Isolated Local' })).toBeChecked()
+    expect(screen.getByRole('button', { name: 'Start' })).toBeEnabled()
     await userEvent.click(screen.getByRole('radio', { name: TRUSTED_LOCAL_LABEL }))
     await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }))
-    expect(screen.getByRole('button', { name: 'Start' })).toBeDisabled()
+    expect(screen.getByRole('radio', { name: 'Isolated Local' })).toBeChecked()
     expect(submit).not.toHaveBeenCalled()
     await userEvent.click(screen.getByRole('radio', { name: TRUSTED_LOCAL_LABEL }))
     await userEvent.click(screen.getByRole('button', { name: 'Acknowledge and use Trusted Local' }))

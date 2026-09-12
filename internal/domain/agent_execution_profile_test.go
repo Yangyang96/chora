@@ -7,11 +7,12 @@ import (
 	"time"
 )
 
-func TestAgentExecutionProfilesFreezeTheThreeProductChoices(t *testing.T) {
+func TestAgentExecutionProfilesPreserveHistoryAndAddPublicIsolation(t *testing.T) {
 	want := []AgentExecutionProfile{
 		AgentExecutionProfileMinimal,
 		AgentExecutionProfileStandard,
 		AgentExecutionProfileTrustedLocal,
+		AgentExecutionProfileIsolatedLocal,
 	}
 	if got := SupportedAgentExecutionProfiles(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("profiles = %#v", got)

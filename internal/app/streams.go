@@ -112,7 +112,7 @@ func (s *Service) ConsumeStream(ctx context.Context, request ConsumeStreamReques
 	if len(chunk.Data) > runtimeReadLimit || chunk.NextOffset < offset.Offset {
 		return fmt.Errorf("invalid bounded stream chunk")
 	}
-	decoded, err := runtime.adapter.DecodeEvent(execution.EventChunk{WorkingRoot: runtime.session.WorkingRoot, Stream: request.Stream, Offset: offset.Offset, Data: chunk.Data, EOF: chunk.EOF})
+	decoded, err := runtime.adapter.DecodeEvent(execution.EventChunk{Profile: runtime.attempt.AgentExecutionProfileBinding().Profile(), WorkingRoot: runtime.eventWorkingRoot(), Stream: request.Stream, Offset: offset.Offset, Data: chunk.Data, EOF: chunk.EOF})
 	if err != nil {
 		return err
 	}
@@ -213,10 +213,10 @@ func (s *Service) projectRuntimePolicy(ctx context.Context, runtime runtimeConte
 		return nil, false, fmt.Errorf("registered Spec Coding execution authority is unavailable")
 	}
 	if !choraEnforcesDeclaredPiCommands(charter.CapabilityEnvelope()) {
-		// Local Connected explicitly delegates command/file permission policy
-		// to the user's Pi. Chora keeps the frozen contract and Snapshot checks
-		// above, persists normalized activity, and derives Agent-reported check
-		// provenance, but does not reinterpret native Pi commands as violations.
+		// Local Connected delegates permission policy to native Pi. Isolated
+		// Local instead relies on its Docker filesystem and writeback scope while
+		// v1.2 dynamically selects checks. Neither uses the legacy direct-argv
+		// whitelist; both retain the frozen contract and Snapshot checks above.
 		return projected, false, nil
 	}
 	policy := declaredCommandPolicy{exact: make(map[string]struct{}, len(document.Execution.Boundary.Commands)), gofmtFiles: map[string]struct{}{}}
@@ -236,7 +236,11 @@ func (s *Service) projectRuntimePolicy(ctx context.Context, runtime runtimeConte
 }
 
 func choraEnforcesDeclaredPiCommands(capabilities domain.CapabilityEnvelope) bool {
-	return !capabilities[speccoding.LocalConnectedNoSandboxCapability]
+	return !capabilities[speccoding.LocalConnectedNoSandboxCapability] && !capabilities[speccoding.IsolatedLocalCapability]
+}
+
+func agentReportedWithoutVerifier(capabilities domain.CapabilityEnvelope) bool {
+	return capabilities[speccoding.LocalConnectedNoSandboxCapability] || capabilities[speccoding.IsolatedLocalCapability]
 }
 
 func validateSnapshotLineage(ctx context.Context, reader storecontract.Reader, attempt domain.Attempt, binding storecontract.SpecCodingBinding) error {
@@ -428,7 +432,8 @@ func derivePiAgentReportedChecks(document speccoding.CoreContractDocument, event
 }
 
 func (s *Service) populatePiAgentReportedChecks(ctx context.Context, runtime runtimeContext, terminal execution.TerminalResult) (execution.TerminalResult, error) {
-	if runtime.adapter.ID() != "pi" || runtime.attempt.AgentExecutionProfileBinding().Profile() != domain.AgentExecutionProfileTrustedLocal || terminal.Kind == execution.TerminalFailed {
+	profile := runtime.attempt.AgentExecutionProfileBinding().Profile()
+	if runtime.adapter.ID() != "pi" || (profile != domain.AgentExecutionProfileTrustedLocal && profile != domain.AgentExecutionProfileIsolatedLocal) || terminal.Kind == execution.TerminalFailed {
 		return terminal, nil
 	}
 	binding, err := s.deps.Store.Reader().GetSpecCodingBinding(ctx, runtime.run.TaskID())
@@ -602,7 +607,7 @@ func (s *Service) drainToEOF(ctx context.Context, runtime runtimeContext, handle
 			if !ok || next != offset.Offset+int64(len(data)) {
 				return execution.TerminalFiles{}, fmt.Errorf("invalid drain offset")
 			}
-			result, err := runtime.adapter.DecodeEvent(execution.EventChunk{WorkingRoot: runtime.session.WorkingRoot, Stream: kind, Offset: offset.Offset, Data: data, EOF: drained.EOF[kind]})
+			result, err := runtime.adapter.DecodeEvent(execution.EventChunk{Profile: runtime.attempt.AgentExecutionProfileBinding().Profile(), WorkingRoot: runtime.eventWorkingRoot(), Stream: kind, Offset: offset.Offset, Data: data, EOF: drained.EOF[kind]})
 			if errors.Is(err, execution.ErrEventStreamInvalid) {
 				// Death was independently proven before draining. Malformed provider
 				// output must fail the Attempt, not prevent its terminal transition.
@@ -739,6 +744,7 @@ func (s *Service) HandleExit(ctx context.Context, request ExitRequest) (SubmitTe
 	if err != nil {
 		return SubmitTerminalResult{}, err
 	}
+	terminalFiles.Profile = runtime.attempt.AgentExecutionProfileBinding().Profile()
 	events, err := s.deps.Store.Reader().ListRunEvents(ctx, runtime.run.ID())
 	if err != nil {
 		return SubmitTerminalResult{}, err
@@ -962,4 +968,13 @@ func (s *Service) markFinalized(ctx context.Context, sessionID domain.RuntimeSes
 		s.cleanupRuntimeSignals(sessionID)
 	}
 	return err
+}
+
+// Event paths are normalized against the execution boundary selected by Chora,
+// rather than a provider-supplied cwd or the host writeback workspace.
+func (r runtimeContext) eventWorkingRoot() string {
+	if r.attempt.AgentExecutionProfileBinding().Profile() == domain.AgentExecutionProfileIsolatedLocal {
+		return "/workspace/repository"
+	}
+	return r.session.WorkingRoot
 }

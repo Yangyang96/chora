@@ -327,7 +327,7 @@ func TestPopulatedV8UpgradeWithEmptyLegacyPlanningUpgradesCleanly(t *testing.T) 
 	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM technical_plan_drafts`).Scan(&draftCount); err != nil {
 		t.Fatal(err)
 	}
-	if version != 41 || taskCount != 1 || draftCount != 0 {
+	if version != 42 || taskCount != 1 || draftCount != 0 {
 		t.Fatalf("version=%d tasks=%d drafts=%d", version, taskCount, draftCount)
 	}
 	rows, err := db.QueryContext(ctx, `SELECT name FROM pragma_table_info('technical_plan_drafts') WHERE lower(name) LIKE '%credential%' OR lower(name) LIKE '%transcript%'`)
@@ -425,8 +425,8 @@ func TestV19UpgradeAllowsSharedInstalledRepositoryAndPreservesRoomAuthority(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(available) != 41 {
-		t.Fatalf("migration count = %d, want 41", len(available))
+	if len(available) != 42 {
+		t.Fatalf("migration count = %d, want 42", len(available))
 	}
 	if _, err := db.ExecContext(ctx, `CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, checksum BLOB NOT NULL CHECK(length(checksum)=32), applied_at TEXT NOT NULL)`); err != nil {
 		t.Fatal(err)
@@ -652,7 +652,7 @@ func TestV31ProjectRoomMigrationRollbackAndRetry(t *testing.T) {
 	if err = migrate(ctx, db); err != nil {
 		t.Fatalf("idempotent reopen: %v", err)
 	}
-	if err = db.QueryRowContext(ctx, `SELECT MAX(version) FROM schema_migrations`).Scan(&version); err != nil || version != 41 {
+	if err = db.QueryRowContext(ctx, `SELECT MAX(version) FROM schema_migrations`).Scan(&version); err != nil || version != 42 {
 		t.Fatalf("retry version=%d err=%v", version, err)
 	}
 }
@@ -668,7 +668,7 @@ func TestV22UpgradeAddsAndRelocatesImmutableTaskWorktreeBindings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(available) != 41 {
+	if len(available) != 42 {
 		t.Fatalf("migration count=%d", len(available))
 	}
 	if _, err := db.ExecContext(ctx, `CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, checksum BLOB NOT NULL CHECK(length(checksum)=32), applied_at TEXT NOT NULL)`); err != nil {
@@ -714,7 +714,7 @@ func TestV22UpgradeAddsAndRelocatesImmutableTaskWorktreeBindings(t *testing.T) {
 	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM task_worktrees`).Scan(&bindingCount); err != nil {
 		t.Fatal(err)
 	}
-	if version != 41 || taskCount != 1 || bindingCount != 1 {
+	if version != 42 || taskCount != 1 || bindingCount != 1 {
 		t.Fatalf("version=%d tasks=%d bindings=%d", version, taskCount, bindingCount)
 	}
 	var locator string
@@ -744,7 +744,7 @@ func TestV25UpgradeBindsOnlyHistoricalPiRowsToStandard(t *testing.T) {
 	}
 	defer db.Close()
 	available, err := loadMigrations()
-	if err != nil || len(available) != 41 {
+	if err != nil || len(available) != 42 {
 		t.Fatalf("migrations=%d, %v", len(available), err)
 	}
 	if _, err := db.ExecContext(ctx, `PRAGMA foreign_keys=ON`); err != nil {
@@ -850,7 +850,7 @@ func TestV30UpgradeRetainsHistoricalTaskWorktreeBaseAsLegacyUnknown(t *testing.T
 		t.Fatal(err)
 	}
 	available, err := loadMigrations()
-	if err != nil || len(available) != 41 {
+	if err != nil || len(available) != 42 {
 		t.Fatalf("migrations=%d err=%v", len(available), err)
 	}
 	if _, err := db.ExecContext(ctx, `CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, checksum BLOB NOT NULL CHECK(length(checksum)=32), applied_at TEXT NOT NULL)`); err != nil {
@@ -907,7 +907,7 @@ func TestV31PopulatedRunGraphUpgradesThroughProjectSettingsAndCompletedState(t *
 		t.Fatal(err)
 	}
 	available, err := loadMigrations()
-	if err != nil || len(available) != 41 {
+	if err != nil || len(available) != 42 {
 		t.Fatalf("migrations=%d err=%v", len(available), err)
 	}
 	if _, err := db.ExecContext(ctx, `CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY,name TEXT NOT NULL UNIQUE,checksum BLOB NOT NULL CHECK(length(checksum)=32),applied_at TEXT NOT NULL)`); err != nil {
@@ -951,7 +951,7 @@ func TestV31PopulatedRunGraphUpgradesThroughProjectSettingsAndCompletedState(t *
 		t.Fatal(err)
 	}
 	var version int
-	if err := db.QueryRowContext(ctx, `SELECT MAX(version) FROM schema_migrations`).Scan(&version); err != nil || version != 41 {
+	if err := db.QueryRowContext(ctx, `SELECT MAX(version) FROM schema_migrations`).Scan(&version); err != nil || version != 42 {
 		t.Fatalf("version=%d err=%v", version, err)
 	}
 	for table, id := range map[string]string{"runs": runID.String(), "attempts": attemptID.String(), "agent_reports": reportID.String(), "run_events": eventID.String()} {
@@ -983,7 +983,7 @@ func TestPopulatedV33UpgradesToV41PreservingProjectRunAndReviewHistory(t *testin
 		t.Fatal(err)
 	}
 	available, err := loadMigrations()
-	if err != nil || len(available) != 41 {
+	if err != nil || len(available) != 42 {
 		t.Fatalf("migrations=%d err=%v", len(available), err)
 	}
 	if _, err = db.ExecContext(ctx, `PRAGMA foreign_keys=ON`); err != nil {
@@ -1054,7 +1054,7 @@ func TestPopulatedV33UpgradesToV41PreservingProjectRunAndReviewHistory(t *testin
 		t.Fatal(err)
 	}
 	var currentVersion int
-	if err = db.QueryRowContext(ctx, `SELECT MAX(version) FROM schema_migrations`).Scan(&currentVersion); err != nil || currentVersion != 41 {
+	if err = db.QueryRowContext(ctx, `SELECT MAX(version) FROM schema_migrations`).Scan(&currentVersion); err != nil || currentVersion != 42 {
 		t.Fatalf("version=%d err=%v", currentVersion, err)
 	}
 	assertions := []struct {

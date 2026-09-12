@@ -16,6 +16,7 @@ import (
 )
 
 type piComposition struct {
+	isolatedSource    agentpi.IsolatedSource
 	adapter           execution.AgentAdapter
 	dockerSupervisor  *dockersupervisor.Supervisor
 	trustedSupervisor *trustedhost.Supervisor
@@ -184,7 +185,11 @@ func validatePiCompositionFingerprints(ctx context.Context, composition piCompos
 	}
 	var profiles []domain.AgentExecutionProfile
 	if composition.dockerSupervisor != nil {
-		profiles = append(profiles, domain.AgentExecutionProfileMinimal, domain.AgentExecutionProfileStandard)
+		if composition.isolatedSource.Configured() {
+			profiles = append(profiles, domain.AgentExecutionProfileIsolatedLocal)
+		} else {
+			profiles = append(profiles, domain.AgentExecutionProfileMinimal, domain.AgentExecutionProfileStandard)
+		}
 	}
 	if composition.trustedSupervisor != nil {
 		profiles = append(profiles, domain.AgentExecutionProfileTrustedLocal)

@@ -118,6 +118,7 @@ func ManagedCapabilityBundleForProfile(profile domain.AgentExecutionProfile) (Ma
 func NativeRPCArguments() []string { return append([]string(nil), nativeRPCArguments...) }
 
 type Config struct {
+	IsolatedSource      IsolatedSource
 	RuntimeConfig       []byte
 	Policy              []byte
 	AttemptImageID      string
@@ -181,7 +182,10 @@ func New(config Config) (*Adapter, error) {
 	if managed.Configured() && config.PathPiSource.Configured() {
 		return nil, errors.New("managed and PATH Pi sources are mutually exclusive")
 	}
-	if !managed.Configured() && !config.LocalPiSource.Configured() && !config.PathPiSource.Configured() {
+	if config.IsolatedSource.Configured() && !config.IsolatedSource.valid() {
+		return nil, errors.New("invalid isolated Pi source")
+	}
+	if !managed.Configured() && !config.LocalPiSource.Configured() && !config.PathPiSource.Configured() && !config.IsolatedSource.Configured() {
 		return nil, errors.New("Pi Runtime requires at least one configured source")
 	}
 	if managed.Configured() {
@@ -233,6 +237,11 @@ func (adapter *Adapter) PrepareBoundStart(ctx context.Context, request execution
 	if err := adapter.validateSelectedSource(ctx, source); err != nil {
 		return execution.StartPreparation{}, err
 	}
+	if source.isolated {
+		if err := adapter.config.IsolatedSource.ValidateContract(request.ExecutionContractDocument); err != nil {
+			return execution.StartPreparation{}, err
+		}
+	}
 	invocation, err := adapter.prepareStartForSource(request, source)
 	if err != nil {
 		return execution.StartPreparation{}, err
@@ -266,7 +275,7 @@ func (adapter *Adapter) prepareStartForSource(request execution.StartRequest, so
 	if err != nil {
 		return execution.Invocation{}, err
 	}
-	if source.pathPi {
+	if source.pathPi || source.isolated {
 		var document struct {
 			Acceptance struct {
 				VerificationCommands []speccoding.BoundedCommand `json:"verification_commands"`
@@ -283,12 +292,16 @@ func (adapter *Adapter) prepareStartForSource(request execution.StartRequest, so
 			}
 			commands = append(commands, text)
 		}
-		message, err = execution.WrapLocalConnectedExecutionPrompt(request.SnapshotDocument, request.ExecutionContractDocument, commands)
+		if source.isolated {
+			message, err = execution.WrapIsolatedExecutionPrompt(request.SnapshotDocument, request.ExecutionContractDocument, commands)
+		} else {
+			message, err = execution.WrapLocalConnectedExecutionPrompt(request.SnapshotDocument, request.ExecutionContractDocument, commands)
+		}
 		if err != nil {
 			return execution.Invocation{}, err
 		}
 	}
-	if source.pathPi && request.Attempt.Sequence() > 1 && strings.TrimSpace(request.Attempt.ContextDelta()) != "" {
+	if (source.pathPi || source.isolated) && request.Attempt.Sequence() > 1 && strings.TrimSpace(request.Attempt.ContextDelta()) != "" {
 		message += "\n\nHuman Review correction for this successor Attempt. Apply these instructions within the frozen execution contract; preserve its authority and boundaries:\n" + request.Attempt.ContextDelta()
 	}
 	prompt, err := json.Marshal(struct {
@@ -300,7 +313,7 @@ func (adapter *Adapter) prepareStartForSource(request execution.StartRequest, so
 		return execution.Invocation{}, fmt.Errorf("encode Pi prompt: %w", err)
 	}
 	prompt = append(prompt, '\n')
-	if source.pathPi {
+	if source.pathPi || source.isolated {
 		preflight := []byte("{\"id\":\"chora-get-state\",\"type\":\"get_state\"}\n")
 		prompt = append(preflight, prompt...)
 	}
@@ -325,6 +338,11 @@ func (adapter *Adapter) prepareStartForSource(request execution.StartRequest, so
 		"CHORA_PATCH_PATH":                PatchPath,
 		"CHORA_CHECKS_PATH":               ChecksPath,
 		"CHORA_RUNTIME_IDENTITY_PATH":     RuntimeIdentityPath,
+	}
+	if source.isolated {
+		if err := adapter.configureIsolatedObserver(request.Attempt.ID(), request.ExecutionContractDocument, environment); err != nil {
+			return execution.Invocation{}, err
+		}
 	}
 	if source.managed {
 		environment["CHORA_ATTEMPT_IMAGE_ID"] = adapter.managedSource.RuntimeImageID()
@@ -460,7 +478,19 @@ func (adapter *Adapter) DecodeEvent(chunk execution.EventChunk) (execution.Decod
 		if len(line) == 0 || bytes.IndexByte(line, '\r') >= 0 {
 			return execution.DecodedChunk{}, fmt.Errorf("%w: invalid strict-LF Pi JSONL record", execution.ErrEventStreamInvalid)
 		}
-		event, ok, err := projectLine(line, adapter.strictManagedModel, chunk.WorkingRoot)
+		strictModel := adapter.strictManagedModel
+		if chunk.Profile == domain.AgentExecutionProfileIsolatedLocal {
+			if !adapter.config.IsolatedSource.Configured() {
+				return execution.DecodedChunk{}, fmt.Errorf("%w: isolated decoder source unavailable", execution.ErrEventStreamInvalid)
+			}
+			if err := validateIsolatedEventModel(line); err != nil {
+				return execution.DecodedChunk{}, fmt.Errorf("%w: %v", execution.ErrEventStreamInvalid, err)
+			}
+			// Isolated checks use the public observer, independently of the
+			// legacy managed model/path policy on a composed adapter.
+			strictModel = false
+		}
+		event, ok, err := projectLine(line, strictModel, chunk.WorkingRoot)
 		if err != nil {
 			return execution.DecodedChunk{}, fmt.Errorf("%w: %v", execution.ErrEventStreamInvalid, err)
 		}
@@ -815,7 +845,7 @@ func (adapter *Adapter) DecodeTerminal(files execution.TerminalFiles) (execution
 	if adapter == nil {
 		return execution.TerminalResult{}, errors.New("Pi adapter is nil")
 	}
-	if adapter.pathPiSource.Configured() {
+	if adapter.pathPiSource.Configured() && (files.Profile == domain.AgentExecutionProfileTrustedLocal || files.Profile == "") {
 		// Real Pi RPC streams events on stdout and never writes the shim-only
 		// /output/result.json. Synthesize a review-ready result here; the final
 		// assistant text is substituted by the application from the persisted
@@ -876,6 +906,7 @@ type selectedSource struct {
 	identity         [32]byte
 	managed          bool
 	pathPi           bool
+	isolated         bool
 	capabilityBundle ManagedCapabilityBundle
 }
 
@@ -888,6 +919,12 @@ func (adapter *Adapter) sourceForBinding(binding domain.AgentExecutionProfileBin
 		return selectedSource{}, errors.New("Pi Attempt execution profile binding drift")
 	}
 	switch binding.Profile() {
+	case domain.AgentExecutionProfileIsolatedLocal:
+		s := adapter.config.IsolatedSource
+		if !s.valid() {
+			return selectedSource{}, errors.New("public isolated Pi source is not prepared")
+		}
+		return selectedSource{binding: binding, executable: Executable, arguments: IsolatedRPCArguments(), version: IsolatedPiVersion, identity: s.SourceIdentity(), isolated: true}, nil
 	case domain.AgentExecutionProfileMinimal, domain.AgentExecutionProfileStandard:
 		if binding.RuntimeSource() != domain.ManagedPiRuntimeSource || !adapter.managedSource.valid() {
 			return selectedSource{}, errors.New("Pi managed source does not match Attempt profile binding")
@@ -923,7 +960,7 @@ func (adapter *Adapter) sourceForBinding(binding domain.AgentExecutionProfileBin
 }
 
 func (adapter *Adapter) validateSelectedSource(ctx context.Context, source selectedSource) error {
-	if source.managed {
+	if source.managed || source.isolated {
 		return nil
 	}
 	if source.pathPi {

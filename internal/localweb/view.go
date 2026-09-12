@@ -531,6 +531,10 @@ func agentExecutionViewOf(binding domain.AgentExecutionProfileBinding) *agentExe
 		view.CostStatus = "unknown"
 	}
 	switch binding.Profile() {
+	case domain.AgentExecutionProfileIsolatedLocal:
+		view.DisclosureLabel = "Isolated Local · Sandboxed"
+		view.AttemptTimeoutSeconds = 1200
+		view.CostStatus = "unknown"
 	case domain.AgentExecutionProfileMinimal:
 		view.DisclosureLabel = "Minimal · Sandboxed"
 	case domain.AgentExecutionProfileStandard:
@@ -1165,7 +1169,7 @@ func (server *Server) runView(ctx context.Context, runID domain.RunID) (runView,
 		return runView{}, resourceSnapshotErr
 	}
 	hasResourceSnapshot := resourceSnapshotErr == nil
-	localConnectedReview := charter.CapabilityEnvelope()[speccoding.LocalConnectedNoSandboxCapability]
+	localConnectedReview := charter.CapabilityEnvelope()[speccoding.LocalConnectedNoSandboxCapability] || charter.CapabilityEnvelope()[speccoding.IsolatedLocalCapability]
 	verificationDisposition := verificationDispositionView{
 		State:  "not_applicable",
 		Reason: "Independent verification applies only to registered Spec Coding Tasks; this diagnostic Agent Run is complete without a Verification Result.",
@@ -1404,6 +1408,27 @@ func (server *Server) runView(ctx context.Context, runID domain.RunID) (runView,
 		executionWorkspace := charter.WorkspaceRoot()
 		if attempt.AdapterID() == agentpi.AdapterID {
 			sandbox = sandboxIdentityViewOf(attempt.AgentExecutionProfileBinding(), server.piStatus)
+			if attempt.AgentExecutionProfileBinding().Profile() == domain.AgentExecutionProfileIsolatedLocal {
+				sandbox = sandboxIdentityView{Status: "unavailable", Provider: domain.DockerExecutionProvider, Mode: "Isolated Local", Image: "not-reported", PolicyFingerprint: "not-reported"}
+				if binding, err := reader.GetSpecCodingBinding(ctx, run.TaskID()); err == nil && sha256.Sum256(binding.ActiveContractJSON) == binding.ActiveContractDigest {
+					var frozen struct {
+						Candidate struct {
+							Sandbox struct {
+								SHA256 string `json:"sha256"`
+							} `json:"sandbox"`
+							Policy struct {
+								SHA256 string `json:"sha256"`
+							} `json:"policy"`
+						} `json:"candidate"`
+					}
+					if json.Unmarshal(binding.ActiveContractJSON, &frozen) == nil && len(frozen.Candidate.Sandbox.SHA256) == 64 && len(frozen.Candidate.Policy.SHA256) == 64 {
+						sandbox.Status = "adopted"
+						sandbox.Image = "sha256:" + frozen.Candidate.Sandbox.SHA256
+						sandbox.PolicyFingerprint = frozen.Candidate.Policy.SHA256
+					}
+				}
+			}
+
 			if attempt.AgentExecutionProfileBinding().ExecutionProvider() == domain.DockerExecutionProvider {
 				executionWorkspace = "/workspace/repository"
 			} else if server.product || server.pathPiEnabled {

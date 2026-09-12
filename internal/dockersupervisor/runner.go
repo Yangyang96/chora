@@ -75,10 +75,6 @@ func NewDockerCommandRunner(authority DockerCommandAuthority) (CommandRunner, er
 	if !authority.valid() {
 		return nil, errors.New("invalid explicit Docker command authority")
 	}
-	path, err := exec.LookPath("docker")
-	if err != nil {
-		return nil, fmt.Errorf("resolve Docker CLI: %w", err)
-	}
 	configRoot := strings.TrimSpace(os.Getenv("DOCKER_CONFIG"))
 	if configRoot == "" {
 		home, homeErr := os.UserHomeDir()
@@ -86,6 +82,19 @@ func NewDockerCommandRunner(authority DockerCommandAuthority) (CommandRunner, er
 			return nil, fmt.Errorf("resolve Docker configuration root: %w", homeErr)
 		}
 		configRoot = filepath.Join(home, ".docker")
+	}
+	return NewDockerCommandRunnerWithConfigRoot(authority, configRoot)
+}
+
+// NewDockerCommandRunnerWithConfigRoot freezes an explicitly supplied Docker
+// configuration root without reading or mutating process-global environment.
+func NewDockerCommandRunnerWithConfigRoot(authority DockerCommandAuthority, configRoot string) (CommandRunner, error) {
+	if !authority.valid() {
+		return nil, errors.New("invalid explicit Docker command authority")
+	}
+	path, err := exec.LookPath("docker")
+	if err != nil {
+		return nil, fmt.Errorf("resolve Docker CLI: %w", err)
 	}
 	runner, err := newDockerRunner(path, configRoot, authority)
 	if err != nil {

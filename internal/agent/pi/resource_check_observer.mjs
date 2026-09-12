@@ -29,7 +29,8 @@ function exactKeys(value, keys) {
 }
 
 function validConfig(value) {
-  return exactKeys(value, ['schema', 'attemptId', 'taskRoot', 'resources']) &&
+  return (exactKeys(value, ['schema', 'attemptId', 'taskRoot', 'resources']) ||
+    (exactKeys(value, ['schema', 'attemptId', 'taskRoot', 'resources', 'repositoryLayout']) && value.repositoryLayout === 'isolated_copy')) &&
     value.schema === CONFIG_SCHEMA &&
     typeof value.attemptId === 'string' && value.attemptId.length > 0 && value.attemptId.length <= 128 &&
     typeof value.taskRoot === 'string' && isAbsolute(value.taskRoot) && value.taskRoot.length <= 4096 &&

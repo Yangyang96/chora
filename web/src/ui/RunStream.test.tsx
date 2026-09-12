@@ -10,7 +10,7 @@ type RunStreamHandlers = {
   onReview?: (kind: 'accept' | 'reject', note: string, rejectionClass?: 'implementation_gap' | 'planning_gap' | 'contract_change_required') => void
   onApply?: () => void
   onRetry?: (instructions: string) => void
-  onSwitchProfile?: (profile: 'minimal' | 'standard' | 'trusted_local', reason: string) => Promise<boolean>
+  onSwitchProfile?: (profile: 'minimal' | 'standard' | 'isolated_local' | 'trusted_local', reason: string) => Promise<boolean>
   onChangeRequirement?: () => void
 }
 

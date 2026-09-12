@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -47,18 +48,112 @@ type effectiveContainer struct {
 		} `json:"Ulimits"`
 	} `json:"HostConfig"`
 	Mounts []struct {
-		Type, Source, Destination string
-		RW                        bool
+		Type, Name, Source, Destination string
+		RW                              bool
 	} `json:"Mounts"`
 	NetworkSettings struct {
 		Networks map[string]json.RawMessage `json:"Networks"`
 	} `json:"NetworkSettings"`
 }
 
+type workbenchReadOnlyMount struct {
+	source        string
+	destination   string
+	originalModes map[string]os.FileMode
+}
+
+func resolveReadOnlyWorkspacePaths(repository string, relativePaths []string) ([]workbenchReadOnlyMount, error) {
+	if len(relativePaths) == 0 {
+		return nil, errors.New("Workbench read-only workspace paths are empty")
+	}
+	root, err := filepath.EvalSymlinks(repository)
+	if err != nil {
+		return nil, fmt.Errorf("resolve Workbench repository: %w", err)
+	}
+	seen := make(map[string]struct{}, len(relativePaths))
+	mounts := make([]workbenchReadOnlyMount, 0, len(relativePaths))
+	for _, relative := range relativePaths {
+		if relative == "" || filepath.IsAbs(relative) || filepath.Clean(relative) != relative || relative == "." || strings.Contains(relative, `\`) {
+			return nil, fmt.Errorf("invalid Workbench read-only path %q", relative)
+		}
+		if _, exists := seen[relative]; exists {
+			return nil, fmt.Errorf("duplicate Workbench read-only path %q", relative)
+		}
+		seen[relative] = struct{}{}
+		source := filepath.Join(repository, filepath.FromSlash(relative))
+		info, statErr := os.Lstat(source)
+		if statErr != nil || info.Mode()&os.ModeSymlink != 0 {
+			return nil, fmt.Errorf("Workbench read-only path %q is missing or a symlink", relative)
+		}
+		resolved, evalErr := filepath.EvalSymlinks(source)
+		if evalErr != nil || resolved != filepath.Join(root, filepath.FromSlash(relative)) || !pathWithin(root, resolved) {
+			return nil, fmt.Errorf("Workbench read-only path %q escapes repository", relative)
+		}
+		modes := map[string]os.FileMode{}
+		if err := filepath.WalkDir(source, func(path string, entry os.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			info, err := os.Lstat(path)
+			if err != nil {
+				return err
+			}
+			rel, err := filepath.Rel(source, path)
+			if err != nil {
+				return err
+			}
+			modes[rel] = info.Mode()
+			return nil
+		}); err != nil {
+			return nil, fmt.Errorf("record Workbench mount modes: %w", err)
+		}
+		mounts = append(mounts, workbenchReadOnlyMount{source: source, destination: "/workspace/repository/" + filepath.ToSlash(relative), originalModes: modes})
+	}
+	return mounts, nil
+}
+
+func pathWithin(root, path string) bool {
+	relative, err := filepath.Rel(root, path)
+	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
+}
+
+func makeReadOnlyMountTreeReadable(root string) error {
+	return filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		info, err := os.Lstat(path)
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return nil
+		}
+		var mode os.FileMode
+		switch {
+		case info.IsDir():
+			mode = 0o555
+		case info.Mode().IsRegular() && info.Mode().Perm()&0o111 != 0:
+			mode = 0o555
+		case info.Mode().IsRegular():
+			mode = 0o444
+		default:
+			return fmt.Errorf("Workbench read-only mount contains unsupported file %q", path)
+		}
+		if err := os.Chmod(path, mode); err != nil {
+			return fmt.Errorf("make Workbench mount readable: %w", err)
+		}
+		return nil
+	})
+}
+
 func (supervisor *Supervisor) verifyEffectiveContainers(ctx context.Context, record *attemptRecord, metadata invocationMetadata) error {
 	agent, err := supervisor.inspectEffectiveContainer(ctx, record.container)
 	if err != nil {
 		return fmt.Errorf("inspect effective Agent container: %w", err)
+	}
+	if supervisor.config.Workbench != nil {
+		return supervisor.verifyEffectiveWorkbench(agent, record, metadata)
 	}
 	boundary, err := supervisor.inspectEffectiveContainer(ctx, record.boundary)
 	if err != nil {
@@ -95,6 +190,76 @@ func (supervisor *Supervisor) verifyEffectiveContainers(ctx context.Context, rec
 	return nil
 }
 
+func workbenchEnvironmentMatches(environment []string, metadata map[string]string) bool {
+	expected := map[string]string{"HOME": "/run/chora/pi", "PI_CODING_AGENT_DIR": "/run/chora/pi", "PI_SKIP_VERSION_CHECK": "1", "PI_TELEMETRY": "0"}
+	for key, value := range metadata {
+		expected[key] = value
+	}
+	values := make(map[string]string, len(environment))
+	for _, assignment := range environment {
+		key, value, ok := strings.Cut(assignment, "=")
+		if !ok || key == "" {
+			return false
+		}
+		values[key] = value
+	}
+	for key, value := range expected {
+		if values[key] != value {
+			return false
+		}
+	}
+	for key := range values {
+		upper := strings.ToUpper(key)
+		if key == "DOCKER_HOST" || key == "HTTP_PROXY" || key == "HTTPS_PROXY" || key == "ALL_PROXY" || strings.Contains(upper, "TOKEN") || strings.Contains(upper, "SECRET") || strings.Contains(upper, "PASSWORD") || strings.Contains(upper, "CREDENTIAL") || strings.Contains(upper, "API_KEY") {
+			if _, explicitlyBound := expected[key]; !explicitlyBound {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func (supervisor *Supervisor) verifyEffectiveWorkbench(agent effectiveContainer, record *attemptRecord, metadata invocationMetadata) error {
+	labels := map[string]string{"chora.owner": "dockersupervisor", "chora.runtime_scope": supervisor.recoveryScope,
+		"chora.run_id": metadata.runID, "chora.attempt_id": metadata.attemptID, "chora.task_id": metadata.taskID, "chora.policy_digest": WorkbenchPolicyDigest}
+	if err := verifyCommonContainer(agent, record.container, supervisor.config.AttemptImageID, labels); err != nil {
+		return err
+	}
+	wantMounts := map[string]effectiveMount{
+		"/input/context": {Source: record.contextDir, RW: false},
+		"/workspace":     {Type: "volume", Source: record.workspaceVolume, RW: true},
+	}
+	for _, mount := range record.readOnlyWorkspaceMounts {
+		wantMounts[mount.destination] = effectiveMount{Source: mount.source, RW: false}
+	}
+	if agent.Config.User != "1000:1000" || agent.HostConfig.NetworkMode != "bridge" || agent.HostConfig.NanoCPUs != 2_000_000_000 ||
+		agent.HostConfig.Memory != 4096<<20 || agent.HostConfig.MemorySwap != 4096<<20 || agent.HostConfig.PidsLimit != 256 || !hasNofileLimit(agent, 1024) {
+		return errors.New("effective Workbench resource limits or user drift")
+	}
+	if !exactNetworkMembership(agent, []string{"bridge"}) {
+		return errors.New("effective Workbench network membership drift")
+	}
+	if !exactMounts(agent, wantMounts) {
+		mounts := make([]string, 0, len(agent.Mounts))
+		for _, mount := range agent.Mounts {
+			identity := mount.Name
+			if mount.Type == "bind" {
+				identity = "<bind>"
+			}
+			mounts = append(mounts, mount.Type+":"+mount.Destination+":"+identity+":"+strconv.FormatBool(mount.RW))
+		}
+		return fmt.Errorf("effective Workbench mounts drift: %v", mounts)
+	}
+	if !tmpfsMatches(agent.HostConfig.Tmpfs["/tmp"], []string{"rw", "nosuid", "nodev", "noexec", "uid=1000", "gid=1000", "size=64m"}) ||
+		!tmpfsMatches(agent.HostConfig.Tmpfs["/run/chora/pi"], []string{"rw", "nosuid", "nodev", "noexec", "uid=1000", "gid=1000", "size=16m"}) {
+		return errors.New("effective Workbench private tmpfs drift")
+	}
+	if !workbenchEnvironmentMatches(agent.Config.Env, metadata.environment) {
+		return errors.New("effective Workbench environment drift")
+	}
+	return nil
+}
+
 func (supervisor *Supervisor) inspectEffectiveContainer(ctx context.Context, name string) (effectiveContainer, error) {
 	result, err := supervisor.config.Runner.Run(ctx, Command{Args: []string{"container", "inspect", "--format", "{{json .}}", name}})
 	if err != nil || result.ExitCode != 0 {
@@ -127,6 +292,7 @@ func verifyCommonContainer(container effectiveContainer, name, imageID string, l
 }
 
 type effectiveMount struct {
+	Type   string
 	Source string
 	RW     bool
 }
@@ -137,7 +303,15 @@ func exactMounts(container effectiveContainer, expected map[string]effectiveMoun
 	}
 	for _, mount := range container.Mounts {
 		want, ok := expected[mount.Destination]
-		if !ok || mount.Type != "bind" || filepath.Clean(mount.Source) != want.Source || mount.RW != want.RW {
+		wantType := want.Type
+		if wantType == "" {
+			wantType = "bind"
+		}
+		actualSource := mount.Source
+		if mount.Type == "volume" {
+			actualSource = mount.Name
+		}
+		if !ok || mount.Type != wantType || filepath.Clean(actualSource) != want.Source || mount.RW != want.RW {
 			return false
 		}
 	}

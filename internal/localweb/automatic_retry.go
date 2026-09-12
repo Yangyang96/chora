@@ -164,6 +164,9 @@ func (server *Server) automaticRetryRouteError(ctx context.Context, attempt doma
 	if err != nil || !server.supervisor.hasTarget(target) {
 		return errors.New("Pi execution target is unavailable")
 	}
+	if attempt.AgentExecutionProfileBinding().Profile() == domain.AgentExecutionProfileIsolatedLocal {
+		return server.isolatedLocal.available(ctx)
+	}
 	if attempt.AgentExecutionProfileBinding().ExecutionProvider() != domain.DockerExecutionProvider {
 		return nil
 	}

@@ -32,10 +32,11 @@ type resourceFingerprintRequest struct {
 }
 
 type resourceFingerprintConfig struct {
-	Schema    string                                   `json:"schema"`
-	AttemptID string                                   `json:"attemptId"`
-	TaskRoot  string                                   `json:"taskRoot"`
-	Resources []speccoding.ExecutionRepositoryResource `json:"resources"`
+	RepositoryLayout string                                   `json:"repositoryLayout,omitempty"`
+	Schema           string                                   `json:"schema"`
+	AttemptID        string                                   `json:"attemptId"`
+	TaskRoot         string                                   `json:"taskRoot"`
+	Resources        []speccoding.ExecutionRepositoryResource `json:"resources"`
 }
 
 type resourceFingerprintResponse struct {
@@ -90,7 +91,7 @@ func decodeResourceFingerprintRequest(input io.Reader) (resourceFingerprintReque
 }
 
 func resourceCheckFingerprint(ctx context.Context, request resourceFingerprintRequest) (resourceFingerprintResponse, error) {
-	if request.Config.Schema != resourceObserverConfigSchema || strings.TrimSpace(request.Command) == "" {
+	if request.Config.Schema != resourceObserverConfigSchema || strings.TrimSpace(request.Command) == "" || (request.Config.RepositoryLayout != "" && request.Config.RepositoryLayout != "isolated_copy") {
 		return resourceFingerprintResponse{}, errors.New("resource fingerprint request authority is invalid")
 	}
 	if _, err := domain.ParseAttemptID(request.Config.AttemptID); err != nil {
@@ -128,6 +129,9 @@ func resourceCheckFingerprint(ctx context.Context, request resourceFingerprintRe
 	}
 	if resource == nil || !matchesFrozenResourceCheck(*resource, normalized.Argv, workingDirectory) {
 		return resourceFingerprintResponse{}, errors.New("resource fingerprint command is outside frozen check authority")
+	}
+	if request.Config.RepositoryLayout == "isolated_copy" {
+		ctx = context.WithValue(ctx, isolatedRepositoryCopyContextKey{}, true)
 	}
 	repositoryRoot, err := proveResourceFingerprintWorktree(ctx, request.Config.TaskRoot, canonicalRoot, *resource)
 	if err != nil {
@@ -296,7 +300,8 @@ func proveResourceFingerprintWorktree(ctx context.Context, taskRoot, canonicalRo
 		return "", errors.New("resource fingerprint repository is unavailable or unsafe")
 	}
 	gitLink, err := os.Lstat(filepath.Join(root, ".git"))
-	if err != nil || !gitLink.Mode().IsRegular() || gitLink.Mode()&os.ModeSymlink != 0 {
+	isolatedCopy := ctx.Value(isolatedRepositoryCopyContextKey{}) == true
+	if err != nil || gitLink.Mode()&os.ModeSymlink != 0 || (!isolatedCopy && !gitLink.Mode().IsRegular()) || (isolatedCopy && !gitLink.IsDir()) {
 		return "", errors.New("resource fingerprint repository is not a dedicated Git worktree")
 	}
 	canonical, err := filepath.EvalSymlinks(root)
@@ -311,7 +316,7 @@ func proveResourceFingerprintWorktree(ctx context.Context, taskRoot, canonicalRo
 	if err != nil || filepath.Clean(topCanonical) != filepath.Clean(canonical) {
 		return "", errors.New("resource fingerprint repository is not the exact Git root")
 	}
-	if common, commonErr := taskWorktreeCommonDirectory(ctx, root); commonErr != nil || !cleanAbsolutePath(common) {
+	if common, commonErr := taskWorktreeCommonDirectory(ctx, root); commonErr != nil || !cleanAbsolutePath(common) || (isolatedCopy && common != filepath.Join(root, ".git")) {
 		return "", errors.New("resource fingerprint repository common Git directory is unavailable")
 	}
 	head, err := gitTargetOutputBounded(ctx, root, domain.RepositoryMetadataBytes, "rev-parse", "--verify", "HEAD^{commit}")
@@ -321,6 +326,11 @@ func proveResourceFingerprintWorktree(ctx context.Context, taskRoot, canonicalRo
 	tree, err := gitTargetOutputBounded(ctx, root, domain.RepositoryMetadataBytes, "rev-parse", "--verify", "HEAD^{tree}")
 	if err != nil || strings.TrimSpace(string(tree)) != resource.BaseTree {
 		return "", errors.New("resource fingerprint repository tree differs from its frozen base")
+	}
+	if isolatedCopy {
+		if _, err := gitTargetOutputBounded(ctx, root, domain.RepositoryMetadataBytes, "symbolic-ref", "-q", "HEAD"); err == nil {
+			return "", errors.New("isolated repository must retain detached frozen HEAD")
+		}
 	}
 	if err := proveResourceFingerprintHeadBinding(ctx, taskRoot, root, resource); err != nil {
 		return "", err

@@ -153,9 +153,15 @@ func (server *Server) createResourceTask(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	if !server.pathPiEnabled || input.AgentExecutionProfile != domain.AgentExecutionProfileTrustedLocal || room.OwnershipKind() != domain.RoomOwnershipProject || len(input.Resources) == 0 || len(input.Resources) > domain.TaskRepositoryLimit {
-		writeError(w, http.StatusUnprocessableEntity, errors.New("select repositories and explicitly choose Local Connected"))
+	if !server.pathPiEnabled || (input.AgentExecutionProfile != domain.AgentExecutionProfileTrustedLocal && input.AgentExecutionProfile != domain.AgentExecutionProfileIsolatedLocal) || room.OwnershipKind() != domain.RoomOwnershipProject || len(input.Resources) == 0 || len(input.Resources) > domain.TaskRepositoryLimit {
+		writeError(w, http.StatusUnprocessableEntity, errors.New("select repositories and explicitly choose an execution mode"))
 		return
+	}
+	if input.AgentExecutionProfile == domain.AgentExecutionProfileIsolatedLocal {
+		if err := server.isolatedLocal.available(r.Context()); err != nil {
+			writeError(w, http.StatusServiceUnavailable, err)
+			return
+		}
 	}
 	if strings.TrimSpace(input.Requirement) == "" {
 		writeError(w, http.StatusBadRequest, errors.New("requirement is required"))

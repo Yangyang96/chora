@@ -1492,6 +1492,7 @@ type fakeRunner struct {
 	engineIdentityDrift     bool
 	attemptImageDrift       bool
 	boundaryImageDrift      bool
+	workbenchKillDrift      bool
 	qualificationReadError  bool
 	returnNilProcess        bool
 	active                  []*fakeProcess
@@ -1528,6 +1529,37 @@ func (runner *fakeRunner) Run(_ context.Context, command Command) (CommandResult
 		}
 		return CommandResult{Stdout: []byte(id + "\n")}, nil
 	}
+	if len(command.Args) == 5 && slices.Equal(command.Args[:4], []string{"volume", "inspect", "--format", "{{json .}}"}) {
+		for index := len(runner.calls) - 2; index >= 0; index-- {
+			created := runner.calls[index].Args
+			if len(created) < 3 || created[0] != "volume" || created[1] != "create" || created[len(created)-1] != command.Args[4] {
+				continue
+			}
+			document := struct {
+				Name, Driver string
+				Options      map[string]string
+				Labels       map[string]string
+			}{Name: command.Args[4], Driver: "local", Options: map[string]string{}, Labels: map[string]string{}}
+			for option := 2; option+1 < len(created)-1; option++ {
+				switch created[option] {
+				case "--driver":
+					document.Driver = created[option+1]
+				case "--opt":
+					key, value, ok := strings.Cut(created[option+1], "=")
+					if ok {
+						document.Options[key] = value
+					}
+				case "--label":
+					key, value, ok := strings.Cut(created[option+1], "=")
+					if ok {
+						document.Labels[key] = value
+					}
+				}
+			}
+			data, _ := json.Marshal(document)
+			return CommandResult{Stdout: data}, nil
+		}
+	}
 	if len(command.Args) == 6 && command.Args[0] == "inspect" && command.Args[1] == "--type" && command.Args[2] == "container" && command.Args[3] == "--format" && command.Args[4] == "{{.State.Running}}" {
 		return CommandResult{Stdout: []byte(strconv.FormatBool(!runner.boundaryStopped) + "\n")}, nil
 	}
@@ -1542,6 +1574,9 @@ func (runner *fakeRunner) Run(_ context.Context, command Command) (CommandResult
 			}
 			runner.active[0].exit(exitCode)
 		}
+	}
+	if len(command.Args) == 2 && command.Args[0] == "kill" && strings.HasSuffix(command.Args[1], "-attempt") && !runner.workbenchKillDrift {
+		runner.boundaryStopped = true
 	}
 	if len(command.Args) > 1 && command.Args[0] == "rm" && command.Args[1] == "-f" {
 		runner.containerRemoved = true
@@ -1674,8 +1709,8 @@ func fakeEffectiveContainer(commands []Command, name string) (effectiveContainer
 		case "--mount":
 			fields := strings.Split(next(), ",")
 			mount := struct {
-				Type, Source, Destination string
-				RW                        bool
+				Type, Name, Source, Destination string
+				RW                              bool
 			}{RW: true}
 			for _, field := range fields {
 				key, mountValue, hasValue := strings.Cut(field, "=")
@@ -1691,6 +1726,9 @@ func fakeEffectiveContainer(commands []Command, name string) (effectiveContainer
 						mount.RW = false
 					}
 				}
+			}
+			if mount.Type == "volume" {
+				mount.Name = mount.Source
 			}
 			document.Mounts = append(document.Mounts, mount)
 		case "--entrypoint":
@@ -1723,6 +1761,14 @@ func (runner *fakeRunner) Start(_ context.Context, command Command) (Process, er
 	runner.mu.Lock()
 	defer runner.mu.Unlock()
 	runner.calls = append(runner.calls, command)
+	if len(command.Args) == 3 && command.Args[0] == "cp" && command.Args[2] == "-" {
+		if command.Stdout != nil {
+			_, _ = command.Stdout.Write(make([]byte, 1024))
+		}
+		process := newFakeProcess()
+		process.exit(0)
+		return process, nil
+	}
 	if runner.returnNilProcess {
 		return nil, nil
 	}

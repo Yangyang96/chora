@@ -47,6 +47,7 @@ async function fixture(invokeHelper, overrides = {}) {
     attemptId: 'attempt-1',
     taskRoot: '/task',
     resources: [{ repoId: 'repo-1' }],
+    ...overrides.config,
   }
   const configBytes = Buffer.from(JSON.stringify(config))
   const sourceBytes = Buffer.from('observer source')
@@ -283,3 +284,12 @@ test('native helper transport rejects oversized output', async (t) => {
   await chmod(helper, 0o700)
   await assert.rejects(runFingerprintHelper(helper, { config: {}, command: 'true' }), /output too large/)
 })
+
+ test('explicit isolated-copy config remains bound to helper observations', async () => {
+  const seen=[]
+  const { installed,config }=await fixture(async (request)=>{seen.push(request);return {}}, {config:{repositoryLayout:'isolated_copy'}})
+  assert.equal(installed,true)
+  assert.equal(config.repositoryLayout,'isolated_copy')
+  const invalid=await fixture(async()=>({}),{config:{repositoryLayout:'arbitrary'}})
+  assert.equal(invalid.installed,false)
+ })

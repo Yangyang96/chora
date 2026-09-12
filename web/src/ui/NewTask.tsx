@@ -5,10 +5,11 @@ import { TaskResources } from './TaskResources'
 import { TaskProgress } from './TaskProgress'
 import type { FormEvent } from 'react'
 import { useI18n } from '../i18n'
-import type { AgentExecutionProfile } from '../types'
+import type { AgentExecutionProfile, IsolatedLocalView } from '../types'
 import type { TaskResourceSelection } from '../taskFirstTypes'
 import { AgentExecutionDisclosure, AgentExecutionProfileSelector } from './AgentExecutionProfile'
 import type { PiDiscoveryFetch } from './PiDiscovery'
+import { IsolatedLocal } from './IsolatedLocal'
 
 type NewTaskProps = {
   projectId?: string
@@ -20,22 +21,25 @@ type NewTaskProps = {
   trustedLocalSelectionReady?: boolean
   trustedLocalAcknowledgementPolicy?: string
   piDiscovery?: PiDiscoveryFetch
+  isolatedLocal?: IsolatedLocalView
+  onPrepareIsolatedLocal?: () => Promise<void> | void
   onCancel: () => void
   onSubmit: (requirement: string, agentExecutionProfile: AgentExecutionProfile, projectSettingsVersion?: number, resources?: TaskResourceSelection[]) => void
   onAcknowledgeTrustedLocal: () => Promise<boolean>
 }
 
-export function NewTask({ projectId, roomId, roomName, busy, preparationPending = false, trustedLocalSelectionReady, trustedLocalAcknowledgementPolicy, piDiscovery, onCancel, onSubmit, onAcknowledgeTrustedLocal, initialRequirement = '' }: NewTaskProps) {
+export function NewTask({ projectId, roomId, roomName, busy, preparationPending = false, trustedLocalSelectionReady, trustedLocalAcknowledgementPolicy, piDiscovery, isolatedLocal, onPrepareIsolatedLocal, onCancel, onSubmit, onAcknowledgeTrustedLocal, initialRequirement = '' }: NewTaskProps) {
   const { t } = useI18n()
   const [settingsVersion, setSettingsVersion] = useState<number>()
   const [resourceBlocker, setResourceBlocker] = useState('')
   const [resources, setResources] = useState<TaskResourceSelection[]>()
   const [requirement, setRequirement] = useState(initialRequirement)
   const [selectedProfile, setSelectedProfile] = useState<AgentExecutionProfile>()
-  const localWorkbench = piDiscovery !== undefined && (piDiscovery.phase !== 'loaded' || piDiscovery.discovery.state !== 'unavailable')
-  const agentExecutionProfile = selectedProfile ?? (localWorkbench ? undefined : 'standard')
-  const discoveryPending = piDiscovery !== undefined && piDiscovery.phase !== 'loaded'
-  const unavailable = discoveryPending || (localWorkbench && (agentExecutionProfile !== 'trusted_local' || piDiscovery?.phase !== 'loaded' || piDiscovery.discovery.state !== 'ready'))
+  const localWorkbench = piDiscovery !== undefined
+  const agentExecutionProfile = selectedProfile ?? 'isolated_local'
+  const trustedLocalUnavailable = agentExecutionProfile === 'trusted_local' && (piDiscovery?.phase !== 'loaded' || (piDiscovery.discovery.state !== 'ready' && piDiscovery.discovery.state !== 'unavailable'))
+  const isolatedLocalUnavailable = agentExecutionProfile === 'isolated_local' && isolatedLocal?.state !== 'ready'
+  const unavailable = trustedLocalUnavailable || isolatedLocalUnavailable
   const [disclosurePending, setDisclosurePending] = useState(false)
   const usesTaskResources = Boolean(projectId && roomId)
 
@@ -43,9 +47,8 @@ export function NewTask({ projectId, roomId, roomName, busy, preparationPending 
     busy ? t(preparationPending ? 'Preparing task worktree…' : 'Wait for the current operation to finish.') : '',
     disclosurePending ? t('Finish the Local Connected acknowledgement first.') : '',
     !requirement.trim() ? t('Enter the task requirement.') : '',
-    discoveryPending ? t('Checking Pi availability. Please wait.') : '',
-    !agentExecutionProfile || (localWorkbench && agentExecutionProfile !== 'trusted_local') ? t('Choose Local Connected and acknowledge its host access before starting.') : '',
-    localWorkbench && agentExecutionProfile === 'trusted_local' && !discoveryPending && piDiscovery?.phase === 'loaded' && piDiscovery.discovery.state !== 'ready' ? t('Open the Pi readiness details and resolve the reported issue.') : '',
+    isolatedLocalUnavailable ? t('Prepare Isolated Local and restart Chora if requested before starting.') : '',
+    trustedLocalUnavailable ? t('Open the Pi readiness details and resolve the reported issue.') : '',
     usesTaskResources && (!resources || resources.length === 0) ? resourceBlocker || t('Loading repositories…') : '',
     !usesTaskResources && projectId && settingsVersion === undefined ? t('Wait for Project settings to load; resolve any settings error shown above.') : '',
   ].filter(Boolean).join('\n')
@@ -84,6 +87,7 @@ export function NewTask({ projectId, roomId, roomName, busy, preparationPending 
         onAcknowledgeTrustedLocal={onAcknowledgeTrustedLocal}
         onDisclosurePendingChange={setDisclosurePending}
       />
+      {agentExecutionProfile === 'isolated_local' && isolatedLocal && <IsolatedLocal value={isolatedLocal} onPrepare={onPrepareIsolatedLocal ?? (() => {})} />}
       <p className="agent-profile-summary">
         {agentExecutionProfile ? <>{t('Selected profile:')} <AgentExecutionDisclosure profile={agentExecutionProfile} /></> : t('Choose Local Connected and acknowledge its host access before starting.')}
       </p>

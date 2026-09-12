@@ -1,6 +1,7 @@
 package dockersupervisor
 
 import (
+	"archive/tar"
 	"bytes"
 	"context"
 	"crypto/rand"
@@ -12,6 +13,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	pathpkg "path"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -37,6 +39,10 @@ const (
 	RequiredColimaVersion = "0.10.3"
 
 	pinnedPolicyDigest = "efe8918d0c9c4232c8292941f573fe386d93a3faa051329c883c9b8349b66f04"
+	// WorkbenchPolicyDigest pins the complete public isolated-local Docker
+	// policy. Changing any boundary requires a new policy identifier and digest.
+	WorkbenchPolicyCanonical = "chora.public-workbench.v1;workspace=workspace-local-tmpfs-volume-256m;container-memory=4g;cpus=2;pids=256;network=bridge;rootfs=readonly;uid=1000;cap-drop=all;no-new-privileges=true;deadline=20m"
+	WorkbenchPolicyDigest    = "a5cc10b0c1f65ed46522e2ff12f60f9765f70f53fbc69983c0e53b7d37649a2f"
 
 	persistedLogBytes = 10 << 20
 	artifactBytes     = 100 << 20
@@ -69,6 +75,12 @@ const (
 	EnvPatchPath           = "CHORA_PATCH_PATH"
 	EnvChecksPath          = "CHORA_CHECKS_PATH"
 	EnvRuntimeIdentityPath = "CHORA_RUNTIME_IDENTITY_PATH"
+	EnvObserverConfigPath  = "CHORA_CHECK_OBSERVER_CONFIG"
+	EnvObserverConfigSHA   = "CHORA_CHECK_OBSERVER_CONFIG_SHA256"
+	EnvObserverHelperPath  = "CHORA_CHECK_OBSERVER_HELPER"
+	EnvObserverHelperSHA   = "CHORA_CHECK_OBSERVER_HELPER_SHA256"
+	EnvObserverRuntimeSHA  = "CHORA_CHECK_OBSERVER_RUNTIME_FINGERPRINT"
+	EnvObserverSHA         = "CHORA_CHECK_OBSERVER_SHA256"
 
 	managedSourceContractVersion = "chora.pi-runtime-source.v4"
 	managedSourceKind            = "managed_image"
@@ -115,6 +127,21 @@ type Config struct {
 	CapabilityContract            CapabilityProbeContract
 	EngineQualification           EngineQualification
 	ColimaVersion                 func(context.Context) (string, error)
+	Workbench                     *WorkbenchConfig
+}
+
+// WorkbenchConfig opts the existing supervisor into the public Workbench
+// lifecycle. The top-level Config remains the authority for Runtime source,
+// image, credential, policy, and Engine qualification identities.
+type WorkbenchConfig struct {
+	Arguments              []string
+	RuntimeVersion         string
+	ObserverSHA256         string
+	HelperSHA256           string
+	RuntimeFingerprint     string
+	PrepareWorkspace       func(context.Context, execution.Invocation, string) error
+	CollectWorkspace       func(context.Context, execution.Invocation, string) error
+	ReadOnlyWorkspacePaths func(execution.Invocation) ([]string, error)
 }
 
 type ProviderIdentity struct {
@@ -177,6 +204,9 @@ type attemptRecord struct {
 	startReturned                                         bool
 	recovered                                             bool
 	terminal                                              execution.TerminalFiles
+	invocation                                            execution.Invocation
+	readOnlyWorkspaceMounts                               []workbenchReadOnlyMount
+	workspaceVolume                                       string
 	cleanupMu                                             sync.Mutex
 }
 
@@ -198,12 +228,14 @@ func New(config Config) (*Supervisor, error) {
 		config.ArtifactRoot = filepath.Join(filepath.Dir(config.RuntimeRoot), "artifacts")
 	}
 	config.ArtifactRoot = filepath.Clean(config.ArtifactRoot)
+	workbench := config.Workbench != nil
+	validWorkbench := !workbench || validWorkbenchConfig(config.Workbench)
 	if !filepath.IsAbs(config.RuntimeRoot) || !validDigest(config.PolicyDigest) ||
 		!filepath.IsAbs(config.ArtifactRoot) || config.ArtifactRoot == config.RuntimeRoot ||
-		!validImageID(config.AttemptImageID) || !validImageID(config.BoundaryImageID) || config.VerifierImageID != "" && !validImageID(config.VerifierImageID) || !validDigest(config.RuntimeSourceIdentity) ||
-		(config.CredentialSource != "" && !filepath.IsAbs(config.CredentialSource)) || !filepath.IsAbs(config.TrustAnchorSource) ||
+		!validImageID(config.AttemptImageID) || (!workbench && !validImageID(config.BoundaryImageID)) || (workbench && config.BoundaryImageID != "") || config.VerifierImageID != "" && !validImageID(config.VerifierImageID) || !validDigest(config.RuntimeSourceIdentity) ||
+		(config.CredentialSource != "" && !filepath.IsAbs(config.CredentialSource)) || (!workbench && !filepath.IsAbs(config.TrustAnchorSource)) || (workbench && config.TrustAnchorSource != "") ||
 		(config.AcceptanceTimeoutPolicyDigest != "" && !validDigest(config.AcceptanceTimeoutPolicyDigest)) ||
-		config.PolicyDigest != pinnedPolicyDigest || config.CooperativeWait < 0 || config.DeathWait < 0 || config.AttemptTimeout < 0 {
+		(!workbench && config.PolicyDigest != pinnedPolicyDigest) || (workbench && config.PolicyDigest != WorkbenchPolicyDigest) || !validWorkbench || config.CooperativeWait < 0 || config.DeathWait < 0 || config.AttemptTimeout < 0 {
 		return nil, ErrInvalidConfig
 	}
 	hasContract := len(config.CapabilityContract.canonical) != 0
@@ -253,6 +285,14 @@ func New(config Config) (*Supervisor, error) {
 		byHandle:        map[string]*attemptRecord{}, byIdentity: map[string]*attemptRecord{}, byLaunch: map[string]*attemptRecord{},
 		loadProjection: loadTaskProjection,
 	}, nil
+}
+
+func validWorkbenchConfig(config *WorkbenchConfig) bool {
+	return config != nil && slices.Equal(config.Arguments, []string{
+		"--mode", "rpc", "--no-session", "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files",
+		"--provider", "deepseek", "--model", "deepseek-v4-flash", "--extension", "/opt/chora/resource_check_observer.mjs",
+	}) && config.RuntimeVersion == "0.85.1" && validDigest(config.ObserverSHA256) && validDigest(config.HelperSHA256) &&
+		validDigest(config.RuntimeFingerprint) && config.PrepareWorkspace != nil && config.CollectWorkspace != nil && config.ReadOnlyWorkspacePaths != nil
 }
 
 func (supervisor *Supervisor) Verify(ctx context.Context) (ProviderIdentity, error) {
@@ -312,12 +352,17 @@ func (supervisor *Supervisor) Start(ctx context.Context, invocation execution.In
 	if _, err := supervisor.qualifyExecution(ctx); err != nil {
 		return noChild(launch, err.Error())
 	}
-	projection, err := supervisor.loadProjection(supervisor.config.CredentialSource, supervisor.config.TrustAnchorSource)
+	var projection taskProjection
+	if supervisor.config.Workbench != nil {
+		projection, err = loadWorkbenchAPIKeyProjection(supervisor.config.CredentialSource)
+	} else {
+		projection, err = supervisor.loadProjection(supervisor.config.CredentialSource, supervisor.config.TrustAnchorSource)
+	}
 	if err != nil {
 		return noChild(launch, err.Error())
 	}
 	defer projection.clear()
-	record, err := supervisor.newRecord(invocation, sink, metadata, directive)
+	record, err := supervisor.newRecord(ctx, invocation, sink, metadata, directive)
 	if err != nil {
 		return noChild(launch, err.Error())
 	}
@@ -453,13 +498,14 @@ func (supervisor *Supervisor) qualifyExecution(ctx context.Context) (EngineIdent
 	if !restored.ValidFor(observed, restoredContract) {
 		return EngineIdentity{}, fmt.Errorf("%w: Engine identity or exact capability contract drift", ErrNotQualified)
 	}
-	for _, image := range []struct {
+	images := []struct {
 		role string
 		id   string
-	}{
-		{role: "Attempt", id: supervisor.config.AttemptImageID},
-		{role: "Boundary", id: supervisor.config.BoundaryImageID},
-	} {
+	}{{role: "Attempt", id: supervisor.config.AttemptImageID}}
+	if supervisor.config.Workbench == nil {
+		images = append(images, struct{ role, id string }{role: "Boundary", id: supervisor.config.BoundaryImageID})
+	}
+	for _, image := range images {
 		actual, inspectErr := runnerText(ctx, supervisor.config.Runner, []string{"image", "inspect", "--format", "{{.Id}}", image.id})
 		if inspectErr != nil {
 			return EngineIdentity{}, fmt.Errorf("%w: observe exact %s image: %v", ErrNotQualified, image.role, inspectErr)
@@ -481,7 +527,11 @@ type invocationMetadata struct {
 }
 
 func (supervisor *Supervisor) validateInvocation(invocation execution.Invocation, sink execution.RuntimeSink) (invocationMetadata, error) {
-	if invocation.AdapterID() != allowedAdapter || invocation.Executable() != allowedExecutable || !slices.Equal(invocation.Arguments(), frozenArguments) {
+	wantedArguments := frozenArguments
+	if supervisor.config.Workbench != nil {
+		wantedArguments = supervisor.config.Workbench.Arguments
+	}
+	if invocation.AdapterID() != allowedAdapter || invocation.Executable() != allowedExecutable || !slices.Equal(invocation.Arguments(), wantedArguments) {
 		return invocationMetadata{}, errors.New("invocation identity or arguments are not frozen Pi RPC")
 	}
 	if sink == nil || !invocation.LaunchToken().Valid() || sink.Binding() != invocation.LaunchToken() {
@@ -500,13 +550,19 @@ func (supervisor *Supervisor) validateInvocation(invocation execution.Invocation
 		EnvPersistedLogLimit, EnvArtifactLimit, EnvResultPath, EnvPatchPath,
 		EnvChecksPath, EnvRuntimeIdentityPath,
 	}
+	if supervisor.config.Workbench != nil {
+		allowed = append(allowed, EnvObserverConfigPath, EnvObserverConfigSHA, EnvObserverHelperPath, EnvObserverHelperSHA, EnvObserverRuntimeSHA, EnvObserverSHA)
+	}
 	if len(environment) != len(allowed) {
 		return invocationMetadata{}, errors.New("invocation environment is not exact allowlist")
 	}
 	for _, key := range allowed {
-		if key != EnvTrustDisclosure && strings.TrimSpace(environment[key]) == "" {
+		if key != EnvTrustDisclosure && !(supervisor.config.Workbench != nil && key == EnvBoundaryImageID) && strings.TrimSpace(environment[key]) == "" {
 			return invocationMetadata{}, fmt.Errorf("invocation environment missing %s", key)
 		}
+	}
+	if supervisor.config.Workbench != nil {
+		return supervisor.validateWorkbenchInvocation(invocation, environment)
 	}
 	profile := domain.AgentExecutionProfile(environment[EnvExecutionProfile])
 	var wantCapabilityPolicy string
@@ -550,6 +606,86 @@ func (supervisor *Supervisor) validateInvocation(invocation execution.Invocation
 		}
 	}
 	return invocationMetadata{runID: environment[EnvRunID], attemptID: environment[EnvAttemptID], taskID: taskID, snapshotID: snapshotID, environment: environment, prompt: prompt}, nil
+}
+
+func validateWorkbenchPrompt(stdin []byte, contextDigest, contractDigest string) (string, string, error) {
+	if len(stdin) == 0 || stdin[len(stdin)-1] != '\n' {
+		return "", "", errors.New("Workbench stdin must end with newline")
+	}
+	lines := bytes.Split(bytes.TrimSuffix(stdin, []byte{'\n'}), []byte{'\n'})
+	if len(lines) != 2 {
+		return "", "", errors.New("Workbench stdin must contain get_state and prompt commands")
+	}
+	var preflight struct {
+		ID   string `json:"id"`
+		Type string `json:"type"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(lines[0]))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&preflight); err != nil || preflight.ID != "chora-get-state" || preflight.Type != "get_state" {
+		return "", "", errors.New("Workbench stdin get_state command is invalid")
+	}
+	var command struct {
+		ID      string `json:"id"`
+		Type    string `json:"type"`
+		Message string `json:"message"`
+	}
+	decoder = json.NewDecoder(bytes.NewReader(lines[1]))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&command); err != nil || command.ID == "" || command.Type != "prompt" || command.Message == "" {
+		return "", "", errors.New("Workbench stdin prompt command is invalid")
+	}
+	const correctionMarker = "\n\nHuman Review correction for this successor Attempt. Apply these instructions within the frozen execution contract; preserve its authority and boundaries:\n"
+	frozenMessage := command.Message
+	if index := strings.Index(frozenMessage, correctionMarker); index >= 0 {
+		if strings.TrimSpace(frozenMessage[index+len(correctionMarker):]) == "" {
+			return "", "", errors.New("Workbench Human Review correction is empty")
+		}
+		frozenMessage = frozenMessage[:index]
+	}
+	snapshot, contract, ok := execution.UnwrapFrozenExecutionPrompt(frozenMessage)
+	if !ok {
+		return "", "", errors.New("Workbench stdin prompt is missing frozen execution authority")
+	}
+	if digestText(snapshot) != contextDigest || digestText(contract) != contractDigest {
+		return "", "", errors.New("Workbench prompt digest mismatch")
+	}
+	var snapshotIdentity, contractIdentity struct {
+		Task struct {
+			ID string `json:"id"`
+		} `json:"task"`
+	}
+	if json.Unmarshal(snapshot, &snapshotIdentity) != nil || json.Unmarshal(contract, &contractIdentity) != nil || snapshotIdentity.Task.ID == "" || snapshotIdentity.Task.ID != contractIdentity.Task.ID {
+		return "", "", errors.New("Workbench Snapshot and Contract Task identity mismatch")
+	}
+	return string(snapshot), snapshotIdentity.Task.ID, nil
+}
+
+func (supervisor *Supervisor) validateWorkbenchInvocation(invocation execution.Invocation, environment map[string]string) (invocationMetadata, error) {
+	workbench := supervisor.config.Workbench
+	if environment[EnvExecutionProfile] != "isolated_local" || environment[EnvRuntimeSource] != "public_pi_image" ||
+		environment[EnvRuntimeSourceID] != supervisor.config.RuntimeSourceIdentity || environment[EnvRuntimeVersion] != workbench.RuntimeVersion ||
+		environment[EnvExecutionProvider] != domain.DockerExecutionProvider || environment[EnvCapabilityPolicy] != "chora.isolated-local.v1" ||
+		environment[EnvTrustDisclosure] != "" || environment[EnvBoundaryImageID] != "" || environment[EnvPolicyDigest] != WorkbenchPolicyDigest ||
+		environment[EnvAttemptImageID] != supervisor.config.AttemptImageID || environment[EnvCommandTimeout] != "600" || environment[EnvAttemptTimeout] != "1200" ||
+		environment[EnvPersistedLogLimit] != strconv.Itoa(persistedLogBytes) || environment[EnvArtifactLimit] != strconv.Itoa(artifactBytes) ||
+		environment[EnvCapabilityBundleID] != "chora.public-pi-observer.v1" || environment[EnvCapabilityBundleSHA] != workbench.ObserverSHA256 ||
+		environment[EnvObserverConfigPath] != "/input/context/observer.json" || environment[EnvObserverHelperPath] != "/usr/local/bin/chora" ||
+		environment[EnvObserverHelperSHA] != workbench.HelperSHA256 || environment[EnvObserverRuntimeSHA] != workbench.RuntimeFingerprint || environment[EnvObserverSHA] != workbench.ObserverSHA256 ||
+		!validDigest(environment[EnvObserverConfigSHA]) {
+		return invocationMetadata{}, errors.New("invocation public Workbench identity or policy mismatch")
+	}
+	wantPaths := map[string]string{EnvResultPath: "/output/result.json", EnvPatchPath: "/output/patch.diff", EnvChecksPath: "/output/checks.json", EnvRuntimeIdentityPath: "/output/runtime-identity.json"}
+	for key, value := range wantPaths {
+		if environment[key] != value {
+			return invocationMetadata{}, fmt.Errorf("invalid output path %s", key)
+		}
+	}
+	prompt, taskID, err := validateWorkbenchPrompt(invocation.Stdin(), environment[EnvContextDigest], environment[EnvContractDigest])
+	if err != nil {
+		return invocationMetadata{}, err
+	}
+	return invocationMetadata{runID: environment[EnvRunID], attemptID: environment[EnvAttemptID], taskID: taskID, environment: environment, prompt: prompt}, nil
 }
 
 func snapshotIDFromPrompt(stdin []byte, contextDigest string) (string, error) {
@@ -650,7 +786,7 @@ func validatePrompt(stdin []byte, contextDigest, contractDigest string) (string,
 	return string(snapshotBytes), taskID, nil
 }
 
-func (supervisor *Supervisor) newRecord(invocation execution.Invocation, sink execution.RuntimeSink, metadata invocationMetadata, directive acceptanceauthority.Directive) (*attemptRecord, error) {
+func (supervisor *Supervisor) newRecord(ctx context.Context, invocation execution.Invocation, sink execution.RuntimeSink, metadata invocationMetadata, directive acceptanceauthority.Directive) (*attemptRecord, error) {
 	suffix, err := randomSuffix()
 	if err != nil {
 		return nil, err
@@ -660,6 +796,7 @@ func (supervisor *Supervisor) newRecord(invocation execution.Invocation, sink ex
 	baseline := filepath.Join(root, "baseline", "repository")
 	repository := filepath.Join(root, "workspace", "repository")
 	contextDir := filepath.Join(root, "context")
+	var readOnlyMounts []workbenchReadOnlyMount
 	if err := os.Mkdir(root, 0o700); err != nil {
 		return nil, err
 	}
@@ -671,13 +808,41 @@ func (supervisor *Supervisor) newRecord(invocation execution.Invocation, sink ex
 		_ = os.RemoveAll(root)
 		return nil, err
 	}
-	if err := copyTree(invocation.WorkingRoot(), baseline); err != nil {
+	if supervisor.config.Workbench != nil {
+		if err := os.MkdirAll(repository, 0o700); err != nil {
+			_ = os.RemoveAll(root)
+			return nil, err
+		}
+		if err := supervisor.config.Workbench.PrepareWorkspace(ctx, invocation, repository); err != nil {
+			_ = os.RemoveAll(root)
+			return nil, fmt.Errorf("prepare Workbench workspace: %w", err)
+		}
+		paths, err := supervisor.config.Workbench.ReadOnlyWorkspacePaths(invocation)
+		if err != nil {
+			_ = os.RemoveAll(root)
+			return nil, fmt.Errorf("resolve Workbench read-only paths: %w", err)
+		}
+		mounts, err := resolveReadOnlyWorkspacePaths(repository, paths)
+		if err != nil {
+			_ = os.RemoveAll(root)
+			return nil, err
+		}
+		for _, mount := range mounts {
+			if err := makeReadOnlyMountTreeReadable(mount.source); err != nil {
+				_ = os.RemoveAll(root)
+				return nil, err
+			}
+		}
+		readOnlyMounts = mounts
+	} else if err := copyTree(invocation.WorkingRoot(), baseline); err != nil {
 		_ = os.RemoveAll(root)
 		return nil, err
 	}
-	if err := copyTree(invocation.WorkingRoot(), repository); err != nil {
-		_ = os.RemoveAll(root)
-		return nil, err
+	if supervisor.config.Workbench == nil {
+		if err := copyTree(invocation.WorkingRoot(), repository); err != nil {
+			_ = os.RemoveAll(root)
+			return nil, err
+		}
 	}
 	if err := makeContainerWorkspaceWritable(filepath.Join(root, "workspace")); err != nil {
 		_ = os.RemoveAll(root)
@@ -720,13 +885,17 @@ func (supervisor *Supervisor) newRecord(invocation execution.Invocation, sink ex
 		runID: metadata.runID, attemptID: metadata.attemptID, taskID: metadata.taskID,
 		executionProfile: metadata.environment[EnvExecutionProfile], capabilityPolicy: metadata.environment[EnvCapabilityPolicy],
 		capabilityBundleID: metadata.environment[EnvCapabilityBundleID], capabilityBundleSHA256: metadata.environment[EnvCapabilityBundleSHA],
-		container: prefix + "-attempt", boundary: prefix + "-codex-boundary", internalNetwork: prefix + "-internal", upstreamNetwork: prefix + "-upstream",
+		container: prefix + "-attempt", boundary: prefix + "-codex-boundary", internalNetwork: prefix + "-internal", upstreamNetwork: prefix + "-upstream", workspaceVolume: prefix + "-workspace",
 		done: make(chan struct{}), exitCode: -1, terminationCause: execution.TerminationNone, attemptTimeout: recordTimeout, drained: map[execution.StreamKind]bool{},
 		acceptanceDirective: directive,
+		invocation:          invocation,
 		terminal: execution.TerminalFiles{Paths: map[string]string{
 			"result": filepath.Join(terminalRoot, "result.json"), "patch": filepath.Join(terminalRoot, "patch.diff"),
 			"checks": filepath.Join(terminalRoot, "checks.json"), "runtime_identity": filepath.Join(terminalRoot, "runtime-identity.json"),
 		}},
+	}
+	if supervisor.config.Workbench != nil {
+		record.readOnlyWorkspaceMounts = readOnlyMounts
 	}
 	if directive.Action == acceptanceauthority.ActionForceManagedNonzero {
 		record.acceptanceInjectionState = acceptanceInjectionPending
@@ -766,6 +935,9 @@ func (supervisor *Supervisor) writeAttemptRootMarker(root, attemptID string) err
 }
 
 func (supervisor *Supervisor) setup(ctx context.Context, record *attemptRecord, invocation execution.Invocation, metadata invocationMetadata, projection taskProjection) error {
+	if supervisor.config.Workbench != nil {
+		return supervisor.setupWorkbench(ctx, record, metadata, projection)
+	}
 	profile := domain.AgentExecutionProfile(metadata.environment[EnvExecutionProfile])
 	bundle, err := agentpi.ManagedCapabilityBundleForProfile(profile)
 	if err != nil || bundle.ID() != metadata.environment[EnvCapabilityBundleID] || bundle.SHA256() != metadata.environment[EnvCapabilityBundleSHA] {
@@ -855,6 +1027,250 @@ func (supervisor *Supervisor) setup(ctx context.Context, record *attemptRecord, 
 	return nil
 }
 
+func (supervisor *Supervisor) setupWorkbench(ctx context.Context, record *attemptRecord, metadata invocationMetadata, projection taskProjection) error {
+	observerPath := filepath.Join(record.contextDir, "observer.json")
+	info, statErr := os.Lstat(observerPath)
+	configBytes, err := os.ReadFile(observerPath)
+	if statErr != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+		return errors.New("Workbench observer config must be a regular file")
+	}
+	if err != nil || digestText(configBytes) != metadata.environment[EnvObserverConfigSHA] {
+		return errors.New("Workbench observer config identity mismatch")
+	}
+	if err := os.Chmod(observerPath, 0o444); err != nil {
+		return fmt.Errorf("seal Workbench observer config: %w", err)
+	}
+	labels := []string{"--label", "chora.owner=dockersupervisor", "--label", "chora.runtime_scope=" + supervisor.recoveryScope,
+		"--label", "chora.run_id=" + metadata.runID, "--label", "chora.attempt_id=" + metadata.attemptID, "--label", "chora.task_id=" + metadata.taskID,
+		"--label", "chora.image_digest=" + supervisor.config.AttemptImageID, "--label", "chora.policy_digest=" + WorkbenchPolicyDigest}
+	stdout := &streamWriter{record: record, kind: execution.StreamStdout}
+	stderr := &streamWriter{record: record, kind: execution.StreamStderr}
+	record.stdout.setSecrets(projection.secrets)
+	record.stderr.setSecrets(projection.secrets)
+	attempt := append([]string{"create", "--pull=never", "--name", record.container}, labels...)
+	volume := []string{"volume", "create", "--driver", "local", "--opt", "type=tmpfs", "--opt", "device=tmpfs", "--opt", "o=size=256m,uid=1000,gid=1000,nosuid,nodev"}
+	volume = append(volume, labels...)
+	volume = append(volume, record.workspaceVolume)
+	if err := supervisor.runOK(ctx, volume); err != nil {
+		return fmt.Errorf("create Workbench workspace volume: %w", err)
+	}
+	expectedVolumeLabels := map[string]string{
+		"chora.owner": "dockersupervisor", "chora.runtime_scope": supervisor.recoveryScope,
+		"chora.run_id": metadata.runID, "chora.attempt_id": metadata.attemptID, "chora.task_id": metadata.taskID,
+		"chora.image_digest": supervisor.config.AttemptImageID, "chora.policy_digest": WorkbenchPolicyDigest,
+	}
+	if err := supervisor.verifyWorkbenchWorkspaceVolume(ctx, record, expectedVolumeLabels); err != nil {
+		return err
+	}
+	attempt = append(attempt, "--network", "bridge", "--user", "1000:1000", "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true",
+		"--pids-limit", "256", "--cpus", "2", "--memory", "4096m", "--memory-swap", "4096m", "--ulimit", "nofile=1024:1024", "--log-driver", "none",
+		"--mount", "type=volume,src="+record.workspaceVolume+",dst=/workspace", "--tmpfs", "/tmp:rw,nosuid,nodev,noexec,uid=1000,gid=1000,size=64m", "--tmpfs", "/run/chora/pi:rw,nosuid,nodev,noexec,uid=1000,gid=1000,size=16m",
+		"--env", "HOME=/run/chora/pi", "--env", "PI_CODING_AGENT_DIR=/run/chora/pi", "--env", "PI_SKIP_VERSION_CHECK=1", "--env", "PI_TELEMETRY=0")
+	keys := make([]string, 0, len(metadata.environment))
+	for key := range metadata.environment {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		attempt = append(attempt, "--env", key+"="+metadata.environment[key])
+	}
+	attempt = append(attempt, "--mount", "type=bind,src="+record.contextDir+",dst=/input/context,readonly")
+	for _, mount := range record.readOnlyWorkspaceMounts {
+		attempt = append(attempt, "--mount", "type=bind,src="+mount.source+",dst="+mount.destination+",readonly")
+	}
+	attempt = append(attempt, "--entrypoint", "/bin/sh", supervisor.config.AttemptImageID, "-c", "exec sleep infinity")
+	if err := supervisor.runOK(ctx, attempt); err != nil {
+		return fmt.Errorf("create Workbench attempt container: %w", err)
+	}
+	if err := supervisor.runOK(ctx, []string{"start", record.container}); err != nil {
+		return fmt.Errorf("start Workbench container: %w", err)
+	}
+	if err := supervisor.waitForContainer(ctx, record.container); err != nil {
+		return err
+	}
+	if err := supervisor.verifyEffectiveContainers(ctx, record, metadata); err != nil {
+		return err
+	}
+	workspace, err := archiveWorkbenchWorkspace(record.repository, record.readOnlyWorkspaceMounts)
+	if err != nil {
+		return err
+	}
+	if err := supervisor.prepareWorkbenchMountParents(ctx, record); err != nil {
+		return err
+	}
+	if err := supervisor.runOKInput(ctx, []string{"exec", "--user", "1000:1000", "-i", record.container, "tar", "--extract", "--no-same-owner", "--no-overwrite-dir", "-C", "/workspace"}, workspace); err != nil {
+		return fmt.Errorf("load bounded Workbench workspace: %w", err)
+	}
+	if err := supervisor.injectWorkbenchAPIKeyProjection(ctx, record.container, projection); err != nil {
+		return err
+	}
+	if err := supervisor.configureWorkbenchGitSafeDirectories(ctx, record); err != nil {
+		return err
+	}
+	execArgs := []string{"exec", "-i", "--user", "1000:1000", "--workdir", "/workspace/repository", record.container, allowedExecutable}
+	execArgs = append(execArgs, supervisor.config.Workbench.Arguments...)
+	process, err := supervisor.config.Runner.Start(context.Background(), Command{Args: execArgs, Stdout: stdout, Stderr: stderr})
+	if process != nil {
+		record.process = process
+	}
+	if err != nil {
+		return fmt.Errorf("start Workbench attempt container: %w", err)
+	}
+	record.startReturned = true
+	if process == nil {
+		return errors.New("start Workbench attempt container: Docker Runner returned no process")
+	}
+	return nil
+}
+
+func (supervisor *Supervisor) verifyWorkbenchWorkspaceVolume(ctx context.Context, record *attemptRecord, expectedLabels map[string]string) error {
+	text, err := runnerText(ctx, supervisor.config.Runner, []string{"volume", "inspect", "--format", "{{json .}}", record.workspaceVolume})
+	var volume struct {
+		Name    string            `json:"Name"`
+		Driver  string            `json:"Driver"`
+		Options map[string]string `json:"Options"`
+		Labels  map[string]string `json:"Labels"`
+	}
+	if err != nil || json.Unmarshal([]byte(text), &volume) != nil || volume.Name != record.workspaceVolume || volume.Driver != "local" ||
+		len(volume.Options) != 3 || volume.Options["type"] != "tmpfs" || volume.Options["device"] != "tmpfs" ||
+		volume.Options["o"] != "size=256m,uid=1000,gid=1000,nosuid,nodev" || len(volume.Labels) != len(expectedLabels) {
+		return errors.New("effective Workbench workspace volume identity or options drift")
+	}
+	for key, value := range expectedLabels {
+		if volume.Labels[key] != value {
+			return fmt.Errorf("effective Workbench workspace volume label %s drift", key)
+		}
+	}
+	return nil
+}
+
+func (supervisor *Supervisor) prepareWorkbenchMountParents(ctx context.Context, record *attemptRecord) error {
+	seen := map[string]struct{}{}
+	for _, mount := range record.readOnlyWorkspaceMounts {
+		for parent := pathpkg.Dir(mount.destination); strings.HasPrefix(parent, "/workspace/"); parent = pathpkg.Dir(parent) {
+			seen[parent] = struct{}{}
+		}
+	}
+	paths := make([]string, 0, len(seen))
+	for candidate := range seen {
+		readOnly := false
+		for _, mount := range record.readOnlyWorkspaceMounts {
+			if candidate == mount.destination || strings.HasPrefix(candidate, mount.destination+"/") {
+				readOnly = true
+				break
+			}
+		}
+		if !readOnly {
+			paths = append(paths, candidate)
+		}
+	}
+	sort.Strings(paths)
+	chmod := append([]string{"exec", "--user", "0:0", record.container, "chmod", "0777"}, paths...)
+	if err := supervisor.runOK(ctx, chmod); err != nil {
+		return fmt.Errorf("prepare Workbench tmpfs directories: %w", err)
+	}
+	return nil
+}
+
+func (supervisor *Supervisor) configureWorkbenchGitSafeDirectories(ctx context.Context, record *attemptRecord) error {
+	const gitSuffix = "/.git"
+	for _, mount := range record.readOnlyWorkspaceMounts {
+		if !strings.HasSuffix(mount.destination, gitSuffix) {
+			continue
+		}
+		repository := strings.TrimSuffix(mount.destination, gitSuffix)
+		args := []string{"exec", "--user", "1000:1000", record.container, "git", "config", "--global", "--add", "safe.directory", repository}
+		if err := supervisor.runOK(ctx, args); err != nil {
+			return fmt.Errorf("configure Workbench Git repository trust: %w", err)
+		}
+	}
+	return nil
+}
+
+type boundedArchiveBuffer struct {
+	bytes.Buffer
+	limit int
+}
+
+func (buffer *boundedArchiveBuffer) Write(data []byte) (int, error) {
+	if buffer.Len()+len(data) > buffer.limit {
+		return 0, errors.New("Workbench workspace exceeds 256 MiB")
+	}
+	return buffer.Buffer.Write(data)
+}
+
+func archiveWorkbenchWorkspace(repository string, mounts []workbenchReadOnlyMount) ([]byte, error) {
+	buffer := boundedArchiveBuffer{limit: 256 << 20}
+	w := tar.NewWriter(&buffer)
+	mountParents := map[string]struct{}{}
+	for _, mount := range mounts {
+		mountRel, _ := filepath.Rel(filepath.Dir(repository), mount.source)
+		for parent := filepath.Dir(mountRel); parent != "."; parent = filepath.Dir(parent) {
+			mountParents[parent] = struct{}{}
+		}
+	}
+	err := filepath.WalkDir(repository, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		rel, err := filepath.Rel(filepath.Dir(repository), path)
+		if err != nil {
+			return err
+		}
+		for _, mount := range mounts {
+			mountRel, _ := filepath.Rel(filepath.Dir(repository), mount.source)
+			if rel == mountRel || strings.HasPrefix(rel, mountRel+string(filepath.Separator)) {
+				if entry.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("Workbench source contains symlink %q", rel)
+		}
+		if entry.IsDir() {
+			if _, precreated := mountParents[rel]; precreated {
+				return nil
+			}
+		}
+		header, err := tar.FileInfoHeader(info, "")
+		if err != nil {
+			return err
+		}
+		header.Name = filepath.ToSlash(rel)
+		header.Uid, header.Gid, header.Uname, header.Gname = 1000, 1000, "", ""
+		if err := w.WriteHeader(header); err != nil {
+			return err
+		}
+		if info.Mode().IsRegular() {
+			file, err := os.Open(path)
+			if err != nil {
+				return err
+			}
+			_, copyErr := io.Copy(w, file)
+			closeErr := file.Close()
+			if copyErr != nil {
+				return copyErr
+			}
+			return closeErr
+		}
+		return nil
+	})
+	if err != nil {
+		_ = w.Close()
+		return nil, fmt.Errorf("archive Workbench workspace: %w", err)
+	}
+	if err := w.Close(); err != nil {
+		return nil, err
+	}
+	return buffer.Bytes(), nil
+}
+
 func (supervisor *Supervisor) dockerContainerID(ctx context.Context, name string) (string, error) {
 	id, err := supervisor.identityCommand(ctx, []string{"inspect", "--type", "container", "--format", "{{.Id}}", name})
 	if err != nil {
@@ -908,7 +1324,30 @@ func (supervisor *Supervisor) wait(record *attemptRecord) {
 		record.mu.Unlock()
 	} else if injectedFailure {
 		supervisor.deriveInjectedFailureTerminal(record)
-	} else if !stopRequested || timedOut {
+	} else if supervisor.config.Workbench != nil && !stopRequested && !timedOut {
+		var collectErr error
+		if exitCode != 0 {
+			collectErr = fmt.Errorf("Workbench process exited with status %d", exitCode)
+			_ = supervisor.terminateWorkbenchContainer(record)
+		} else if exported, err := supervisor.exportSettledWorkbench(record); err != nil {
+			collectErr = err
+		} else if err := supervisor.config.Workbench.CollectWorkspace(context.Background(), record.invocation, exported); err != nil {
+			collectErr = fmt.Errorf("collect Workbench workspace: %w", err)
+		}
+		if collectErr != nil {
+			diagnostic := []byte("\n[chora] Workbench collection failed: " + boundedDiagnostic([]byte(collectErr.Error())) + "\n")
+			if accepted, offset := record.stderr.append(diagnostic); accepted > 0 {
+				safeNotify(record.sink, execution.StreamStderr, offset)
+			}
+			record.mu.Lock()
+			record.exitCode = 1
+			record.terminationCause = execution.TerminationExitNonzero
+			record.mu.Unlock()
+		}
+		supervisor.deriveWorkbenchTerminal(record, collectErr)
+	} else if supervisor.config.Workbench != nil && timedOut {
+		supervisor.deriveWorkbenchTerminal(record, errors.New("Workbench execution timed out; partial changes were not imported"))
+	} else if supervisor.config.Workbench == nil && (!stopRequested || timedOut) {
 		supervisor.deriveTerminal(record)
 	}
 	record.mu.Lock()
@@ -916,6 +1355,176 @@ func (supervisor *Supervisor) wait(record *attemptRecord) {
 	close(record.done)
 	record.mu.Unlock()
 	safeExited(record.sink)
+}
+
+func (supervisor *Supervisor) exportSettledWorkbench(record *attemptRecord) (string, error) {
+	ctx, cancel := context.WithTimeout(WithOperationPhase(context.Background(), OperationPhaseAttempt), supervisor.config.DeathWait)
+	defer cancel()
+	if err := supervisor.runOK(ctx, []string{"pause", record.container}); err != nil {
+		_ = supervisor.terminateWorkbenchContainer(record)
+		return "", fmt.Errorf("quiesce Workbench container: %w", err)
+	}
+	exported := filepath.Join(record.root, "export", "repository")
+	if err := os.MkdirAll(exported, 0o700); err != nil {
+		_ = supervisor.terminateWorkbenchContainer(record)
+		return "", err
+	}
+	copyErr := supervisor.exportWorkbenchArchive(ctx, record.container, exported, record.readOnlyWorkspaceMounts)
+	deathErr := supervisor.terminateWorkbenchContainer(record)
+	if copyErr != nil {
+		return "", fmt.Errorf("export bounded Workbench workspace: %w", copyErr)
+	}
+	if deathErr != nil {
+		return "", deathErr
+	}
+	return exported, nil
+}
+
+func (supervisor *Supervisor) exportWorkbenchArchive(ctx context.Context, container, destination string, mounts []workbenchReadOnlyMount) error {
+	archive := boundedArchiveBuffer{limit: 260 << 20}
+	diagnostic := boundedArchiveBuffer{limit: 1 << 20}
+	process, err := supervisor.config.Runner.Start(ctx, Command{Args: []string{"cp", container + ":/workspace/repository/.", "-"}, Stdout: &archive, Stderr: &diagnostic})
+	if err != nil {
+		return err
+	}
+	_ = process.Close()
+	exitCode, waitErr := process.Wait()
+	if waitErr != nil || exitCode != 0 {
+		return fmt.Errorf("docker cp exit=%d error=%v stderr=%s", exitCode, waitErr, boundedDiagnostic(diagnostic.Bytes()))
+	}
+	if err := extractWorkbenchArchive(archive.Bytes(), destination); err != nil {
+		return err
+	}
+	return restoreExportedMountModes(destination, mounts)
+}
+
+func restoreExportedMountModes(destination string, mounts []workbenchReadOnlyMount) error {
+	const prefix = "/workspace/repository/"
+	for _, mount := range mounts {
+		base := filepath.Join(destination, filepath.FromSlash(strings.TrimPrefix(mount.destination, prefix)))
+		for relative, mode := range mount.originalModes {
+			path := filepath.Join(base, relative)
+			if mode&os.ModeSymlink != 0 {
+				continue
+			}
+			if err := os.Chmod(path, mode.Perm()); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return fmt.Errorf("restore Workbench exported mode: %w", err)
+			}
+		}
+	}
+	return nil
+}
+
+func extractWorkbenchArchive(data []byte, destination string) error {
+	reader := tar.NewReader(bytes.NewReader(data))
+	seen := map[string]struct{}{}
+	for count := 0; ; count++ {
+		if count > 100000 {
+			return errors.New("Workbench export contains too many entries")
+		}
+		header, err := reader.Next()
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("read Workbench export: %w", err)
+		}
+		name := strings.TrimPrefix(header.Name, "./")
+		if header.Typeflag == tar.TypeDir {
+			name = strings.TrimSuffix(name, "/")
+		}
+		clean := pathpkg.Clean(name)
+		if clean == "." && header.Typeflag == tar.TypeDir {
+			continue
+		}
+		if name == "" || clean != name || pathpkg.IsAbs(name) || clean == ".." || strings.HasPrefix(clean, "../") || strings.Contains(name, `\`) {
+			return fmt.Errorf("invalid Workbench export path %q", header.Name)
+		}
+		if _, exists := seen[clean]; exists {
+			return fmt.Errorf("duplicate Workbench export path %q", clean)
+		}
+		seen[clean] = struct{}{}
+		target := filepath.Join(destination, filepath.FromSlash(clean))
+		if !pathWithin(destination, target) {
+			return fmt.Errorf("Workbench export path escapes destination %q", clean)
+		}
+		switch header.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(target, 0o700); err != nil {
+				return err
+			}
+		case tar.TypeReg, tar.TypeRegA:
+			if header.Size < 0 || header.Size > 256<<20 {
+				return errors.New("Workbench export file exceeds limit")
+			}
+			if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
+				return err
+			}
+			file, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+			if err != nil {
+				return err
+			}
+			written, copyErr := io.CopyN(file, reader, header.Size)
+			closeErr := file.Close()
+			if copyErr != nil || written != header.Size {
+				return errors.Join(copyErr, closeErr, errors.New("incomplete Workbench export file"))
+			}
+			if closeErr != nil {
+				return closeErr
+			}
+			mode := os.FileMode(0o600)
+			if header.Mode&0o111 != 0 {
+				mode = 0o700
+			}
+			if err := os.Chmod(target, mode); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("Workbench export contains forbidden entry type %d at %q", header.Typeflag, clean)
+		}
+	}
+}
+
+func (supervisor *Supervisor) terminateWorkbenchContainer(record *attemptRecord) error {
+	ctx, cancel := context.WithTimeout(WithOperationPhase(context.Background(), OperationPhaseAttempt), supervisor.config.DeathWait)
+	defer cancel()
+	_ = supervisor.runAllowFailure(ctx, []string{"unpause", record.container})
+	if err := supervisor.runOK(ctx, []string{"kill", record.container}); err != nil {
+		return fmt.Errorf("kill Workbench container: %w", err)
+	}
+	return supervisor.proveWorkbenchContainerDead(record)
+}
+
+func (supervisor *Supervisor) proveWorkbenchContainerDead(record *attemptRecord) error {
+	ctx, cancel := context.WithTimeout(WithOperationPhase(context.Background(), OperationPhaseAttempt), supervisor.config.DeathWait)
+	defer cancel()
+	result, err := supervisor.config.Runner.Run(ctx, Command{Args: []string{"inspect", "--type", "container", "--format", "{{.State.Running}}", record.container}})
+	if err != nil || result.ExitCode != 0 || strings.TrimSpace(string(result.Stdout)) != "false" {
+		return fmt.Errorf("Workbench container death is unproven: exit=%d error=%v", result.ExitCode, err)
+	}
+	return nil
+}
+
+func (supervisor *Supervisor) deriveWorkbenchTerminal(record *attemptRecord, collectErr error) {
+	unknowns := []string{}
+	reviewReady := collectErr == nil
+	summary := "Workbench changes were validated and imported after sandbox death."
+	if collectErr != nil {
+		summary = "Workbench execution did not produce an importable settled result."
+		unknowns = append(unknowns, collectErr.Error())
+	}
+	result := map[string]any{"schema_version": "chora.agent-result.v1", "summary": summary, "review_ready": reviewReady,
+		"outputs": []map[string]string{}, "artifact_candidates": []map[string]string{}, "checks": []map[string]string{}, "unknowns": unknowns,
+		"handoff": map[string]any{"requested": false, "reason": ""}}
+	data, _ := json.Marshal(result)
+	data = append(data, '\n')
+	if err := writeExclusive(record.terminal.Paths["result"], data); err != nil {
+		record.mu.Lock()
+		record.exitCode = 1
+		record.terminationCause = execution.TerminationExitNonzero
+		record.terminal = execution.TerminalFiles{Paths: map[string]string{}}
+		record.mu.Unlock()
+	}
 }
 
 func (record *attemptRecord) classifyObservedExitLocked(exitCode int) {
@@ -1303,6 +1912,7 @@ func (supervisor *Supervisor) RegisterRecoveredDead(identity execution.ProcessId
 type dockerResourceInventory struct {
 	containers []string
 	networks   []string
+	volumes    []string
 }
 
 func (supervisor *Supervisor) cleanup(_ context.Context, record *attemptRecord) error {
@@ -1337,8 +1947,8 @@ func (supervisor *Supervisor) Recover(ctx context.Context) error {
 	verified, ownershipErr := supervisor.verifyRecoveryResourceOwnership(recoveryContext, inventory)
 	operationErr := supervisor.removeResources(recoveryContext, verified)
 	postInventory, proofInventoryErr := supervisor.inventoryResources(recoveryContext, filters)
-	if len(postInventory.containers) != 0 || len(postInventory.networks) != 0 {
-		proofInventoryErr = errors.Join(proofInventoryErr, fmt.Errorf("prove owned Docker resources absent: containers=%v networks=%v", postInventory.containers, postInventory.networks))
+	if len(postInventory.containers) != 0 || len(postInventory.networks) != 0 || len(postInventory.volumes) != 0 {
+		proofInventoryErr = errors.Join(proofInventoryErr, fmt.Errorf("prove owned Docker resources absent: containers=%v networks=%v volumes=%v", postInventory.containers, postInventory.networks, postInventory.volumes))
 	}
 	if dockerErr := errors.Join(inventoryErr, ownershipErr, operationErr, proofInventoryErr); dockerErr != nil {
 		return dockerErr
@@ -1456,8 +2066,13 @@ func appendDockerFilters(args, filters []string) []string {
 func (supervisor *Supervisor) inventoryResources(ctx context.Context, filters []string) (dockerResourceInventory, error) {
 	containerText, containerErr := supervisor.identityCommand(ctx, appendDockerFilters([]string{"ps", "-aq"}, filters))
 	networkText, networkErr := supervisor.identityCommand(ctx, appendDockerFilters([]string{"network", "ls", "-q"}, filters))
-	return dockerResourceInventory{containers: strings.Fields(containerText), networks: strings.Fields(networkText)},
-		errors.Join(wrapError("enumerate owned containers", containerErr), wrapError("enumerate owned networks", networkErr))
+	inventory := dockerResourceInventory{containers: strings.Fields(containerText), networks: strings.Fields(networkText)}
+	var volumeErr error
+	if supervisor.config.Workbench != nil {
+		volumeText, err := supervisor.identityCommand(ctx, appendDockerFilters([]string{"volume", "ls", "-q"}, filters))
+		inventory.volumes, volumeErr = strings.Fields(volumeText), err
+	}
+	return inventory, errors.Join(wrapError("enumerate owned containers", containerErr), wrapError("enumerate owned networks", networkErr), wrapError("enumerate owned volumes", volumeErr))
 }
 
 func (supervisor *Supervisor) removeResources(ctx context.Context, inventory dockerResourceInventory) error {
@@ -1481,6 +2096,11 @@ func (supervisor *Supervisor) removeResources(ctx context.Context, inventory doc
 			failures = append(failures, fmt.Errorf("remove owned network %s: %w", network, err))
 		}
 	}
+	for _, volume := range uniqueNonempty(inventory.volumes) {
+		if err := supervisor.cleanupDockerCommand(ctx, []string{"volume", "rm", volume}); err != nil {
+			failures = append(failures, fmt.Errorf("remove owned volume %s: %w", volume, err))
+		}
+	}
 	return errors.Join(failures...)
 }
 
@@ -1490,7 +2110,7 @@ func (supervisor *Supervisor) cleanupDockerCommand(ctx context.Context, args []s
 		return nil
 	}
 	diagnostic := strings.ToLower(string(result.Stderr))
-	if strings.Contains(diagnostic, "no such container") || strings.Contains(diagnostic, "no such network") ||
+	if strings.Contains(diagnostic, "no such container") || strings.Contains(diagnostic, "no such network") || strings.Contains(diagnostic, "no such volume") ||
 		strings.Contains(diagnostic, "not connected") {
 		return nil
 	}
@@ -1502,9 +2122,10 @@ func (supervisor *Supervisor) proveAttemptResourcesAbsent(ctx context.Context, f
 	exactInventory, exactInventoryErr := supervisor.exactAttemptResources(ctx, record)
 	inventory.containers = append(inventory.containers, exactInventory.containers...)
 	inventory.networks = append(inventory.networks, exactInventory.networks...)
+	inventory.volumes = append(inventory.volumes, exactInventory.volumes...)
 	var residueErr error
-	if len(inventory.containers) != 0 || len(inventory.networks) != 0 {
-		residueErr = fmt.Errorf("owned Attempt residue remains: containers=%v networks=%v", inventory.containers, inventory.networks)
+	if len(inventory.containers) != 0 || len(inventory.networks) != 0 || len(inventory.volumes) != 0 {
+		residueErr = fmt.Errorf("owned Attempt residue remains: containers=%v networks=%v volumes=%v", inventory.containers, inventory.networks, inventory.volumes)
 	}
 	return errors.Join(inventoryErr, exactInventoryErr, residueErr)
 }
@@ -1512,8 +2133,13 @@ func (supervisor *Supervisor) proveAttemptResourcesAbsent(ctx context.Context, f
 func (supervisor *Supervisor) exactAttemptResources(ctx context.Context, record *attemptRecord) (dockerResourceInventory, error) {
 	exactContainers, exactContainerErr := supervisor.identityCommand(ctx, []string{"ps", "-aq", "--filter", "name=^/(" + record.container + "|" + record.boundary + "|" + record.container + "-check-[0-9]+)$"})
 	exactNetworks, exactNetworkErr := supervisor.identityCommand(ctx, []string{"network", "ls", "-q", "--filter", "name=^(" + record.internalNetwork + "|" + record.upstreamNetwork + ")$"})
-	return dockerResourceInventory{containers: strings.Fields(exactContainers), networks: strings.Fields(exactNetworks)},
-		errors.Join(wrapError("inventory exact containers", exactContainerErr), wrapError("inventory exact networks", exactNetworkErr))
+	var exactVolumes string
+	var exactVolumeErr error
+	if supervisor.config.Workbench != nil {
+		exactVolumes, exactVolumeErr = supervisor.identityCommand(ctx, []string{"volume", "ls", "-q", "--filter", "name=^(" + record.workspaceVolume + ")$"})
+	}
+	return dockerResourceInventory{containers: strings.Fields(exactContainers), networks: strings.Fields(exactNetworks), volumes: strings.Fields(exactVolumes)},
+		errors.Join(wrapError("inventory exact containers", exactContainerErr), wrapError("inventory exact networks", exactNetworkErr), wrapError("inventory exact volumes", exactVolumeErr))
 }
 
 type resourceOwnershipObservation struct {
@@ -1541,6 +2167,14 @@ func (supervisor *Supervisor) verifyExactResourceOwnership(ctx context.Context, 
 		}
 		approved.networks = append(approved.networks, network)
 	}
+	for _, volume := range uniqueNonempty(append(slices.Clone(labeled.volumes), exact.volumes...)) {
+		observation, err := supervisor.observeResourceOwnership(ctx, "volume", volume, networkOwnershipObservationFormat)
+		if err != nil || !supervisor.validAttemptOwnership(observation.Labels, record) || volume != record.workspaceVolume || observation.Name != volume {
+			failures = append(failures, fmt.Errorf("candidate volume %s ownership is unproven: %w", volume, errors.Join(err, errors.New("owner, scope, Attempt, policy, or name mismatch"))))
+			continue
+		}
+		approved.volumes = append(approved.volumes, volume)
+	}
 	return approved, errors.Join(failures...)
 }
 
@@ -1562,6 +2196,14 @@ func (supervisor *Supervisor) verifyRecoveryResourceOwnership(ctx context.Contex
 			continue
 		}
 		approved.networks = append(approved.networks, network)
+	}
+	for _, volume := range uniqueNonempty(inventory.volumes) {
+		observation, err := supervisor.observeResourceOwnership(ctx, "volume", volume, networkOwnershipObservationFormat)
+		if err != nil || !supervisor.validRecoveryOwnership(observation.Labels) || !strings.HasSuffix(observation.Name, "-workspace") || !validAttemptRootName(strings.TrimSuffix(observation.Name, "-workspace")) {
+			failures = append(failures, fmt.Errorf("recovery volume %s ownership is unproven: %w", volume, errors.Join(err, errors.New("owner, scope, or name mismatch"))))
+			continue
+		}
+		approved.volumes = append(approved.volumes, volume)
 	}
 	return approved, errors.Join(failures...)
 }
@@ -1608,6 +2250,20 @@ func validAttemptNetworkName(name string, record *attemptRecord) bool {
 func removeAndProveAbsent(path, description string) error {
 	if path == "" {
 		return fmt.Errorf("remove %s: empty path", description)
+	}
+	if err := filepath.WalkDir(path, func(current string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return nil
+		}
+		if entry.IsDir() {
+			return os.Chmod(current, 0o700)
+		}
+		return os.Chmod(current, 0o600)
+	}); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("prepare %s removal: %w", description, err)
 	}
 	if err := os.RemoveAll(path); err != nil {
 		return fmt.Errorf("remove %s: %w", description, err)

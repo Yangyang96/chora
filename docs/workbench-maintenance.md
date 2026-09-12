@@ -12,11 +12,11 @@ source checkout, and an explicit absolute Chora data root. It does not define an
 online backup service, cross-machine migration, or a general disaster-recovery
 system.
 
-The current S3 candidate source uses SQLite schema 41. There is no earlier public
-Chora version and no supported cross-version upgrade or downgrade yet. This
-guide describes restoration only with matching code and the same absolute
-layout. Release notes must explicitly name a qualified version/schema transition
-before you use these instructions for an update.
+The current development source uses SQLite schema 42; rc.10 uses schema 41.
+The 41 → 42 transition adds Isolated Local authority and creates a consistent
+`.chora-schema41-backup-*` snapshot before changing the database. Stop all owners
+and make the whole-data-root backup below before upgrading. Rollback restores
+the pre-upgrade data with matching code at the same absolute layout.
 
 ## Know which state Chora owns
 
@@ -184,11 +184,21 @@ path, and use the code that matches that held data. Never try to repair a schema
 mismatch by editing `schema_migrations` or by running an older binary against a
 database already migrated by newer code.
 
+## Isolated Local schema migration
+
+Schema 41 → 42 is append-only and tested with a consistent SQLite backup,
+foreign-key/integrity checks and restoration of the original BLOB bytes. Chora
+creates `.chora-schema41-backup-*` before this transition. This database snapshot
+does not replace a stopped whole-data-root backup. Roll back using the complete
+pre-upgrade data and matching rc.10 source, never by editing the migration ledger.
+For frozen isolated Tasks, retain the exact prepared Docker image as well as the
+data; pruning that image stops those Tasks until the exact image is restored.
+No online service or existing user data was migrated during development tests.
+
 ## Source updates and rollback
 
-There is currently no supported update from a prior public version because no
-prior public version exists. Pre-publication databases from arbitrary source
-revisions have no compatibility promise.
+The narrowly tested transition above applies to schema 41. Pre-publication
+databases from arbitrary source revisions have no general compatibility promise.
 
 For a future update, proceed only when release notes identify all of the
 following: source version/revision, source schema, target version/revision,

@@ -66,6 +66,31 @@ func TestDockerRunnerPinsExplicitProviderNeutralAuthoritiesAcrossRunAndStart(t *
 	}
 }
 
+func TestDockerRunnerAcceptsExplicitConfigRootWithoutAmbientMutation(t *testing.T) {
+	root := t.TempDir()
+	bin := filepath.Join(root, "bin")
+	if err := os.Mkdir(bin, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeDockerAuthorityFixture(t, filepath.Join(bin, "docker"), "explicit")
+	fixture := writeDockerConfigAuthorityFixture(t, filepath.Join(root, "explicit-config"), "colima", "unix:///tmp/explicit.sock")
+	t.Setenv("PATH", bin)
+	t.Setenv("DOCKER_CONFIG", filepath.Join(root, "ambient-config"))
+	runner, err := NewDockerCommandRunnerWithConfigRoot(fixture.authority, fixture.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := runner.Run(context.Background(), Command{Args: []string{"version"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, _ := filepath.EvalSymlinks(fixture.root)
+	assertPinnedDockerAuthority(t, string(result.Stdout), "explicit", resolved, "colima", "")
+	if got := os.Getenv("DOCKER_CONFIG"); got != filepath.Join(root, "ambient-config") {
+		t.Fatalf("DOCKER_CONFIG mutated to %q", got)
+	}
+}
+
 func TestObserveEngineUsesTheSameFrozenExplicitAuthority(t *testing.T) {
 	root := t.TempDir()
 	contextName := "desktop-linux"

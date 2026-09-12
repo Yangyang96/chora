@@ -31,6 +31,10 @@ const piDiscoveryReady = {
   state: 'ready', version: '0.84.2', executablePath: '/usr/local/bin/pi', executableSha256: 'a'.repeat(64),
   readyProviders: ['ollama'], notReadyProviders: ['google'],
 }
+const isolatedLocalReady = {
+  state: 'ready', reason: 'Ready', preparationAvailable: true, imageId: 'sha256:pinned', piVersion: '0.85.1', nodeVersion: '22.19.0',
+  policy: { network: 'restricted', resources: 'selected repositories', files: 'task worktrees', credentials: 'OpenAI Codex OAuth only' },
+}
 
 const piInstallationMissing = {
   available: true, active: false, restartRequired: false,
@@ -145,10 +149,10 @@ describe('NewApp', () => {
     await waitFor(() => expect(screen.queryByText(/Archived · 1/)).not.toBeInTheDocument())
   })
 
-  test('creates normal Tasks with the Standard Agent profile and never exposes the diagnostic selector', async () => {
+  test('creates normal Tasks with the Isolated Local profile and never exposes legacy product choices', async () => {
     window.history.replaceState({}, '', '/rooms/room-1')
     const requests: Array<{ method: string; path: string; body?: Record<string, unknown> }> = []
-    const createdTask = { id: 'task-profile', agentExecutionProfile: 'standard', planning: { revisions: [] } }
+    const createdTask = { id: 'task-profile', agentExecutionProfile: 'isolated_local', planning: { revisions: [] } }
     const updatedBriefRoom = { ...roomRef, revisions: [
       { ...roomRef.revisions[0], locator: 'room://room-1/brief', revisionNumber: 1 },
       { ...roomRef.revisions[0], id: 'rev-2', body: 'Newest topic context', locator: 'room://room-1/brief', revisionNumber: 2 },
@@ -158,6 +162,7 @@ describe('NewApp', () => {
       const path = String(input)
       if (path === '/api/pi/installation') return jsonResponse(piInstallationMissing)
       if (path === '/api/pi/discovery') return jsonResponse({ state: 'unavailable' })
+      if (path === '/api/isolated-local') return jsonResponse(isolatedLocalReady)
       if (path.includes('/continuity')) return jsonResponse({ available: false })
       const method = (init?.method ?? 'GET').toUpperCase()
       const body = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined
@@ -173,7 +178,8 @@ describe('NewApp', () => {
 
     render(<NewApp />)
     await userEvent.click((await screen.findAllByRole('button', { name: '＋ New Task' }))[0])
-    expect(screen.getByRole('radio', { name: 'Standard' })).toBeChecked()
+    expect(screen.getByRole('radio', { name: 'Isolated Local' })).toBeChecked()
+    expect(screen.queryByRole('radio', { name: 'Standard' })).not.toBeInTheDocument()
     expect(screen.queryByText('Diagnostic Fake')).not.toBeInTheDocument()
     expect(screen.queryByText('Real Spec Coding')).not.toBeInTheDocument()
     await userEvent.type(screen.getByLabelText('What should Chora build?'), 'Implement the frozen profile contract')
@@ -186,7 +192,7 @@ describe('NewApp', () => {
       goal: 'Implement the frozen profile contract',
       criteria: ['Requirement satisfied'],
       revisionIds: ['rev-2'],
-      agentExecutionProfile: 'standard',
+      agentExecutionProfile: 'isolated_local',
     })
     expect(create?.body).not.toHaveProperty('executionProfile')
   })
@@ -284,12 +290,12 @@ describe('NewApp', () => {
     await userEvent.click(screen.getByRole('radio', { name: TRUSTED_LOCAL_LABEL }))
     await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }))
     expect(requests.filter((request) => request.method === 'POST')).toHaveLength(0)
-    expect(screen.getByRole('radio', { name: 'Standard' })).not.toBeChecked()
+    expect(screen.getByRole('radio', { name: 'Isolated Local' })).toBeChecked()
 
     await userEvent.click(screen.getByRole('radio', { name: TRUSTED_LOCAL_LABEL }))
     await userEvent.click(screen.getByRole('button', { name: 'Acknowledge and use Trusted Local' }))
     expect(await screen.findByRole('radio', { name: TRUSTED_LOCAL_LABEL })).toBeChecked()
-    await userEvent.click(screen.getByRole('radio', { name: 'Standard' }))
+    await userEvent.click(screen.getByRole('radio', { name: 'Isolated Local' }))
     await userEvent.click(screen.getByRole('radio', { name: TRUSTED_LOCAL_LABEL }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(requests.filter((request) => request.path === '/api/agent-execution/trusted-local-acknowledgements')).toHaveLength(1)
@@ -326,7 +332,7 @@ describe('NewApp', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Acknowledge and use Trusted Local' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('disclosure policy conflict')
-    expect(screen.getByRole('radio', { name: 'Standard' })).not.toBeChecked()
+    expect(screen.getByRole('radio', { name: 'Isolated Local' })).toBeChecked()
     expect(posts).toEqual(['/api/agent-execution/trusted-local-acknowledgements'])
   })
 
@@ -356,10 +362,9 @@ describe('NewApp', () => {
     await waitFor(() => expect(trusted).toBeDisabled())
     expect(await within(screen.getByRole('main')).findByText('Pi is not configured')).toBeInTheDocument()
     expect(within(screen.getByRole('main')).getByText('no configured Pi provider answered ready')).toBeInTheDocument()
-    // Unconfigured local Pi must not fall back to Docker profiles.
-    expect(screen.getByRole('radio', { name: 'Minimal' })).toBeDisabled()
-    expect(screen.getByRole('radio', { name: 'Standard' })).toBeDisabled()
-    expect(screen.getByRole('radio', { name: 'Standard' })).not.toBeChecked()
+    // Isolated readiness is independent from native Pi discovery and no host fallback is selected.
+    expect(screen.getByRole('radio', { name: 'Isolated Local' })).toBeEnabled()
+    expect(screen.getByRole('radio', { name: 'Isolated Local' })).toBeChecked()
   })
 
   test('profile-switch conflict preserves the current Run and never turns into Retry', async () => {
@@ -393,16 +398,16 @@ describe('NewApp', () => {
 
     render(<NewApp />)
     expect((await screen.findAllByText('Standard')).length).toBeGreaterThan(0)
-    await userEvent.click(screen.getByRole('radio', { name: 'Minimal' }))
+    await userEvent.click(screen.getByRole('radio', { name: 'Isolated Local' }))
     await userEvent.click(screen.getByRole('button', { name: 'Create successor with selected profile' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('stale profile version')
     expect(posts).toEqual([expect.objectContaining({
       path: '/api/runs/run-profile/agent-execution-profile',
-      body: { profile: 'minimal', reason: 'Use this profile for a fresh successor Attempt.', expectedVersion: 11 },
+      body: { profile: 'isolated_local', reason: 'Use this profile for a fresh successor Attempt.', expectedVersion: 11 },
       headers: expect.objectContaining({ 'Idempotency-Key': expect.any(String) }),
     })])
-    expect(screen.getByRole('radio', { name: 'Standard' })).toBeChecked()
+    expect((await screen.findAllByText('Standard')).length).toBeGreaterThan(0)
     expect(posts.some((request) => request.path.endsWith('/retry'))).toBe(false)
   })
 

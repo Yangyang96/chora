@@ -16,7 +16,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/Yangyang96/chora/internal/acceptanceauthority"
 	"github.com/Yangyang96/chora/internal/agent/codexcli"
 	agentfake "github.com/Yangyang96/chora/internal/agent/fake"
@@ -37,6 +36,7 @@ import (
 	storecontract "github.com/Yangyang96/chora/internal/store"
 	"github.com/Yangyang96/chora/internal/store/sqlite"
 	"github.com/Yangyang96/chora/internal/taskdelivery"
+	"github.com/google/uuid"
 )
 
 const (
@@ -59,6 +59,7 @@ type retryDeltaEnvelope struct {
 type Server struct {
 	// Only historical Apply fixtures bypass the new Task branch writeback gate.
 	// Delivery itself is active and still requires explicit preview/confirmation.
+	isolatedLocal           *isolatedLocalEnvironment
 	deliveryCommandsEnabled bool
 	ctx                     context.Context
 	cancel                  context.CancelFunc
@@ -134,6 +135,7 @@ type piRuntimeStatus struct {
 }
 
 type ProductOptions struct {
+	WorkbenchSourceRoot    string
 	RepoRoot               string
 	RepositoryRoot         string
 	PiAuthFile             string
@@ -308,10 +310,11 @@ func NewWorkbench(ctx context.Context, databasePath, webRoot string, logger *log
 		return nil, errors.New("workbench Web build must be inside the source checkout")
 	}
 	return newServer(ctx, databasePath, webRoot, logger, ProductOptions{
-		RepositorySource:  gitsource.Default{},
-		DataRoot:          options.DataRoot,
-		PathPiEnabled:     true,
-		PathPiSessionRoot: filepath.Join(options.DataRoot, "pi-sessions"),
+		RepositorySource:    gitsource.Default{},
+		WorkbenchSourceRoot: options.SourceRoot,
+		DataRoot:            options.DataRoot,
+		PathPiEnabled:       true,
+		PathPiSessionRoot:   filepath.Join(options.DataRoot, "pi-sessions"),
 	}, false)
 }
 
@@ -470,6 +473,7 @@ func newServer(ctx context.Context, databasePath, webRoot string, logger *log.Lo
 	var installer piinstall.Installer
 	var installedSelection piinstall.Selection
 	installationBlocked := false
+	isolatedLocal := newIsolatedLocalEnvironment(options.WorkbenchSourceRoot, options.DataRoot)
 	discoveryOptions := pidiscovery.Options{PiHome: options.PathPiHome, LookPath: options.PathPiLookPath}
 	if options.PathPiEnabled {
 		// M2-S1 Local Connected: PATH-discovered Pi supervised by trustedhost.
@@ -486,6 +490,15 @@ func newServer(ctx context.Context, databasePath, webRoot string, logger *log.Lo
 			installationBlocked = true
 			discoveryOptions.LookPath = func(string) (string, error) { return "", errors.New("managed Pi selection is unavailable") }
 			pathPiDiscovery = pidiscovery.Result{State: pidiscovery.StateDrifted, Reason: "Chora-selected Pi installation is unavailable or changed; repair it before starting Tasks."}
+		}
+		if options.WorkbenchSourceRoot != "" {
+			var isolatedErr error
+			composedPi, isolatedErr = composeIsolatedLocal(runtimeContext, composedPi, runtimeRoot, store.Reader(), isolatedLocal, options.PathPiHome)
+			if isolatedErr != nil {
+				isolatedLocal.view.Reason = isolatedErr.Error()
+			} else if composedPi.trustedSupervisor == nil {
+				piErr = nil
+			}
 		}
 		if piErr == nil && composedPi.adapter != nil {
 			piErr = validatePiCompositionFingerprints(runtimeContext, composedPi)
@@ -647,13 +660,14 @@ func newServer(ctx context.Context, databasePath, webRoot string, logger *log.Lo
 		TaskDeliveryGit:             taskdelivery.Git{},
 		TaskDeliveryHosting:         taskdelivery.NewGitHub(),
 		InstalledSpecCodingEnvelope: installedSpecCodingEnvelope,
-		SpecCodingEnvelopeResolver:  newBoundSpecCodingEnvelopeResolver(store.Reader(), installedSpecCodingEnvelope, pathPiDiscovery),
+		SpecCodingEnvelopeResolver:  newBoundSpecCodingEnvelopeResolver(store.Reader(), installedSpecCodingEnvelope, pathPiDiscovery, composedPi.isolatedSource),
 		RepositorySource:            options.RepositorySource,
 		DataRoot:                    options.DataRoot,
 		AutoStartVerification:       true,
 	})
 	server := &Server{
-		ctx: runtimeContext, cancel: cancel, store: store, service: service, registry: registry, supervisor: supervisor,
+		isolatedLocal: isolatedLocal,
+		ctx:           runtimeContext, cancel: cancel, store: store, service: service, registry: registry, supervisor: supervisor,
 		fakeSupervisor: fakeSupervisor, runtimeRoot: runtimeRoot, repoRoot: repoRoot, installedEnvelope: installedSpecCodingEnvelope,
 		codexStatus: codexStatus, piStatus: piStatus, verifierStatus: verifierStatus, verifier: verificationExecutor, taskWorktreesReady: taskWorktrees != nil || options.PathPiEnabled,
 		webRoot: absoluteWebRoot, logger: logger, piPreflight: options.PiPreflight, product: product, sourceCheckout: options.SourceCheckout,
@@ -837,6 +851,8 @@ func closeIfPresent(closer interface{ Close() error }) error {
 func (server *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/status", server.getStatus)
+	mux.HandleFunc("GET /api/isolated-local", server.getIsolatedLocal)
+	mux.HandleFunc("POST /api/isolated-local/prepare", server.prepareIsolatedLocal)
 	mux.HandleFunc("GET /api/pi/discovery", server.getPiDiscovery)
 	mux.HandleFunc("GET /api/pi/installation", server.getPiInstallation)
 	mux.HandleFunc("POST /api/pi/installation", server.installPi)

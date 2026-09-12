@@ -172,13 +172,17 @@ func TestPathPiDecodeTerminalSynthesizesReviewReadyWithoutResultFile(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := adapter.DecodeTerminal(execution.TerminalFiles{Paths: map[string]string{}, ExitCode: 0})
+	result, err := adapter.DecodeTerminal(execution.TerminalFiles{Profile: domain.AgentExecutionProfileTrustedLocal, Paths: map[string]string{"result": filepath.Join(root, "unused-result.json")}, ExitCode: 0})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if result.Kind != execution.TerminalReviewReady || result.Summary == "" {
 		t.Fatalf("synthesized result = %#v", result)
 	}
+	if _, err := adapter.DecodeTerminal(execution.TerminalFiles{Profile: domain.AgentExecutionProfileIsolatedLocal, ExitCode: 0}); err == nil {
+		t.Fatal("missing isolated result fell back to host terminal synthesis")
+	}
+
 }
 
 func TestPathPiDecodeRecordsUserModelWithoutRejection(t *testing.T) {

@@ -51,6 +51,9 @@ func runWithProductExecutor(args []string, stdout, stderr io.Writer, productExec
 	if len(args) > 0 && args[0] == "source-checkout" {
 		return runSourceCheckout(args[1:], stdout, stderr)
 	}
+	if len(args) > 1 && args[0] == "workbench" && args[1] == "prepare-isolated" {
+		return runPrepareIsolated(args[2:], stdout, stderr)
+	}
 	if len(args) > 1 && args[0] == "workbench" && args[1] == "doctor" {
 		return runWorkbenchDoctor(args[2:], stdout, stderr)
 	}

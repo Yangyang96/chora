@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 )
 
-// A pre-resource/description backup is a consistent snapshot including WAL data.
+// A pre-authority migration backup is a consistent snapshot including WAL data.
 // Older binaries must restore this snapshot rather than write the upgraded DB.
 func backupBeforeResourceMigration(ctx context.Context, db *sql.DB, path string) error {
 	var exists int
@@ -22,7 +22,7 @@ func backupBeforeResourceMigration(ctx context.Context, db *sql.DB, path string)
 	if err := db.QueryRowContext(ctx, `SELECT COALESCE(max(version),0) FROM schema_migrations`).Scan(&version); err != nil {
 		return err
 	}
-	if version != 33 && version != 34 && version != 35 && version != 36 && version != 37 {
+	if version != 33 && version != 34 && version != 35 && version != 36 && version != 37 && version != 41 {
 		return nil
 	}
 	sourceVersion := version

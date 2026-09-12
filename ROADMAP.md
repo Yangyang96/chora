@@ -2,11 +2,11 @@
 
 [简体中文](ROADMAP.zh-CN.md) · [README](README.md)
 
-Status, 2026-09-11: Developer Alpha with public source. Real multi-repository delivery
+Status, 2026-09-12: Developer Alpha with public source. Real multi-repository delivery
 qualification, `M2_S3_PASS` and local DA-1/O5 preparation are complete. Source was
 published on 2026-09-10; versioned prereleases are recorded on the
 [Releases page](https://github.com/Yangyang96/chora/releases). M2 as a whole is
-still active, with M2-S4 the next planned feature milestone.
+still active. M2-S4-1 is in final real-environment acceptance; M2-S4-2 is deferred.
 
 Project is the long-lived owner of repository resources and topic Rooms. A Task
 belongs to one Room and selects its repository scope. Empty Projects, multiple
@@ -95,9 +95,11 @@ These keep the priorities below and are not new first-Alpha requirements.
 
 ## First feature milestone after public Alpha: M2-S4
 
-Planned, not started. M2-S4-1 brings one complete Isolated Local mode into the
-Workbench: public environment preparation, authentication, execution, checks,
-Review/Apply, cancellation, cleanup and Resume using an adopted Sandbox.
+M2-S4-1 implementation provides one [Isolated Local mode](docs/isolated-local.md)
+using public Pi 0.85.1, DeepSeek/deepseek-v4-flash and local arm64 Docker.
+Final acceptance is in progress. It covers public preparation, credentials,
+execution, checks, Review → Commit → Push → PR → Merge → cleanup, cancellation,
+restart and Resume. Immutable multi-repository Task bases and legacy Apply remain.
 M2-S4-2 qualifies Minimal/Standard only when their tools/dependencies, network
 and resource policies have clear, tested differences. One qualified mode can
 ship first. Isolation failure never falls back to host execution.
@@ -105,8 +107,8 @@ ship first. Isolation failure never falls back to host execution.
 Default order: M2-S3 -> public-candidate gates -> first Alpha publication ->
 M2-S4. This adds no first-Alpha requirement and does not wait for M3/M4. Reuse
 existing isolation evidence and current Project/Room/Task contracts; do not
-rebuild the Runtime or Sandbox. This is a planned subsequent release, not a
-claim that currently unavailable execution choices are enabled.
+rebuild the Runtime or Sandbox. This implementation does not create another Tag,
+Release or installer. M2 remains incomplete and S4-2 is not implemented.
 
 ## Prioritized post-Alpha schedule
 

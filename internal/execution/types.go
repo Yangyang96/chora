@@ -21,6 +21,26 @@ const LocalConnectedExecutionPromptPrefix = "Chora Local Connected execution pol
 
 const TaskResourcesExecutionPromptPrefix = "Chora Local Connected task policy: the current directory is a Task workspace, with one Git worktree per selected repo_id child directory in task.resources. This is No Sandbox; Pi native permissions apply. Work only in selected repository worktrees, respect role reference (no modifications), scope and protected directories. Never alter original checkouts, stage, commit, push, access credentials or change host/Git configuration. Do not copy ignored dependencies or credentials. Inspect relevant code and committed configuration as needed; no whole-repository enumeration is required. For auto check policy, choose relevant existing checks, report what was selected and why; use explicit cd into the repo_id/directory before each command so evidence is attributable. Run each check as the sole tool call in its turn; parallel tool batches cannot establish check-content evidence. Execute each selected check as one separate ordinary command with explicit cd repo_id/directory prefix; do not append output redirection, echo, exit-code printing, pipes, semicolons, or additional shell steps. Pi reports tool success even when numeric exit code is unavailable, which is acceptable; never add a shell wrapper to fabricate or expose an exit code. For named checks run the specified commands in their directories. For none do not run checks or claim verification. Environment preparation is separate, only explicitly authorized preparation may run; explain missing dependencies and proposed setup through native permissions. Report failures, missing checks, unknown cwd and stale checks honestly; rerun checks after changing tested contents. Finish with an explicit complete summary of each repository. For every auto-check repository, include a final fenced block tagged chora-check-selection containing JSON: {\"repositories\":[{\"repoId\":\"repo_...\",\"checks\":[{\"name\":\"Relevant tests\",\"command\":\"npm test\",\"workingDirectory\":\".\"}],\"noApplicableChecks\":false,\"explanation\":\"Why these checks apply\"}]}. List selected checks, including failures or checks not run; do not claim the block proves execution. Use actual ordinary command text and repository-relative workingDirectory. If no checks apply, give checks:[], noApplicableChecks:true and a concrete explanation; missing dependencies or failed checks do not mean no applicable checks. All-empty completed work needs no artificial patch. Chora collects grouped immutable ordinary-text changes after completion and requires human Apply.\n\nFrozen Execution Input:\n"
 
+// IsolatedTaskResourcesExecutionPromptPrefix preserves the multi-repository task
+// instructions while describing the actual Docker boundary and delivery flow.
+var IsolatedTaskResourcesExecutionPromptPrefix = strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(
+	TaskResourcesExecutionPromptPrefix,
+	"Chora Local Connected task policy:", "Chora Isolated Local task policy:"),
+	"one Git worktree per selected repo_id child directory in task.resources. This is No Sandbox; Pi native permissions apply.",
+	"one private repository copy per selected repo_id child directory in task.resources. Execution is in Docker with a read-only root filesystem, bounded temporary workspace, and outbound bridge networking. Git metadata and reference repositories are read-only."),
+	"requires human Apply.", "requires human Review before Commit, Push, PR, Merge and cleanup; legacy Apply remains available.")
+
+func WrapIsolatedExecutionPrompt(snapshot, contract []byte, commands []string) (string, error) {
+	prompt, err := WrapLocalConnectedExecutionPrompt(snapshot, contract, commands)
+	if err != nil {
+		return "", err
+	}
+	if !strings.HasPrefix(prompt, TaskResourcesExecutionPromptPrefix) {
+		return "", errors.New("isolated execution requires a multi-repository contract")
+	}
+	return IsolatedTaskResourcesExecutionPromptPrefix + strings.TrimPrefix(prompt, TaskResourcesExecutionPromptPrefix), nil
+}
+
 const FrozenExecutionInputSchemaV1 = "chora.execution-input.v1"
 
 type frozenExecutionInput struct {
@@ -63,6 +83,9 @@ func WrapLocalConnectedExecutionPrompt(snapshot, contract []byte, commands []str
 
 func UnwrapFrozenExecutionPrompt(message string) (snapshot, contract []byte, ok bool) {
 	prefix := FrozenExecutionPromptPrefix
+	if strings.HasPrefix(message, IsolatedTaskResourcesExecutionPromptPrefix) {
+		prefix = IsolatedTaskResourcesExecutionPromptPrefix
+	}
 	if strings.HasPrefix(message, TaskResourcesExecutionPromptPrefix) {
 		prefix = TaskResourcesExecutionPromptPrefix
 	}
@@ -298,6 +321,8 @@ type StreamChunk struct {
 }
 
 type EventChunk struct {
+	// Profile comes from the persisted Attempt, never from the event stream.
+	Profile domain.AgentExecutionProfile
 	// WorkingRoot is trusted session context, never a provider-supplied path.
 	WorkingRoot string
 	Stream      StreamKind
@@ -340,6 +365,8 @@ func (cause TerminationCause) Valid() bool {
 }
 
 type TerminalFiles struct {
+	// Profile is supplied by the application from the persisted Attempt.
+	Profile          domain.AgentExecutionProfile
 	Paths            map[string]string
 	ExitCode         int
 	TerminationCause TerminationCause

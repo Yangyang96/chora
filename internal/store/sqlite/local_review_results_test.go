@@ -93,7 +93,7 @@ func TestV28UpgradePreservesPopulatedLocalReviewResult(t *testing.T) {
 	if err != nil || result != fixture.result {
 		t.Fatalf("v28 Result changed during upgrade: %#v, %v", result, err)
 	}
-	if version, err := upgraded.SchemaVersion(ctx); err != nil || version != 41 {
+	if version, err := upgraded.SchemaVersion(ctx); err != nil || version != 42 {
 		t.Fatalf("version=%d, %v", version, err)
 	}
 }

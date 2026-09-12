@@ -12,11 +12,13 @@ import (
 type AgentExecutionProfile string
 
 const (
-	AgentExecutionProfileMinimal      AgentExecutionProfile = "minimal"
-	AgentExecutionProfileStandard     AgentExecutionProfile = "standard"
-	AgentExecutionProfileTrustedLocal AgentExecutionProfile = "trusted_local"
+	AgentExecutionProfileMinimal       AgentExecutionProfile = "minimal"
+	AgentExecutionProfileStandard      AgentExecutionProfile = "standard"
+	AgentExecutionProfileTrustedLocal  AgentExecutionProfile = "trusted_local"
+	AgentExecutionProfileIsolatedLocal AgentExecutionProfile = "isolated_local"
 
 	ManagedPiRuntimeSource       = "managed_pi_image"
+	PublicPiRuntimeSource        = "public_pi_image"
 	LocalPiRuntimeSource         = "local_pi"
 	DockerExecutionProvider      = "docker"
 	TrustedHostExecutionProvider = "trusted_host"
@@ -24,6 +26,7 @@ const (
 	MinimalCapabilityPolicy  = "chora.minimal.v1"
 	StandardCapabilityPolicy = "chora.standard.v1"
 	NativeCapabilityPolicy   = "pi.native"
+	IsolatedCapabilityPolicy = "chora.isolated-local.v1"
 
 	TrustedLocalDisclosurePolicy = "chora.trusted-local-disclosure.v1"
 )
@@ -183,6 +186,7 @@ func SupportedAgentExecutionProfiles() []AgentExecutionProfile {
 		AgentExecutionProfileMinimal,
 		AgentExecutionProfileStandard,
 		AgentExecutionProfileTrustedLocal,
+		AgentExecutionProfileIsolatedLocal,
 	}
 }
 
@@ -197,6 +201,11 @@ func ParseAgentExecutionProfile(value string) (AgentExecutionProfile, error) {
 func AgentExecutionProfileContractFor(profile AgentExecutionProfile) (AgentExecutionProfileContract, error) {
 	contract := AgentExecutionProfileContract{Profile: profile, RuntimeAdapterID: "pi"}
 	switch profile {
+	case AgentExecutionProfileIsolatedLocal:
+		contract.RuntimeSource = PublicPiRuntimeSource
+		contract.ExecutionProvider = DockerExecutionProvider
+		contract.CapabilityPolicy = IsolatedCapabilityPolicy
+		contract.RequiresSandbox = true
 	case AgentExecutionProfileMinimal:
 		contract.RuntimeSource = ManagedPiRuntimeSource
 		contract.ExecutionProvider = DockerExecutionProvider

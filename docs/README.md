@@ -8,6 +8,8 @@ Start with [Quick start](../README.md#quick-start) to run Chora and
 For ongoing use, see [backup, recovery, and diagnostics](workbench-maintenance.md).
 The references below cover product plans and maintainer history.
 
+[Isolated Local](isolated-local.md): public preparation, supported scope, boundaries and real acceptance entry.
+
 ## Current product and acceptance guidance
 
 - [Public roadmap](../ROADMAP.md) — accepted slice versus planned foundations,

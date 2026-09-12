@@ -258,7 +258,7 @@ func (s *Service) CreateTask(ctx context.Context, request CreateTaskRequest) (Cr
 			if err := requireProfileAcknowledgement(ctx, tx, agentProfile, request.ActorID); err != nil {
 				return err
 			}
-			task, intent, err = s.declareRealSpecCodingTask(ctx, room, request)
+			task, intent, err = s.declareRealSpecCodingTask(ctx, room, request, agentProfile)
 			if err != nil {
 				return err
 			}

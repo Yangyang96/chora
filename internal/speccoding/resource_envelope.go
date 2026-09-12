@@ -49,7 +49,7 @@ func NewResourceEnvelope(logicalRoot string, snapshot domain.TaskResourceSnapsho
 func (e ResourceEnvelope) Repository() RepositoryIdentity { return RepositoryIdentity{} }
 func (e ResourceEnvelope) CapabilityEnvelope() domain.CapabilityEnvelope {
 	out := domain.CapabilityEnvelope{}
-	for _, c := range requiredCapabilitiesLocalConnected {
+	for _, c := range e.template.Execution.RequiredCapabilities {
 		out[c] = true
 	}
 	return out
@@ -201,10 +201,14 @@ func validateResourceCoreContract(d CoreContractDocument) error {
 	if !validLowerHex(d.Execution.Input.ContextSnapshotDigest, 64) || d.Execution.Input.ContextSnapshotDigest == SupersededPlaceholderContextDigest {
 		return bad("context digest")
 	}
-	if d.Execution.Output.ResultSchemaVersion != agent.ResultSchemaVersion || d.Execution.Output.ArtifactLocatorScope != "execution_workspace_relative" || d.Execution.Output.CheckBinding != "acceptance_criterion_id" || d.Execution.Output.UnknownPolicy != "explicit" || !sameStringSet(d.Execution.RequiredCapabilities, requiredCapabilitiesLocalConnected) {
+	if d.Execution.Output.ResultSchemaVersion != agent.ResultSchemaVersion || d.Execution.Output.ArtifactLocatorScope != "execution_workspace_relative" || d.Execution.Output.CheckBinding != "acceptance_criterion_id" || d.Execution.Output.UnknownPolicy != "explicit" || (!sameStringSet(d.Execution.RequiredCapabilities, requiredCapabilitiesLocalConnected) && !sameStringSet(d.Execution.RequiredCapabilities, isolatedCapabilities())) {
 		return bad("execution")
 	}
-	if err := validateLocalConnectedCandidate(d.Candidate); err != nil {
+	if sameStringSet(d.Execution.RequiredCapabilities, isolatedCapabilities()) {
+		if err := validateIsolatedCandidate(d.Candidate); err != nil {
+			return err
+		}
+	} else if err := validateLocalConnectedCandidate(d.Candidate); err != nil {
 		return err
 	}
 	return validateEntryProbe(d.EntryProbe, CoreContractSchemaVersionV11)

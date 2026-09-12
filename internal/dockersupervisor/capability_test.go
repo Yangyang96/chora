@@ -917,8 +917,8 @@ func fakeProbeInspect(args []string, running bool) ([]byte, error) {
 		case "--mount":
 			parts := strings.Split(next(), ",")
 			mount := struct {
-				Type, Source, Destination string
-				RW                        bool
+				Type, Name, Source, Destination string
+				RW                              bool
 			}{Type: "bind"}
 			for _, part := range parts {
 				key, value, ok := strings.Cut(part, "=")

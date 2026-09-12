@@ -200,7 +200,7 @@ func (s *Service) loadLocalConnectedReviewableChange(ctx context.Context, reader
 			PatchArtifactID: patchArtifact.ID, PatchDigest: result.PatchDigest(), BaselineDigest: result.BaselineDigest(), DeclaredFilesDigest: patch.DeclaredFilesDigest,
 		},
 		Outcome: result.Outcome(), EvidenceComplete: false, CleanupProven: false,
-		WorkspaceIdentity: "Local Connected Task worktree · Agent-reported", ContractDigest: binding.ActiveContractDigest,
+		WorkspaceIdentity: "Task worktree · Agent-reported", ContractDigest: binding.ActiveContractDigest,
 		contextSnapshotDigest: result.ContextSnapshotDigest(),
 	}, nil
 }
@@ -210,7 +210,7 @@ func localConnectedReviewDocument(document speccoding.CoreContractDocument) bool
 		return false
 	}
 	for _, capability := range document.Execution.RequiredCapabilities {
-		if capability == speccoding.LocalConnectedNoSandboxCapability {
+		if capability == speccoding.LocalConnectedNoSandboxCapability || capability == speccoding.IsolatedLocalCapability {
 			return true
 		}
 	}

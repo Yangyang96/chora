@@ -13,6 +13,7 @@ import (
 
 	"github.com/Yangyang96/chora/internal/app"
 	"github.com/Yangyang96/chora/internal/domain"
+	"github.com/Yangyang96/chora/internal/isolatedworkspace"
 	"github.com/Yangyang96/chora/internal/speccoding"
 )
 
@@ -436,4 +437,40 @@ func attachResourceFingerprintTaskBranch(t *testing.T, fixture *resourcePatchFix
 	repositoryRoot := filepath.Join(taskRoot, resource.Locator)
 	runTaskWorktreeGitTest(t, originalRoot, "worktree", "move", originalRoot, repositoryRoot)
 	return taskRoot, repositoryRoot
+}
+
+func TestIsolatedCopyFingerprintMatchesTaskWorktreeAndRejectsImplicitLayout(t *testing.T) {
+	fixture := newResourcePatchFixture(t, resourcePatchConfig{role: "write"})
+	resource := fingerprintExecutionResources(fixture.snapshot)[0]
+	resource.Checks = fingerprintNamedChecks(".")
+	writeResourcePatchFile(t, filepath.Join(fixture.root, resource.Locator), "README.md", []byte("isolated edit\n"))
+	dest, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := isolatedworkspace.Prepare(context.Background(), fixture.root, dest, state, fixture.snapshot.Resources); err != nil {
+		t.Fatal(err)
+	}
+	request := resourceFingerprintRequest{Config: resourceFingerprintConfig{Schema: resourceObserverConfigSchema, AttemptID: domain.NewAttemptID().String(), TaskRoot: dest, Resources: []speccoding.ExecutionRepositoryResource{resource}}, Command: "cd " + resource.Locator + " && npm test"}
+	if _, err := resourceCheckFingerprint(context.Background(), request); err == nil {
+		t.Fatal("standalone repository admitted without explicit isolated layout")
+	}
+	request.Config.RepositoryLayout = "isolated_copy"
+	isolated, err := resourceCheckFingerprint(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Config.RepositoryLayout = ""
+	request.Config.TaskRoot = fixture.root
+	host, err := resourceCheckFingerprint(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if isolated.Fingerprint != host.Fingerprint || isolated.CommandDigest != host.CommandDigest {
+		t.Fatalf("isolated proof differs from writeback worktree: isolated=%+v host=%+v", isolated, host)
+	}
 }

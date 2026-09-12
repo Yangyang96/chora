@@ -9,13 +9,13 @@ export const TRUSTED_LOCAL_DISCLOSURE_POLICY = 'chora.trusted-local-disclosure.v
 export const TRUSTED_LOCAL_LABEL = 'Trusted Local · No Sandbox'
 
 const profiles: Array<{ id: AgentExecutionProfile; label: string; description: string }> = [
-  { id: 'minimal', label: 'Minimal', description: 'Managed Pi with the bounded core tools in a Docker Sandbox.' },
-  { id: 'standard', label: 'Standard', description: 'Managed Pi with the version-pinned Standard capability policy in a Docker Sandbox.' },
+  { id: 'isolated_local', label: 'Isolated Local', description: 'Pinned Pi in an isolated environment with bounded files, resources, network, and credentials.' },
   { id: 'trusted_local', label: TRUSTED_LOCAL_LABEL, description: 'Supported local Pi with your native configuration and host access.' },
 ]
 
 export function agentExecutionProfileLabel(profile?: AgentExecutionProfile): string | null {
   if (profile === 'trusted_local') return TRUSTED_LOCAL_LABEL
+  if (profile === 'isolated_local') return 'Isolated Local'
   if (profile === 'minimal') return 'Minimal'
   if (profile === 'standard') return 'Standard'
   return null
@@ -91,7 +91,7 @@ export function AgentExecutionProfileSelector({ value, disabled, trustedLocalSel
               name={`agent-profile-${legendID}`}
               value={profile.id}
               aria-label={t(profile.label)}
-              disabled={profile.id === 'trusted_local' ? (!trustedLocalSelectable || !piReady) : (piDiscovery !== undefined && (piDiscovery.phase !== 'loaded' || piDiscovery.discovery.state !== 'unavailable'))}
+              disabled={profile.id === 'trusted_local' ? (!trustedLocalSelectable || !piReady) : false}
               checked={(pendingTrustedLocal ? 'trusted_local' : value) === profile.id}
               onChange={() => select(profile.id)}
             />
@@ -102,8 +102,6 @@ export function AgentExecutionProfileSelector({ value, disabled, trustedLocalSel
           </label>
         ))}
       </fieldset>
-
-      {piDiscovery?.phase === 'loaded' && piDiscovery.discovery.state !== 'unavailable' && <p>{t('Docker Sandbox profiles are unavailable in this local workbench. Choose Local Connected explicitly; it runs without a sandbox.')}</p>}
 
       {piDiscovery?.phase === 'loading' && (
         <p className="pi-discovery-inline">{t('Checking Local Connected…')}</p>

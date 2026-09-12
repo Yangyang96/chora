@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	agentpi "github.com/Yangyang96/chora/internal/agent/pi"
 	"github.com/Yangyang96/chora/internal/app"
 	"github.com/Yangyang96/chora/internal/domain"
 	"github.com/Yangyang96/chora/internal/pidiscovery"
@@ -17,17 +18,22 @@ import (
 // (the Local Connected path). Only positively classified legacy standalone
 // Rooms retain the installed M1 envelope. Missing Project ownership fails closed.
 type boundSpecCodingEnvelopeResolver struct {
-	reader    storecontract.Reader
-	installed *speccoding.InstalledEnvelope
-	piVersion string
+	reader         storecontract.Reader
+	installed      *speccoding.InstalledEnvelope
+	piVersion      string
+	isolatedSource agentpi.IsolatedSource
 }
 
-func newBoundSpecCodingEnvelopeResolver(reader storecontract.Reader, installed *speccoding.InstalledEnvelope, discovery pidiscovery.Result) *boundSpecCodingEnvelopeResolver {
+func newBoundSpecCodingEnvelopeResolver(reader storecontract.Reader, installed *speccoding.InstalledEnvelope, discovery pidiscovery.Result, isolated ...agentpi.IsolatedSource) *boundSpecCodingEnvelopeResolver {
 	version := ""
 	if discovery.State == pidiscovery.StateReady {
 		version = discovery.Version
 	}
-	return &boundSpecCodingEnvelopeResolver{reader: reader, installed: installed, piVersion: version}
+	resolver := &boundSpecCodingEnvelopeResolver{reader: reader, installed: installed, piVersion: version}
+	if len(isolated) > 0 {
+		resolver.isolatedSource = isolated[0]
+	}
+	return resolver
 }
 
 func (resolver *boundSpecCodingEnvelopeResolver) ResolveSpecCodingEnvelope(ctx context.Context, room domain.Room) (app.SpecCodingEnvelope, error) {
@@ -86,4 +92,15 @@ func (resolver *boundSpecCodingEnvelopeResolver) ResolveResourceSpecCodingEnvelo
 		return nil, speccoding.ErrInvalidInstalledEnvelope
 	}
 	return speccoding.NewResourceEnvelope(room.WorkspaceRoot(), snapshot, resolver.piVersion)
+}
+
+func (resolver *boundSpecCodingEnvelopeResolver) ResolveIsolatedResourceSpecCodingEnvelope(ctx context.Context, room domain.Room, snapshot domain.TaskResourceSnapshot) (app.SpecCodingEnvelope, error) {
+	if !resolver.isolatedSource.Configured() || room.OwnershipKind() != domain.RoomOwnershipProject || snapshot.RoomID != room.ID().String() || snapshot.ProjectID != room.ProjectID().String() {
+		return nil, speccoding.ErrInvalidInstalledEnvelope
+	}
+	envelope, err := speccoding.NewResourceEnvelope(room.WorkspaceRoot(), snapshot, agentpi.IsolatedPiVersion)
+	if err != nil {
+		return nil, err
+	}
+	return envelope.WithIsolatedExecution(isolatedExecutionIdentity(resolver.isolatedSource))
 }

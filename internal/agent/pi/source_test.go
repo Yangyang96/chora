@@ -255,6 +255,10 @@ func TestRuntimeFingerprintsDependOnlyOnSelectedRuntimeSourceAndFailClosedOnLoca
 		t.Fatal(err)
 	}
 	config := testConfig(t, nil)
+	config.IsolatedSource, err = NewIsolatedSource(IsolatedSourceParams{ImageID: "sha256:" + strings.Repeat("a", 64), HelperSHA256: strings.Repeat("b", 64), PolicySHA256: strings.Repeat("c", 64)})
+	if err != nil {
+		t.Fatal(err)
+	}
 	config.LocalPiSource = local
 	config.ValidateLocalSource = func(context.Context, LocalPiSource) error { return nil }
 	adapter, err := New(config)

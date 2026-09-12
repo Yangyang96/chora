@@ -1,4 +1,4 @@
-.PHONY: check-toolchain publication-check public-test public-e2e test vet verify localweb-race oss-alpha-closure-e2e
+.PHONY: check-toolchain publication-check public-test public-e2e test vet verify localweb-race isolated-acceptance oss-alpha-closure-e2e
 
 GO_PRODUCT_PACKAGES = go list -e ./... | grep -Ev '/spikes/[^/]+/evidence(/|$$)|/contracts/g2-m4/source-baseline-v[456]/delta(/|$$)'
 GO_REMAINING_PRODUCT_PACKAGES = $(GO_PRODUCT_PACKAGES) | grep -Ev '/internal/(app|localweb)$$'
@@ -74,6 +74,10 @@ vet: check-toolchain
 
 localweb-race:
 	go test -race -p=1 -timeout=$(GO_TEST_TIMEOUT) ./internal/localweb
+
+isolated-acceptance: check-toolchain
+	@test -n "$(CHORA_ISOLATED_ACCEPTANCE_DATA)" || { echo "CHORA_ISOLATED_ACCEPTANCE_DATA must name an already prepared Isolated Local data root" >&2; exit 1; }
+	go test -p=1 -timeout=15m -tags isolated_acceptance -run '^TestIsolatedLocalRealWorkbenchTwoRepositoryClosure$$' -v ./internal/localweb
 
 verify: check-toolchain
 	$(call RUN_WITH_PROGRESS,Go race tests: internal/app,go test -race -p=1 -timeout=$(GO_TEST_TIMEOUT) ./internal/app)
