@@ -231,18 +231,25 @@ func TestIsolatedLocalRealWorkbenchTwoRepositoryClosure(t *testing.T) {
 		var closure app.ResultClosureView
 		requestJSONWithHeaders(t, handler, http.MethodPost, prefix+"/closure/preview", map[string]any{"expectedVersion": accepted.Version}, map[string]string{"Idempotency-Key": "isolated-acceptance-close-preview"}, http.StatusOK, &closure)
 		requestJSONWithHeaders(t, handler, http.MethodPost, prefix+"/closure/confirm", map[string]any{"expectedVersion": accepted.Version, "resultDigest": closure.ResultDigest, "previewDigest": closure.PreviewDigest}, map[string]string{"Idempotency-Key": "isolated-acceptance-close-confirm"}, http.StatusOK, &closure)
-		cleanupBody := map[string]any{"expectedVersion": accepted.Version, "resultDigest": closure.ResultDigest, "repoId": writeResource.RepoID}
-		var cleanupPreview app.DeliveryOperationView
-		requestJSONWithHeaders(t, handler, http.MethodPost, prefix+"/closure/cleanup/preview", cleanupBody, map[string]string{"Idempotency-Key": "isolated-acceptance-cleanup-preview"}, http.StatusOK, &cleanupPreview)
-		cleanupBody["operationId"] = cleanupPreview.ID
-		var cleaned app.DeliveryOperationView
-		requestJSONWithHeaders(t, handler, http.MethodPost, prefix+"/closure/cleanup/confirm", cleanupBody, map[string]string{"Idempotency-Key": "isolated-acceptance-cleanup-confirm"}, http.StatusOK, &cleaned)
-		if cleaned.Status != "succeeded" {
-			t.Fatalf("isolated delivery cleanup = %#v", cleaned)
+		if len(closure.Entries) != 2 {
+			t.Fatalf("closed result entries = %#v", closure.Entries)
+		}
+		for _, entry := range closure.Entries {
+			if entry.RepoID == writeResource.RepoID {
+				if entry.Status != "retained" || entry.Achievement != "committed" {
+					t.Fatalf("closure did not preserve committed work: %#v", entry)
+				}
+			} else if entry.Status != "closed" {
+				t.Fatalf("reference result was not closed: %#v", entry)
+			}
 		}
 	}
-	if _, err := os.Stat(writeRoot); !os.IsNotExist(err) {
-		t.Fatalf("Task worktree was not cleaned up: %v", err)
+	if os.Getenv("CHORA_ISOLATED_ACCEPTANCE_GITHUB_REPO") != "" {
+		if _, err := os.Stat(writeRoot); !os.IsNotExist(err) {
+			t.Fatalf("Task worktree was not cleaned up: %v", err)
+		}
+	} else if got := strings.TrimSpace(isolatedAcceptanceGit(t, writeRoot, "rev-parse", "HEAD")); got != committed.Commit {
+		t.Fatalf("closed result lost retained commit: %s", got)
 	}
 	t.Logf("isolated acceptance evidence: image=%s run=%s result=%s patch=%s commit=%s", readiness.ImageID, started.ID, result.Digest, result.Group.Repositories[0].PatchDigest, committed.Commit)
 }
