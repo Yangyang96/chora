@@ -95,6 +95,14 @@ Task's existing worktree changes carry forward under the same frozen authority.
 An unproven old process blocks execution. Fix Docker availability and restart
 before retrying; do not delete ownership records to bypass recovery.
 
+If Workbench stops during result import, restart attempts to roll back the
+interrupted changes before removing their recovery records. It first checks every
+repository against the saved Git identity and expected file states. Unknown or
+partially written file states, external edits, or damaged recovery records keep
+the isolated mode unavailable and retain
+the snapshots; do not delete those records or edit the affected Task worktrees
+to bypass the check.
+
 Use Workbench's explicit cleanup after delivery or closing unwanted results.
 Cleanup does not delete the original repositories. The shared prepared image is
 kept for later Tasks. To remove application data, follow the stopped-service
@@ -115,7 +123,8 @@ authenticate host Git/`gh` for that repository. This explicitly creates fixture
 and Task branches, opens and merges a PR into the unique fixture branch, and
 retains remote branches/PR evidence. It does not target the default branch.
 Without that variable, delivery uses a local bare remote and closes the result;
-that run does not qualify actual GitHub PR/Merge.
+the committed Task worktree is retained. That run does not qualify actual
+GitHub PR/Merge or merged-worktree cleanup.
 
 This entry requires real Docker and real Pi model access; missing prerequisites
 fail instead of skipping. It creates temporary Git fixtures and verifies the

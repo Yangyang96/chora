@@ -76,6 +76,11 @@ Git 托管凭据只用于宿主交付流程，不注入 Pi 容器。
 Review 反馈和任务工作树已有改动在同一冻结契约下接续。旧进程死亡未经证明时阻止启动；
 恢复 Docker 并重启后重试，不可删除所有权记录绕过恢复。
 
+如果 Workbench 在导入结果期间停止，重启时会尝试回滚中断的改动，成功后再清理恢复记录。
+回滚前会核对全部仓库保存的 Git 身份和预期文件状态。若发现无法确认或仅写入部分内容的
+文件、外部改动或损坏的恢复记录，隔离模式保持不可用并保留快照；不可删除记录或修改受影响的任务 worktree
+来绕过检查。
+
 交付完成或关闭不需要的结果后，使用 Workbench 显式清理；不删除原始仓库。
 共享准备镜像保留供后续任务使用。删除应用数据前遵循[停服备份与恢复流程](workbench-maintenance.zh-CN.md)，
 不要在 Workbench 或其他所有者仍使用数据时删除。
@@ -92,7 +97,8 @@ CHORA_ISOLATED_ACCEPTANCE_DATA=/absolute/prepared-test-data make isolated-accept
 `CHORA_ISOLATED_ACCEPTANCE_GITHUB_REPO=owner/disposable-test-repository`，并在宿主
 为该测试仓库配置 Git/`gh` 登录。这会创建 fixture 和 Task 分支、创建 PR 并合入独立
 fixture 分支，保留远端分支和 PR 证据，不操作默认分支。不设置该变量时使用本地 bare
-remote 交付后关闭结果，这种运行不算实际 GitHub PR/Merge 验收。
+remote 交付后关闭结果，保留已提交的任务 worktree；这种运行不算实际 GitHub
+PR/Merge 或合并后 worktree 清理验收。
 
 入口要求真实 Docker 和 Pi 模型访问，前提缺失时失败，不跳过。创建临时 Git fixture，
 验证多仓库执行、检查证据、Review 结果和原始仓库不变。这是实际集成验证，不表示全部历史
