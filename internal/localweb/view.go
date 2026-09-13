@@ -682,6 +682,7 @@ type taskRefView struct {
 	Goal                  string                       `json:"goal"`
 	ExecutionProfile      string                       `json:"executionProfile"`
 	AgentExecutionProfile string                       `json:"agentExecutionProfile,omitempty"`
+	ModelBinding          domain.ModelBinding           `json:"modelBinding,omitempty"`
 	Repository            *repositoryIdentityView      `json:"repository,omitempty"`
 	Worktree              *taskWorktreeView            `json:"worktree,omitempty"`
 	Criteria              []taskCriterionView          `json:"criteria"`
@@ -813,7 +814,7 @@ func taskReferenceView(task domain.Task, selection domain.TaskRevisionSelection,
 	selectionView := selectionViewOf(selection)
 	return taskRefView{
 		ID: task.ID().String(), RoomID: task.RoomID().String(), Title: task.Title(), Goal: task.Goal(), Criteria: criteria,
-		Selection: &selectionView, Planning: planning,
+		Selection: &selectionView, Planning: planning, ModelBinding: task.ModelBinding(),
 	}
 }
 
