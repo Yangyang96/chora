@@ -163,7 +163,7 @@ func (s *Service) prepare(ctx context.Context, meta CommandMeta, runID domain.Ru
 				return retry.Reason
 			}
 			return ""
-		}(), ContextDelta: func() string {
+		}(), ModelBinding: charter.ModelBinding(), ContextDelta: func() string {
 			if retry != nil {
 				return retry.Instructions
 			}

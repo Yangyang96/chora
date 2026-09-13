@@ -131,6 +131,7 @@ func (s *Service) PrepareProfileSwitch(ctx context.Context, request PrepareProfi
 			ID: s.deps.IDs.AttemptID(), RunID: run.ID(), Sequence: nextRun.CurrentAttemptNumber(), Predecessor: &predecessor,
 			ContextSnapshotID: snapshot.ID(), ContextDigest: snapshot.Digest(), AdapterID: charter.AdapterID(),
 			AgentExecutionProfileBinding: nextBinding, RetryReason: "Agent execution profile switch: " + reason,
+			ModelBinding: oldAttempt.ModelBinding(),
 			ContextDelta: string(delta), ExternalSession: "", CreatedAt: now,
 		})
 		if err != nil {

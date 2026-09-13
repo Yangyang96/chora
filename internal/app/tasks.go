@@ -614,6 +614,7 @@ func (s *Service) acceptanceResources(ctx context.Context, tx storecontract.Writ
 		ID: s.deps.IDs.CharterID(), TaskID: task.ID(), TaskGoal: task.Goal(), Criteria: task.Criteria(), ContextRevisionIDs: selection.SelectedRevisionIDs(),
 		WorkspaceRoot: room.WorkspaceRoot(), AdapterID: "fake", SandboxMode: "workspace", ExpectedOutput: "reviewable implementation patch",
 		ResponsibleHuman: "local-human", CapabilityEnvelope: domain.CapabilityEnvelope{"workspace_write": true}, Initiator: "local-human", CreatedAt: now,
+		ModelBinding: task.ModelBinding(),
 	})
 	if err != nil {
 		return domain.RunCharter{}, contextcore.Snapshot{}, err
