@@ -129,6 +129,20 @@ func (gate ExecutionDecisionGate) Resolve(optionID, note, actorID, sessionID str
 	return gate, nil
 }
 
+// Reopen creates a new open lifecycle state while retaining the gate's
+// original request and evidence identity. Resolution fields are cleared so a
+// subsequent decision cannot be mistaken for the historical one.
+func (gate ExecutionDecisionGate) Reopen(reopenedAt time.Time) (ExecutionDecisionGate, error) {
+	if gate.status != DecisionGateResolved || reopenedAt.IsZero() || reopenedAt.Before(gate.resolvedAt) {
+		return ExecutionDecisionGate{}, fmt.Errorf("%w: decision gate reopen rejected", ErrInvalidArgument)
+	}
+	gate.status = DecisionGateOpen
+	gate.selectedOptionID, gate.note, gate.actorID, gate.sessionID = "", "", "", ""
+	gate.requestedAt = reopenedAt
+	gate.resolvedAt = time.Time{}
+	return gate, nil
+}
+
 func (gate ExecutionDecisionGate) hasOption(id string) bool {
 	for _, option := range gate.options {
 		if option.ID == id {

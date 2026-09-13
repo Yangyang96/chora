@@ -280,6 +280,7 @@ type WriteTx interface {
 	InsertTaskRevisionSelection(context.Context, domain.TaskRevisionSelection) error
 	InsertDecisionGate(context.Context, domain.ExecutionDecisionGate) error
 	ResolveDecisionGateCAS(context.Context, domain.ExecutionDecisionGate, domain.ExecutionDecisionGate) error
+	ReopenDecisionGateCAS(context.Context, domain.ExecutionDecisionGate, domain.ExecutionDecisionGate) error
 	InsertSpecCodingIntent(context.Context, SpecCodingIntent) error
 	InsertSpecCodingBinding(context.Context, SpecCodingBinding) error
 	RegisterSpecCodingBinding(context.Context, SpecCodingBinding) error

@@ -47,6 +47,9 @@ func (s *Service) RequestCancel(ctx context.Context, request StopRequest) (StopR
 }
 
 func (s *Service) requestStop(ctx context.Context, request StopRequest, command domain.CommandKind, intent execution.StopIntentKind, handoff bool) (StopResult, error) {
+	if strings.TrimSpace(request.Reason) == "" {
+		return StopResult{}, fmt.Errorf("%w: stop reason is required", ErrInvalidCommand)
+	}
 	if request.AllowRetry && intent != execution.StopForCancel {
 		return StopResult{}, fmt.Errorf("%w: retry authority is only valid for cancellation", ErrInvalidCommand)
 	}
