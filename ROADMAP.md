@@ -100,9 +100,12 @@ using public Pi 0.85.1, DeepSeek/deepseek-v4-pro and local arm64 Docker.
 Final acceptance is in progress. It covers public preparation, credentials,
 execution, checks, Review → Commit → Push → PR → Merge → cleanup, cancellation,
 restart and Resume. Immutable multi-repository Task bases and legacy Apply remain.
-M2-S4-2 qualifies Minimal/Standard only when their tools/dependencies, network
-and resource policies have clear, tested differences. One qualified mode can
-ship first. Isolation failure never falls back to host execution.
+M2-S4-2 is scheduled after S4-1 is stable and qualifies Minimal/Standard only when
+their tools/dependencies, network and resource policies have clear, tested
+differences. At the current S4-1 pace, reserve one work unit (about 3–5 hours,
+including focused acceptance). It does not block S5, but remains part of the
+later M2 completion scope. One qualified mode can ship first. Isolation failure
+never falls back to host execution.
 
 Default order: M2-S3 -> public-candidate gates -> first Alpha publication ->
 M2-S4. This adds no first-Alpha requirement and does not wait for M3/M4. Reuse
