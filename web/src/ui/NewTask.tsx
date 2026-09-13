@@ -52,7 +52,6 @@ export function NewTask({ projectId, roomId, roomName, busy, preparationPending 
     isolatedLocalUnavailable ? t('Prepare Isolated Local and restart Chora if requested before starting.') : '',
     trustedLocalUnavailable ? t('Open the Pi readiness details and resolve the reported issue.') : '',
     usesTaskResources && (!resources || resources.length === 0) ? resourceBlocker || t('Loading repositories…') : '',
-    !modelBinding ? t('Select a supported model provided by the coding agent.') : '',
     !usesTaskResources && projectId && settingsVersion === undefined ? t('Wait for Project settings to load; resolve any settings error shown above.') : '',
   ].filter(Boolean).join('\n')
 
@@ -62,6 +61,7 @@ export function NewTask({ projectId, roomId, roomName, busy, preparationPending 
     if (disclosurePending || unavailable || !agentExecutionProfile) return
     if (usesTaskResources && (!resources || resources.length === 0)) return
     if (projectId && !roomId && settingsVersion === undefined) return
+    if (!projectId && !modelBinding) { onSubmit(requirement.trim(), agentExecutionProfile); return }
     if (projectId && roomId) onSubmit(requirement.trim(), agentExecutionProfile, undefined, resources, modelBinding)
     else if (projectId) onSubmit(requirement.trim(), agentExecutionProfile, settingsVersion, undefined, modelBinding)
     else onSubmit(requirement.trim(), agentExecutionProfile, undefined, undefined, modelBinding)
@@ -99,7 +99,7 @@ export function NewTask({ projectId, roomId, roomName, busy, preparationPending 
         <ActionButton type="button" className="btn-secondary" disabled={(busy && !preparationPending) || disclosurePending} disabledReason={disclosurePending ? 'Finish the Local Connected acknowledgement first.' : 'Wait for the current operation to finish.'} onClick={onCancel}>
           {preparationPending ? t('Cancel preparation') : t('Cancel')}
         </ActionButton>
-        <ActionButton type="submit" className="btn-primary" disabled={busy || disclosurePending || unavailable || !agentExecutionProfile || !modelBinding || !requirement.trim() || (usesTaskResources ? !resources || resources.length === 0 : !!projectId && settingsVersion === undefined)} disabledReason={startDisabledReason}>
+        <ActionButton type="submit" className="btn-primary" disabled={busy || disclosurePending || unavailable || !agentExecutionProfile || !requirement.trim() || (usesTaskResources ? !resources || resources.length === 0 : !!projectId && settingsVersion === undefined)} disabledReason={startDisabledReason}>
           {busy ? t('Starting…') : t('Start')}
         </ActionButton>
       </div>
