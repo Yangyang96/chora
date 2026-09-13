@@ -24,9 +24,8 @@ import (
 const sourceCheckoutLedgerID = "source-checkout-local-alpha-v1"
 
 func runSourceCheckout(args []string, stdout, stderr io.Writer) int {
-	return runSourceCheckoutWithListen(args, stdout, stderr, func(server *http.Server) error {
-		return server.ListenAndServe()
-	})
+	fmt.Fprintln(stderr, preflight.LegacyNetworkRetiredMessage)
+	return 1
 }
 
 func runSourceCheckoutWithListen(args []string, stdout, stderr io.Writer, listen func(*http.Server) error) int {

@@ -29,14 +29,14 @@ import (
 )
 
 const (
-	StatusPassed                = "passed"
-	StatusFailed                = "failed"
-	AgentImageID                = "sha256:91698efead5641a633519f5f229373e08a59264045ca27f6d01fc06505deeea7"
-	BoundaryImageID             = "sha256:4f7746f3cdbe55dc454775ead5958a9ed8a78b93776ea1df598255c1606b25c6"
-	AllowedModelURL             = "https://chatgpt.com/backend-api/codex/responses"
-	AllowedAuthURL              = "https://auth.openai.com"
-	FixedProxyURL               = "http://host.docker.internal:9981"
-	HostProxyProbeURL           = "http://127.0.0.1:9981"
+	StatusPassed    = "passed"
+	StatusFailed    = "failed"
+	AgentImageID    = "sha256:91698efead5641a633519f5f229373e08a59264045ca27f6d01fc06505deeea7"
+	BoundaryImageID = "sha256:4f7746f3cdbe55dc454775ead5958a9ed8a78b93776ea1df598255c1606b25c6"
+	AllowedModelURL = "https://chatgpt.com/backend-api/codex/responses"
+	AllowedAuthURL  = "https://auth.openai.com"
+	// RetiredProxyIdentity is only an identity for deterministic historical replay, never a URL.
+	RetiredProxyIdentity        = "retired-enterprise-proxy"
 	RequiredCA256               = "3444d3f6d9ef36946ff29ef382e402017a96ff6c97f7b8ae08643acceb2e0dac"
 	ModeFreshInstall       Mode = "fresh-install"
 	ModeInstalledDoctor    Mode = "installed-doctor"
@@ -95,6 +95,8 @@ type Probes struct {
 	// PATH Pi probes. It is accepted solely when the same exact Runner
 	// re-observes Identity and Qualification remains valid for Contract.
 	QualifiedRuntime *QualifiedRuntime
+
+	legacyNetworkRetired bool
 }
 
 // QualifiedRuntime is immutable evidence reconstructed from one active
@@ -194,7 +196,8 @@ type ModelProbeAttempt struct {
 
 func DefaultProbes() Probes {
 	return Probes{
-		Host: func() (string, string) { return runtime.GOOS, runtime.GOARCH },
+		legacyNetworkRetired: true,
+		Host:                 func() (string, string) { return runtime.GOOS, runtime.GOARCH },
 		Command: func(ctx context.Context, name string, arguments ...string) CommandResult {
 			command := exec.CommandContext(ctx, name, arguments...)
 			var stdout, stderr boundedBuffer
@@ -297,71 +300,20 @@ func readBoundedFile(path string) ([]byte, error) {
 	return data, nil
 }
 
-func probeModel(ctx context.Context, request ModelRequest) CommandResult {
-	if request.URL != AllowedModelURL || request.ContractProxyURL != FixedProxyURL || request.DialProxyURL != HostProxyProbeURL || request.AccessToken == "" {
-		return CommandResult{Err: fmt.Errorf("model probe identity mismatch")}
-	}
-	if request.AccountID == "" {
-		return CommandResult{Err: fmt.Errorf("model account identity missing")}
-	}
-	return probeHTTP(ctx, http.MethodPost, request.URL, request.DialProxyURL, request.CAFile, request.AccessToken, request.AccountID)
+// LegacyNetworkRetired distinguishes production probes from deterministic
+// historical fixture replay. Production never dials an enterprise proxy.
+func (p Probes) LegacyNetworkRetired() bool { return p.legacyNetworkRetired }
+
+const LegacyNetworkRetiredMessage = "legacy enterprise-proxy execution is retired; use chora workbench"
+
+var ErrLegacyNetworkRetired = errors.New(LegacyNetworkRetiredMessage)
+
+func probeModel(context.Context, ModelRequest) CommandResult {
+	return CommandResult{Err: ErrLegacyNetworkRetired}
 }
 
-func probeProxy(ctx context.Context, request ProxyRequest) CommandResult {
-	if request.URL != AllowedAuthURL || request.ContractProxyURL != FixedProxyURL || request.DialProxyURL != HostProxyProbeURL {
-		return CommandResult{Err: fmt.Errorf("proxy probe identity mismatch")}
-	}
-	return probeHTTP(ctx, http.MethodGet, request.URL, request.DialProxyURL, request.CAFile, "", "")
-}
-
-func probeHTTP(ctx context.Context, method, target, proxyURL, caFile, accessToken, accountID string) CommandResult {
-	ca, err := readBoundedFile(caFile)
-	if err != nil {
-		return CommandResult{Err: err}
-	}
-	roots, err := x509.SystemCertPool()
-	if err != nil || roots == nil {
-		roots = x509.NewCertPool()
-	}
-	if !roots.AppendCertsFromPEM(ca) {
-		return CommandResult{Err: fmt.Errorf("invalid pinned CA")}
-	}
-	proxy, err := url.Parse(proxyURL)
-	if err != nil {
-		return CommandResult{Err: err}
-	}
-	transport := &http.Transport{Proxy: http.ProxyURL(proxy), TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}}
-	defer transport.CloseIdleConnections()
-	client := &http.Client{
-		Transport: transport,
-		Timeout:   10 * time.Second,
-		CheckRedirect: func(next *http.Request, via []*http.Request) error {
-			if len(via) >= 3 || next.URL.Scheme != "https" || (next.URL.Hostname() != "auth.openai.com" && next.URL.Hostname() != "chatgpt.com") || (next.URL.Port() != "" && next.URL.Port() != "443") {
-				return errUndeclaredRedirectDestination
-			}
-			return nil
-		},
-	}
-	var body io.Reader
-	if method == http.MethodPost {
-		body = bytes.NewBufferString("{}")
-	}
-	httpRequest, err := http.NewRequestWithContext(ctx, method, target, body)
-	if err != nil {
-		return CommandResult{Err: err}
-	}
-	if accessToken != "" {
-		httpRequest.Header.Set("Authorization", "Bearer "+accessToken)
-		httpRequest.Header.Set("ChatGPT-Account-ID", accountID)
-		httpRequest.Header.Set("Content-Type", "application/json")
-	}
-	response, err := client.Do(httpRequest)
-	if err != nil {
-		return CommandResult{Err: err, RetryableTransport: retryableHTTPTransportError(ctx, err)}
-	}
-	defer response.Body.Close()
-	_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4<<10))
-	return CommandResult{Stdout: strconv.Itoa(response.StatusCode)}
+func probeProxy(context.Context, ProxyRequest) CommandResult {
+	return CommandResult{Err: ErrLegacyNetworkRetired}
 }
 
 func diskFree(path string) (uint64, error) {
@@ -477,6 +429,9 @@ func errorsOr(err error, fallback string) error {
 }
 
 func Run(ctx context.Context, config Config, probes Probes) Report {
+	if probes.LegacyNetworkRetired() {
+		return failed("legacy.network.retired", "legacy enterprise proxy removed", "current Workbench execution", LegacyNetworkRetiredMessage)
+	}
 	if config.Mode == "" {
 		config.Mode = ModeFreshInstall
 	}
@@ -511,7 +466,7 @@ func run(ctx context.Context, config Config, probes Probes) (report Report) {
 		"chora-preflight-v1", config.SourceRoot, config.InstallRoot, config.DataRoot,
 		config.AuthFile, config.CAFile, config.ProxyURL, config.ModelURL, strconv.Itoa(config.Port),
 		config.SourceManifest, config.BundleAggregate,
-		AgentImageID, BoundaryImageID, RequiredCA256, HostProxyProbeURL,
+		AgentImageID, BoundaryImageID, RequiredCA256, RetiredProxyIdentity,
 	}
 	// Installed Doctor issues the exact stable continuation fingerprint consumed
 	// by service recovery/start and pre-attempt. Its Setup receipt and model
@@ -647,8 +602,8 @@ func run(ctx context.Context, config Config, probes Probes) (report Report) {
 		return failed("trust.ca", safeDigest(caDigest, err), RequiredCA256, "Set --ca to the pinned StarPoint root CA file, then rerun chora doctor.")
 	}
 	fingerprintParts = append(fingerprintParts, caDigest)
-	if config.ProxyURL != FixedProxyURL {
-		return failed("proxy.route", safeURLObservation(config.ProxyURL), FixedProxyURL, "Set --proxy to the fixed enterprise proxy endpoint, then rerun chora doctor.")
+	if config.ProxyURL != RetiredProxyIdentity {
+		return failed("proxy.route", safeURLObservation(config.ProxyURL), RetiredProxyIdentity, "Set --proxy to the fixed enterprise proxy endpoint, then rerun chora doctor.")
 	}
 	if config.ModelURL != AllowedModelURL {
 		return failed("model.destination", safeURLObservation(config.ModelURL), AllowedModelURL, "Set --model-url to the allowlisted Codex endpoint, then rerun chora doctor.")
@@ -656,7 +611,7 @@ func run(ctx context.Context, config Config, probes Probes) (report Report) {
 	if probes.Proxy == nil {
 		return failed("preflight.internal", "proxy probe unavailable", "bounded fixed proxy probe", "Reinstall Chora from the manifest-bound source bundle, then rerun chora doctor.")
 	}
-	result = probes.Proxy(ctx, ProxyRequest{URL: AllowedAuthURL, ContractProxyURL: config.ProxyURL, DialProxyURL: HostProxyProbeURL, CAFile: config.CAFile})
+	result = probes.Proxy(ctx, ProxyRequest{URL: AllowedAuthURL, ContractProxyURL: config.ProxyURL, DialProxyURL: RetiredProxyIdentity, CAFile: config.CAFile})
 	proxyCategory, proxyOK := proxyStatusCategory(result.Stdout)
 	if result.Err != nil || !proxyOK {
 		return failed("proxy.reachability", "fixed proxy TLS request failed", "TLS reachability through fixed enterprise proxy to auth.openai.com", "Restore the fixed enterprise proxy and pinned CA route, then rerun chora doctor.")
@@ -670,7 +625,7 @@ func run(ctx context.Context, config Config, probes Probes) (report Report) {
 	if token == "" || accountID == "" {
 		return failed("oauth.entry", "openai-codex credential fields absent", "readable openai-codex provider entry", "Refresh the openai-codex OAuth credential with pi, then rerun chora doctor.")
 	}
-	request := ModelRequest{URL: config.ModelURL, ContractProxyURL: config.ProxyURL, DialProxyURL: HostProxyProbeURL, CAFile: config.CAFile, AccessToken: token, AccountID: accountID}
+	request := ModelRequest{URL: config.ModelURL, ContractProxyURL: config.ProxyURL, DialProxyURL: RetiredProxyIdentity, CAFile: config.CAFile, AccessToken: token, AccountID: accountID}
 	modelProbeAudit = &ModelProbeAudit{MaxAttempts: modelProbeMaxAttempts}
 	result, _, modelOK := runModelProbe(ctx, probes.Model, request, modelProbeAudit)
 	if result.Err != nil || !modelOK {

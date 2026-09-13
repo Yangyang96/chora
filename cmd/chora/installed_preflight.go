@@ -150,6 +150,10 @@ func qualifiedInstalledPreflightProbes(
 }
 
 func runInstalledDoctor(args []string, stdout, stderr io.Writer, probes preflight.Probes) int {
+	if probes.LegacyNetworkRetired() {
+		fmt.Fprintln(stderr, preflight.LegacyNetworkRetiredMessage)
+		return 1
+	}
 	command, err := parseInstalledDoctorCommand(args, stderr)
 	if err != nil {
 		fmt.Fprintln(stderr, "installed-doctor requires exact installed generation, release, Engine, Pi, and Preflight inputs")
@@ -375,7 +379,7 @@ func parseInstalledDoctorCommand(args []string, stderr io.Writer) (installedDoct
 		!canonicalAbsolute(*sourceRoot) || *sourceRoot != *installRoot ||
 		!canonicalAbsolute(*sourceManifest) || *sourceManifest != filepath.Join(*installRoot, sourcebundle.ManifestName) || !validFingerprint(*bundleAggregate) ||
 		!canonicalAbsolute(*installRoot) || !canonicalAbsolute(*dataRoot) || !canonicalAbsolute(*authFile) || !canonicalAbsolute(*caFile) ||
-		*proxyURL != preflight.FixedProxyURL || *modelURL != preflight.AllowedModelURL || *port < 1 || *port > 65535 ||
+		*proxyURL != preflight.RetiredProxyIdentity || *modelURL != preflight.AllowedModelURL || *port < 1 || *port > 65535 ||
 		!canonicalAbsolute(*setupReceipt) || !validFingerprint(*setupReceiptSHA) ||
 		!canonicalAbsolute(*modelAuthority) || !validFingerprint(*modelAuthoritySHA) {
 		return installedDoctorCommand{}, errors.New("invalid installed Doctor identity")

@@ -43,3 +43,15 @@ test('repository publication policy excludes private campaigns but keeps current
     'e2e/task-delivery-browser.mjs', 'playwright.config.ts',
   ]) assert.doesNotThrow(() => validatePublicationPath(path, actual))
 })
+
+test('publication text scan rejects developer proxy endpoints', () => {
+  for (const [host, port] of [
+    ['host.docker.internal', 9981], ['127.0.0.1', 9981],
+    ['127.0.0.1', 7890], ['localhost', 7890],
+    ['192.168.5.2', 7890], ['192.168.64.1', 7890],
+  ]) {
+    assert.throws(() => scanPublicationText('config.json', `http://${host}:${port}`, '/Users/maintainer/'), /developer proxy endpoint/)
+  }
+  assert.doesNotThrow(() => scanPublicationText('fixture.json', 'retired-enterprise-proxy', '/Users/maintainer/'))
+  assert.doesNotThrow(() => scanPublicationText('policy.json', 'http://codex-boundary:8080', '/Users/maintainer/'))
+})

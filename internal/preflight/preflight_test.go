@@ -8,11 +8,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,10 +24,43 @@ import (
 	"github.com/Yangyang96/chora/internal/sourcebundle"
 )
 
+func TestRetiredProductionPreflightHasNoSideEffects(t *testing.T) {
+	probes := DefaultProbes()
+	probes.Host = func() (string, string) { t.Fatal("host probe called"); return "", "" }
+	probes.File = func(string) FileMetadata { t.Fatal("file inspected"); return FileMetadata{} }
+	probes.ReadFile = func(string) ([]byte, error) { t.Fatal("credential read"); return nil, nil }
+	probes.Command = func(context.Context, string, ...string) CommandResult {
+		t.Fatal("command executed")
+		return CommandResult{}
+	}
+	probes.Proxy = func(context.Context, ProxyRequest) CommandResult { t.Fatal("proxy called"); return CommandResult{} }
+	probes.Model = func(context.Context, ModelRequest) CommandResult { t.Fatal("model called"); return CommandResult{} }
+	for _, mode := range []Mode{ModeFreshInstall, ModeInstalledDoctor, ModeServiceRecovery, ModeServiceStart, ModePreAttempt} {
+		config := supportedConfig()
+		config.Mode = mode
+		report := Run(context.Background(), config, probes)
+		if report.Status != StatusFailed || report.Failure == nil || report.Failure.Boundary != "legacy.network.retired" || report.ResourcesCreated || report.InputFingerprint != "" {
+			t.Fatalf("retired mode %s = %#v", mode, report)
+		}
+	}
+}
+
+func TestRetiredProductionNetworkProbesNeverSendRequests(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { requests.Add(1) }))
+	defer server.Close()
+	probes := DefaultProbes()
+	proxy := probes.Proxy(context.Background(), ProxyRequest{URL: server.URL, ContractProxyURL: server.URL, DialProxyURL: server.URL})
+	model := probes.Model(context.Background(), ModelRequest{URL: server.URL, ContractProxyURL: server.URL, DialProxyURL: server.URL, AccessToken: "fixture-token", AccountID: "fixture-account"})
+	if !errors.Is(proxy.Err, ErrLegacyNetworkRetired) || !errors.Is(model.Err, ErrLegacyNetworkRetired) || requests.Load() != 0 {
+		t.Fatalf("retired probes proxy=%v model=%v requests=%d", proxy.Err, model.Err, requests.Load())
+	}
+}
+
 func supportedConfig() Config {
 	return Config{
 		SourceRoot: "/source", InstallRoot: "/install", DataRoot: "/data",
-		AuthFile: "/auth.json", CAFile: "/ca.pem", ProxyURL: FixedProxyURL,
+		AuthFile: "/auth.json", CAFile: "/ca.pem", ProxyURL: RetiredProxyIdentity,
 		ModelURL: AllowedModelURL, Port: 8787, SourceManifest: "/source/source-manifest.json",
 		BundleAggregate: strings.Repeat("b", 64),
 	}
@@ -142,7 +178,7 @@ func TestRunRejectsUndeclaredModelDestinationBeforeNetwork(t *testing.T) {
 func TestRunRedactsCredentialsFromWrongProxyURL(t *testing.T) {
 	probes, _ := supportedProbes(t)
 	config := supportedConfig()
-	config.ProxyURL = "http://operator:top-secret@evil.example:9981/path?token=top-secret"
+	config.ProxyURL = "http://operator:top-secret@evil.example:8080/path?token=top-secret"
 	report := Run(context.Background(), config, probes)
 	if report.Failure == nil || report.Failure.Boundary != "proxy.route" {
 		t.Fatalf("failure = %#v, want proxy.route", report.Failure)
@@ -365,7 +401,7 @@ func TestRunPreservesContainerProxyIdentityButDialsHostProbeRoute(t *testing.T) 
 	if report.Status != StatusPassed {
 		t.Fatalf("report = %#v", report)
 	}
-	if got.ContractProxyURL != FixedProxyURL || got.DialProxyURL != HostProxyProbeURL {
+	if got.ContractProxyURL != RetiredProxyIdentity || got.DialProxyURL != RetiredProxyIdentity {
 		t.Fatalf("proxy identities = %#v", got)
 	}
 }

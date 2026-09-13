@@ -33,7 +33,7 @@ func TestRunServeInstallationOnlyStartsWithoutActiveGenerationOrReferences(t *te
 		"--source", installRoot, "--source-manifest", filepath.Join(installRoot, "source-manifest.json"),
 		"--bundle-aggregate", strings.Repeat("b", 64), "--install", installRoot, "--data", dataRoot,
 		"--repository", filepath.Join(root, "user-repository"), "--auth", filepath.Join(root, "auth.json"),
-		"--ca", filepath.Join(root, "ca.pem"), "--proxy", preflight.FixedProxyURL, "--model-url", preflight.AllowedModelURL,
+		"--ca", filepath.Join(root, "ca.pem"), "--proxy", preflight.RetiredProxyIdentity, "--model-url", preflight.AllowedModelURL,
 		"--preflight-fingerprint", strings.Repeat("a", 64), "--installation-state-root", stateRoot, "--generation", "g1",
 		"--docker-cli", filepath.Join(toolRoot, "docker-"+dockerClientVersion), "--docker-context", "chora-local",
 		"--endpoint-digest", strings.Repeat("e", 64), "--release-root", filepath.Join(root, "release"),

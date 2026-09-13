@@ -197,7 +197,7 @@ func validateSandboxPolicyV4(policy SandboxPolicyV4) error {
 	if network.Mode != "attempt_private_internal_with_fixed_codex_proxy_and_enterprise_upstream" || !network.AttemptNetworkInternal || network.GeneralEgress || network.HostNetwork || network.PublishedPorts || network.DockerSocketMounted || network.NormalBridgeFallback || proxy.Endpoint != "http://codex-boundary:8080" || proxy.Protocol != "http_connect" || !slicesEqual(proxy.AllowedHosts, []string{"auth.openai.com", "chatgpt.com"}) || !slicesEqualInt(proxy.AllowedPorts, []int{443}) || !proxy.DenyIPLiteral || proxy.ResolveDNSAtBoundary || proxy.DNSResolutionOwner != "fixed_enterprise_upstream" || !proxy.TaskScoped || !proxy.Traceable {
 		return invalidCandidatePolicy("v4 network boundary")
 	}
-	if proxy.Upstream.Kind != "fixed_enterprise_http_connect_proxy" || proxy.Upstream.Endpoint != "http://host.docker.internal:9981" || proxy.Upstream.AccessibleFromAttempt || !proxy.Upstream.TaskScoped || !proxy.Upstream.Traceable {
+	if proxy.Upstream.Kind != "fixed_enterprise_http_connect_proxy" || proxy.Upstream.Endpoint != "retired-enterprise-proxy" || proxy.Upstream.AccessibleFromAttempt || !proxy.Upstream.TaskScoped || !proxy.Upstream.Traceable {
 		return invalidCandidatePolicy("v4 enterprise upstream")
 	}
 	if proxy.TLS.CodexBoundaryTerminates || !proxy.TLS.EnterpriseUpstreamTerminates || !proxy.TLS.VerificationRequired || proxy.TLS.TrustAnchorPath != starpointRootCAContainerPath || proxy.TLS.TrustAnchorSHA256 != starpointRootCASHA256 {

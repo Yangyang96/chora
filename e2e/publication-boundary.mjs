@@ -8,6 +8,7 @@ const execFileAsync = promisify(execFile)
 const moduleDirectory = dirname(fileURLToPath(import.meta.url))
 
 const secretRules = [
+  ['developer proxy endpoint', /\b(?:host\.docker\.internal|127\.0\.0\.1):9981\b|\b(?:127\.0\.0\.1|localhost|192\.168\.(?:5\.2|64\.1)):7890\b/],
   ['private key', /-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----/],
   ['OpenAI key', /\bsk-[A-Za-z0-9_-]{20,}\b/],
   ['GitHub token', /\bgh[pousr]_[A-Za-z0-9]{30,}\b/],

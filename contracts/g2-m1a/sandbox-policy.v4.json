@@ -58,7 +58,7 @@
       "traceable": true,
       "upstream": {
         "kind": "fixed_enterprise_http_connect_proxy",
-        "endpoint": "http://host.docker.internal:9981",
+        "endpoint": "retired-enterprise-proxy",
         "accessible_from_attempt": false,
         "task_scoped": true,
         "traceable": true

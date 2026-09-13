@@ -38,7 +38,7 @@ const (
 	DockerContext         = "colima"
 	RequiredColimaVersion = "0.10.3"
 
-	pinnedPolicyDigest = "efe8918d0c9c4232c8292941f573fe386d93a3faa051329c883c9b8349b66f04"
+	pinnedPolicyDigest = "a26170c8cdb8b1cd245498a44aa651772a1150a819e11a4c1c5c1215d589d259"
 	// WorkbenchPolicyDigest pins the complete public isolated-local Docker
 	// policy. Changing any boundary requires a new policy identifier and digest.
 	WorkbenchPolicyCanonical = "chora.public-workbench.v1;workspace=workspace-local-tmpfs-volume-256m;container-memory=4g;cpus=2;pids=256;network=bridge;rootfs=readonly;uid=1000;cap-drop=all;no-new-privileges=true;deadline=20m"

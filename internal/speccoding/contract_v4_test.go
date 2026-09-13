@@ -52,7 +52,7 @@ func TestV4SandboxPolicyPinsEnterpriseUpstream(t *testing.T) {
 		t.Fatal(err)
 	}
 	proxy := policy.Network.Proxy
-	if proxy.ResolveDNSAtBoundary || proxy.DNSResolutionOwner != "fixed_enterprise_upstream" || proxy.Upstream.Kind != "fixed_enterprise_http_connect_proxy" || proxy.Upstream.Endpoint != "http://host.docker.internal:9981" || proxy.Upstream.AccessibleFromAttempt || !proxy.Upstream.TaskScoped || !proxy.Upstream.Traceable {
+	if proxy.ResolveDNSAtBoundary || proxy.DNSResolutionOwner != "fixed_enterprise_upstream" || proxy.Upstream.Kind != "fixed_enterprise_http_connect_proxy" || proxy.Upstream.Endpoint != "retired-enterprise-proxy" || proxy.Upstream.AccessibleFromAttempt || !proxy.Upstream.TaskScoped || !proxy.Upstream.Traceable {
 		t.Fatalf("unsafe v4 upstream = %#v", proxy)
 	}
 	if proxy.TLS.CodexBoundaryTerminates || !proxy.TLS.EnterpriseUpstreamTerminates || !proxy.TLS.VerificationRequired || proxy.TLS.TrustAnchorSHA256 != starpointRootCASHA256 || proxy.TLS.TrustAnchorPath != "/run/chora/trust/starpoint-root-ca-2048-g2.pem" {
@@ -94,7 +94,7 @@ func TestV4ContractsRejectTrustAndEgressRelaxation(t *testing.T) {
 		set  any
 	}{
 		{"attempt reaches upstream", []string{"network", "proxy", "upstream", "accessible_from_attempt"}, true},
-		{"upstream drift", []string{"network", "proxy", "upstream", "endpoint"}, "http://host.docker.internal:9999"},
+		{"upstream drift", []string{"network", "proxy", "upstream", "endpoint"}, "http://unconfigured.example.invalid:8080"},
 		{"hidden termination", []string{"network", "proxy", "tls", "enterprise_upstream_terminates"}, false},
 		{"disabled verification", []string{"network", "proxy", "tls", "verification_required"}, false},
 		{"writable trust directory", []string{"trust", "directory_mode_after_projection"}, "0755"},

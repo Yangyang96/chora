@@ -13,9 +13,9 @@ Chora is licensed under the GNU Affero General Public License v3.0. By
 submitting a contribution, you agree that it may be distributed under the same
 license and represent that you have the right to submit it.
 
-Read the [public source scope](docs/publication-scope.md) before adding files.
+Read the [publication file policy](.github/publication-policy.json) before adding files.
 Do not add vendored dependencies, private assets, raw evidence, credentials, or
-unreviewed experiments.
+unreviewed experiments or developer-specific proxy endpoints.
 
 Agree on a narrow scope before starting. Preserve unrelated and uncommitted
 work, and do not weaken these product boundaries:

@@ -85,7 +85,7 @@
     {
       "id": "decision-network-boundary",
       "question": "How can an Attempt reach Codex through the enterprise network without general egress?",
-      "resolution": "The Attempt reaches only codex-boundary; that boundary allowlists two TLS hosts and forwards accepted CONNECT requests to fixed enterprise proxy host.docker.internal:9981.",
+      "resolution": "Sanitized historical reference: the enterprise upstream is retired and has no network endpoint. This fixture does not requalify the original execution evidence.",
       "rationale": "The enterprise endpoint is unreachable from the Attempt, every target is checked before forwarding, and all undeclared hosts and IP literals fail closed."
     },
     {
@@ -240,7 +240,7 @@
     ],
     "policy": {
       "path": "contracts/g2-m1a/sandbox-policy.v4.json",
-      "sha256": "efe8918d0c9c4232c8292941f573fe386d93a3faa051329c883c9b8349b66f04"
+      "sha256": "a26170c8cdb8b1cd245498a44aa651772a1150a819e11a4c1c5c1215d589d259"
     }
   },
   "entry_probe": {

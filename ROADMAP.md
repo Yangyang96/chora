@@ -73,8 +73,8 @@ and keyboard/narrow-layout usability. Reuse unchanged real regression evidence.
 
 Credential-free CI and explicitly selected real-Pi/macOS/GitHub evidence remain
 separate; skip or UNKNOWN is not PASS. Final clean-candidate journeys, SBOM/license
-inventory and dedicated source/history secret scans follow the
-[release process](docs/release-process.md). Verify existing target settings read-only;
+inventory and dedicated source/history secret scans are required before release.
+Verify existing target settings read-only;
 identify genuinely release-time checks explicitly instead of claiming them passed.
 The public Local Connected route does not require private M1 images or maintainer OAuth.
 

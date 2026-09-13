@@ -28,7 +28,7 @@ const (
 	Executable          = "chora-pi-rpc"
 	RuntimeVersion      = "0.84.2"
 	RuntimeConfigSHA256 = "b4bb9e6e599732e31a5f20ff95f48587c8b702a63c754940b0a4631450f1a4e9"
-	PolicySHA256        = "efe8918d0c9c4232c8292941f573fe386d93a3faa051329c883c9b8349b66f04"
+	PolicySHA256        = "a26170c8cdb8b1cd245498a44aa651772a1150a819e11a4c1c5c1215d589d259"
 	AttemptImageID      = "sha256:91698efead5641a633519f5f229373e08a59264045ca27f6d01fc06505deeea7"
 	BoundaryImageID     = "sha256:4f7746f3cdbe55dc454775ead5958a9ed8a78b93776ea1df598255c1606b25c6"
 

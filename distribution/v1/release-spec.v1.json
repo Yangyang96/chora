@@ -21,7 +21,7 @@
       "policy": {
         "id": "chora.network-boundary.v1",
         "path": "distribution/v1/policies/network-boundary.v1.json",
-        "sha256": "82bb62fa3b2f9a64e3db53ebed79b6a644fa2ed540b352ae018219fca424d61a"
+        "sha256": "222832a6c3a014de3329eed5f10a19cbd9eadc2215305af54555e5199f5b349e"
       }
     },
     {

@@ -129,3 +129,8 @@ go test -tags isolated_acceptance ./internal/dockersupervisor \
 - 回归 Local Connected 与旧 Apply；skip 和历史排除项独立列示，不计为通过。
 
 本次不包含 Minimal/Standard 双配置、第二 Provider、远程执行、团队功能或安装包。
+
+旧企业代理路径的 `source-checkout`、`doctor`、`installed-doctor` 和 `serve` 入口已退役，
+会在使用该路径前拒绝执行。保留的契约夹具使用非 URL 退役标记及重新计算的策略摘要；
+它们是清理后的参考文件，不是可执行代理配置，也不代表旧证据重新验收。
+当前运行与诊断使用 `chora workbench` 和 `chora workbench doctor`。

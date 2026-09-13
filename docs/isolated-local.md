@@ -163,3 +163,10 @@ Acceptance checklist:
 
 Minimal/Standard configurations, other Providers, remote execution, team features
 and installers are outside this mode's scope.
+
+The old enterprise-proxy `source-checkout`, `doctor`, `installed-doctor` and
+`serve` entrypoints are retired and fail before using that route. Their retained
+contract fixtures contain a non-URL retirement marker and recomputed policy
+digests; they are sanitized references, not executable proxy configuration or
+requalification of historical evidence. Use `chora workbench` and
+`chora workbench doctor` for current operation.

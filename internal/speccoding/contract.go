@@ -46,7 +46,7 @@ const (
 	v4RuntimeConfigSHA256             = "e89e375f8dc002d37e7b46e4242ae8cddea118844f0335be63f2f8bb910eb3a9"
 	v5RuntimeConfigSHA256             = "0f5b80eb138df1cd9fdb21b7760a3544e1bbbb9a038d468c49349d3e5a25dc9e"
 	v6RuntimeConfigSHA256             = "b4bb9e6e599732e31a5f20ff95f48587c8b702a63c754940b0a4631450f1a4e9"
-	v4SandboxPolicySHA256             = "efe8918d0c9c4232c8292941f573fe386d93a3faa051329c883c9b8349b66f04"
+	v4SandboxPolicySHA256             = "a26170c8cdb8b1cd245498a44aa651772a1150a819e11a4c1c5c1215d589d259"
 	v2ColimaSHA256                    = "55278419bd4288e4ab11eb30be13f5e655f3886c0979b68e435df910dbc9bbdf"
 	v2DockerClientSHA256              = "e8a1e5351c4d12337a4ee2b54523bc0107b4d13f795c9d6e791b9e4cf835f385"
 	v2NodeImageDigest                 = "sha256:4a4884e8a44826194dff92ba316264f392056cbe243dcc9fd3551e71cea02b90"

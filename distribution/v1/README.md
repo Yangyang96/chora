@@ -1,5 +1,10 @@
 # Chora offline release assets v1
 
+> Historical, non-runnable reference inventory. The enterprise proxy route is
+> retired and its upstream endpoint has been removed. The retained role graph
+> does not advertise an installable release. Use Workbench for supported execution.
+> Sanitized policy digests do not requalify original historical evidence.
+
 This directory is the deterministic source layout for the two image artifacts
 used by four independently policy-bound roles:
 

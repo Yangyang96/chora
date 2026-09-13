@@ -80,6 +80,10 @@ func runWithProductExecutor(args []string, stdout, stderr io.Writer, productExec
 const usage = "usage: chora version | chora source-checkout [explicit development options] | chora workbench [explicit project-entry options] | chora workbench doctor [redacted diagnostics options] | chora doctor [fresh Preflight options] | chora installed-doctor [exact post-Setup installed proof options] | chora serve [exact installed service options] | chora setup [explicit options] | chora product doctor|setup|upgrade|gc|uninstall [explicit options]"
 
 func runDoctor(args []string, stdout, stderr io.Writer, probes preflight.Probes) int {
+	if probes.LegacyNetworkRetired() {
+		fmt.Fprintln(stderr, preflight.LegacyNetworkRetiredMessage)
+		return 1
+	}
 	flags := flag.NewFlagSet("doctor", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	sourceRoot := flags.String("source", "", "immutable source root")
@@ -135,6 +139,10 @@ func runServeWithProbes(args []string, stdout, stderr io.Writer, probes prefligh
 }
 
 func runServeWithProbesAndListen(args []string, stdout, stderr io.Writer, probes preflight.Probes, listen func(*http.Server) error) int {
+	if probes.LegacyNetworkRetired() {
+		fmt.Fprintln(stderr, preflight.LegacyNetworkRetiredMessage)
+		return 1
+	}
 	if listen == nil {
 		return 2
 	}

@@ -34,12 +34,23 @@ func TestRunVersion(t *testing.T) {
 	}
 }
 
+func TestLegacyProxyEntrypointsAreRetired(t *testing.T) {
+	for _, command := range []string{"doctor", "installed-doctor", "serve", "source-checkout"} {
+		t.Run(command, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			if code := run([]string{command}, &stdout, &stderr); code != 1 || stdout.Len() != 0 || !strings.Contains(stderr.String(), preflight.LegacyNetworkRetiredMessage) {
+				t.Fatalf("retired command code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+			}
+		})
+	}
+}
+
 func TestRunDoctorJSONReportsFirstUnsafeBoundary(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	args := []string{
 		"--source", "/source", "--source-manifest", "/source/source-manifest.json", "--bundle-aggregate", strings.Repeat("b", 64), "--install", "/install", "--data", "/data",
 		"--auth", "/private/auth.json", "--ca", "/private/ca.pem",
-		"--proxy", preflight.FixedProxyURL, "--model-url", preflight.AllowedModelURL,
+		"--proxy", preflight.RetiredProxyIdentity, "--model-url", preflight.AllowedModelURL,
 		"--port", "8787", "--json",
 	}
 	probes := preflight.Probes{
@@ -75,7 +86,7 @@ func TestRunDoctorTextIncludesExactOperatorAction(t *testing.T) {
 	}
 	exitCode := runDoctor([]string{
 		"--source", "/source", "--source-manifest", "/source/source-manifest.json", "--bundle-aggregate", strings.Repeat("b", 64), "--install", "/install", "--data", "/data",
-		"--auth", "/auth", "--ca", "/ca", "--proxy", preflight.FixedProxyURL,
+		"--auth", "/auth", "--ca", "/ca", "--proxy", preflight.RetiredProxyIdentity,
 		"--model-url", preflight.AllowedModelURL, "--port", "8787",
 	}, &stdout, &stderr, probes)
 	if exitCode != 1 || !strings.Contains(stdout.String(), "Run Chora on a supported macOS Apple Silicon host.") {
@@ -95,7 +106,7 @@ func TestRunServeFailsPreflightBeforeDatabaseOrListener(t *testing.T) {
 	exitCode := runServeWithProbes([]string{
 		"--db", "/data/chora.db", "--web", "/install/build/web-workspace/web/dist", "--port", "8787",
 		"--source", "/install", "--source-manifest", "/install/source-manifest.json", "--bundle-aggregate", strings.Repeat("b", 64), "--install", "/install", "--data", "/data", "--repository", "/target",
-		"--auth", "/auth", "--ca", "/ca", "--proxy", preflight.FixedProxyURL,
+		"--auth", "/auth", "--ca", "/ca", "--proxy", preflight.RetiredProxyIdentity,
 		"--model-url", preflight.AllowedModelURL,
 		"--preflight-fingerprint", strings.Repeat("a", 64),
 		"--installation-state-root", "/installation-state", "--generation", "g1",
@@ -120,7 +131,7 @@ func TestRunServeRejectsDatabaseOutsideDeclaredDataRoot(t *testing.T) {
 	exitCode := runServeWithProbes([]string{
 		"--db", "/outside/chora.db", "--web", "/install/build/web-workspace/web/dist", "--port", "8787",
 		"--source", "/install", "--source-manifest", "/install/source-manifest.json", "--bundle-aggregate", strings.Repeat("b", 64), "--install", "/install", "--data", "/data", "--repository", "/target",
-		"--auth", "/auth", "--ca", "/ca", "--proxy", preflight.FixedProxyURL,
+		"--auth", "/auth", "--ca", "/ca", "--proxy", preflight.RetiredProxyIdentity,
 		"--model-url", preflight.AllowedModelURL, "--preflight-fingerprint", strings.Repeat("a", 64),
 	}, &stdout, &stderr, probes)
 	if exitCode != 2 {
@@ -137,7 +148,7 @@ func TestRunServeRejectsRepositoryOverlappingProductRoots(t *testing.T) {
 	exitCode := runServeWithProbes([]string{
 		"--db", "/data/chora.db", "--web", "/install/build/web-workspace/web/dist", "--port", "8787",
 		"--source", "/install", "--source-manifest", "/install/source-manifest.json", "--bundle-aggregate", strings.Repeat("b", 64), "--install", "/install", "--data", "/data", "--repository", "/data/target",
-		"--auth", "/auth", "--ca", "/ca", "--proxy", preflight.FixedProxyURL,
+		"--auth", "/auth", "--ca", "/ca", "--proxy", preflight.RetiredProxyIdentity,
 		"--model-url", preflight.AllowedModelURL, "--preflight-fingerprint", strings.Repeat("a", 64),
 	}, &stdout, &stderr, probes)
 	if exitCode != 2 {
@@ -196,7 +207,7 @@ func validSyntheticServeArgs() []string {
 	return []string{
 		"--db", "/data/chora.db", "--web", "/install/build/web-workspace/web/dist", "--port", "8787",
 		"--source", "/install", "--source-manifest", "/install/source-manifest.json", "--bundle-aggregate", strings.Repeat("b", 64), "--install", "/install", "--data", "/data", "--repository", "/target",
-		"--auth", "/auth", "--ca", "/ca", "--proxy", preflight.FixedProxyURL, "--model-url", preflight.AllowedModelURL,
+		"--auth", "/auth", "--ca", "/ca", "--proxy", preflight.RetiredProxyIdentity, "--model-url", preflight.AllowedModelURL,
 		"--preflight-fingerprint", strings.Repeat("a", 64), "--installation-state-root", "/installation-state", "--generation", "g1",
 		"--docker-cli", "/private/tools/docker-29.6.1", "--docker-context", "chora-local", "--endpoint-digest", strings.Repeat("e", 64),
 		"--release-root", "/release", "--release-manifest", "manifest.json", "--manifest-sha256", strings.Repeat("c", 64), "--release-id", "release-1",

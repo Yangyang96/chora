@@ -1,7 +1,8 @@
 {
   "schema_version": "chora.network-boundary-policy.v1",
   "listen": ":8080",
-  "upstream": "host.docker.internal:9981",
+  "upstream": "",
+  "status": "retired",
   "method": "CONNECT",
   "port": 443,
   "allowed_hosts": [

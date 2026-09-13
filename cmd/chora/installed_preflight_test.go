@@ -25,7 +25,7 @@ func TestInstalledDoctorAuthoritiesRejectSpliceReplayAndWritableFiles(t *testing
 	model := modelRequestAuthority{
 		SchemaVersion: modelRequestAuthoritySchema, Status: "authorized", GenerationID: "generation-1",
 		ProviderIdentitySHA256: strings.Repeat("5", 64), ModelIdentitySHA256: strings.Repeat("6", 64), PolicySHA256: strings.Repeat("7", 64),
-		ProxyURLSHA256: hashText(preflight.FixedProxyURL), ModelURLSHA256: hashText(preflight.AllowedModelURL),
+		ProxyURLSHA256: hashText(preflight.RetiredProxyIdentity), ModelURLSHA256: hashText(preflight.AllowedModelURL),
 		AuthFileSHA256: strings.Repeat("8", 64), CAFileSHA256: strings.Repeat("9", 64), AuthenticationRequired: true,
 	}
 	receiptPath, receiptSHA := writeAuthorityFixture(t, root, "setup.json", receipt)
@@ -103,10 +103,10 @@ func TestParseInstalledDoctorCommandRejectsAmbientOrMutableIdentity(t *testing.T
 	}
 }
 
-func TestInstalledDoctorDispatchDoesNotRunProofForInvalidArguments(t *testing.T) {
+func TestInstalledDoctorDispatchRejectsRetiredRouteBeforeProof(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	exit := runWithProductExecutor([]string{"installed-doctor"}, &stdout, &stderr, &fakeProductExecutor{})
-	if exit != 2 || stdout.Len() != 0 || !strings.Contains(stderr.String(), "installed-doctor requires") {
+	if exit != 1 || stdout.Len() != 0 || !strings.Contains(stderr.String(), preflight.LegacyNetworkRetiredMessage) {
 		t.Fatalf("exit/stdout/stderr = %d/%q/%q", exit, stdout.String(), stderr.String())
 	}
 }
@@ -119,7 +119,7 @@ func validInstalledDoctorArgs() []string {
 		"--private-pi-root", "/private/pi", "--private-pi-source", "/private/pi-source", "--private-pi-manifest", "/private/pi-manifest.json", "--private-pi-manifest-sha256", strings.Repeat("c", 64),
 		"--source", "/private/install", "--source-manifest", "/private/install/source-manifest.json", "--bundle-aggregate", strings.Repeat("d", 64),
 		"--install", "/private/install", "--data", "/private/data", "--auth", "/private/auth.json", "--ca", "/private/ca.pem",
-		"--proxy", preflight.FixedProxyURL, "--model-url", preflight.AllowedModelURL, "--port", "8787",
+		"--proxy", preflight.RetiredProxyIdentity, "--model-url", preflight.AllowedModelURL, "--port", "8787",
 		"--setup-receipt", "/private/04-setup.json", "--setup-receipt-sha256", strings.Repeat("e", 64),
 		"--model-request-authority", "/private/model-request-authority.json", "--model-request-authority-sha256", strings.Repeat("f", 64),
 	}

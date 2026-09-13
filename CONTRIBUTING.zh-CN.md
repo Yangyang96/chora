@@ -11,8 +11,8 @@ Chora 当前是从源码 Checkout 运行的 Local Alpha，并非公开发布版�
 Chora 采用 GNU Affero General Public License v3.0 开源。提交贡献即表示你同意该
 贡献可以在相同许可证下分发，并确认你有权提交该贡献。
 
-新增文件前请阅读[公开源码范围](docs/publication-scope.zh-CN.md)。不得加入 Vendor
-依赖、私有资产、原始 Evidence、凭据或未经审查的实验。
+新增文件前请阅读[发布文件策略](.github/publication-policy.json)。不得加入 Vendor
+依赖、私有资产、原始 Evidence、凭据、开发者专用代理地址或未经审查的实验。
 
 开始前先约定边界清晰的小范围任务。保留无关改动与未提交工作，不得削弱以下产品边界：
 
