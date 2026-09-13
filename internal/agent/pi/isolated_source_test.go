@@ -44,7 +44,7 @@ func TestIsolatedDecoderRejectsModelDriftWithoutRestrictingConnected(t *testing.
 		t.Fatal(err)
 	}
 	for _, line := range []string{
-		`{"type":"message_end","message":{"role":"assistant","provider":"other","model":"deepseek-v4-flash","stopReason":"stop","content":[{"type":"text","text":"done"}]}}`,
+		`{"type":"message_end","message":{"role":"assistant","provider":"other","model":"deepseek-flash","stopReason":"stop","content":[{"type":"text","text":"done"}]}}`,
 		`{"type":"message_end","message":{"role":"assistant","provider":"deepseek","model":"other","stopReason":"stop","content":[{"type":"text","text":"done"}]}}`,
 		`{"type":"message_end","message":{"role":"assistant","stopReason":"stop","content":[{"type":"text","text":"done"}]}}`,
 		`{"type":"agent_start","provider":"other"}`,
@@ -56,12 +56,12 @@ func TestIsolatedDecoderRejectsModelDriftWithoutRestrictingConnected(t *testing.
 			t.Fatalf("accepted isolated model drift: %s", line)
 		}
 	}
-	line := `{"type":"message_end","message":{"role":"assistant","provider":"deepseek","model":"deepseek-v4-flash","stopReason":"stop","content":[{"type":"text","text":"done"}]}}` + "\n"
+	line := `{"type":"message_end","message":{"role":"assistant","provider":"deepseek","model":"deepseek-flash","stopReason":"stop","content":[{"type":"text","text":"done"}]}}` + "\n"
 	decoded, err := adapter.DecodeEvent(execution.EventChunk{Profile: domain.AgentExecutionProfileIsolatedLocal, Stream: execution.StreamStdout, Data: []byte(line), EOF: true})
 	if err != nil || len(decoded.Events) != 1 {
 		t.Fatalf("valid model rejected: %#v %v", decoded, err)
 	}
-	line = strings.ReplaceAll(line, "deepseek-v4-flash", "connected-model")
+	line = strings.ReplaceAll(line, "deepseek-flash", "connected-model")
 	if _, err := adapter.DecodeEvent(execution.EventChunk{Profile: domain.AgentExecutionProfileTrustedLocal, Stream: execution.StreamStdout, Data: []byte(line), EOF: true}); err != nil {
 		t.Fatalf("connected model restricted: %v", err)
 	}

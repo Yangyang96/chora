@@ -96,7 +96,7 @@ These keep the priorities below and are not new first-Alpha requirements.
 ## First feature milestone after public Alpha: M2-S4
 
 M2-S4-1 implementation provides one [Isolated Local mode](docs/isolated-local.md)
-using public Pi 0.85.1, DeepSeek/deepseek-v4-flash and local arm64 Docker.
+using public Pi 0.85.1, DeepSeek/deepseek-flash and local arm64 Docker.
 Final acceptance is in progress. It covers public preparation, credentials,
 execution, checks, Review → Commit → Push → PR → Merge → cleanup, cancellation,
 restart and Resume. Immutable multi-repository Task bases and legacy Apply remain.

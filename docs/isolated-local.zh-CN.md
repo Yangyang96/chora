@@ -10,7 +10,7 @@ Isolated Local 在 Docker 中运行 Pi，将校验通过的结果写回任务工
 - Apple Silicon macOS 主机，本地 Linux arm64 Docker Engine，Docker API 至少 1.44。
   环境准备必须通过绑定到确切引擎和镜像的能力探测。
 - 固定 Pi `@earendil-works/pi-coding-agent@0.85.1`、Node.js `22.19.0`，
-  Git `2.39.5`（Debian `1:2.39.5-0+deb12u3`）、Pi 原生 `deepseek` Provider 和 `deepseek-v4-flash` 模型。用户自备有模型访问权限的 DeepSeek API key。
+  Git `2.39.5`（Debian `1:2.39.5-0+deb12u3`）、Pi 原生 `deepseek` Provider 和 `deepseek-flash` 模型。用户自备有模型访问权限的 DeepSeek API key。
   此模式不使用主机 Pi 的模型选择或 models.json。
 - 至少有一次提交的 Git 仓库。首个支持的项目范围为 Node.js 标准库代码和测试
   （`node --test`），不包含包安装、原生编译、外部数据库或依赖服务。

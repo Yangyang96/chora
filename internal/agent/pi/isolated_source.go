@@ -13,7 +13,7 @@ import (
 
 const IsolatedPiVersion = "0.85.1"
 const IsolatedModelProvider = "deepseek"
-const IsolatedModelID = "deepseek-v4-flash"
+const IsolatedModelID = "deepseek-flash"
 const IsolatedWorkspaceRoot = "/workspace/repository"
 const IsolatedObserverPath = "/opt/chora/resource_check_observer.mjs"
 const IsolatedHelperPath = "/usr/local/bin/chora"

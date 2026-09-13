@@ -50,15 +50,15 @@ func TestModelProvenanceObservesNativeAssistantMessageWithoutStartupIdentity(t *
 		provenanceEvent(t, runID, 2, "attempt.started", "app", fmt.Sprintf(`{"attempt_id":%q,"attempt_sequence":1}`, first.ID().String())),
 		provenanceEvent(t, runID, 3, "agent_start", "adapter", `{}`),
 		provenanceEvent(t, runID, 4, "assistant_message", "app", `{"model_id":"not-adapter","provider":"not-observed"}`),
-		provenanceEvent(t, runID, 5, "assistant_message", "adapter", `{"model_id":"deepseek-v4-flash","provider":"deepseek"}`),
-		provenanceEvent(t, runID, 6, "assistant_message", "adapter", `{"model_id":"deepseek-v4-flash","provider":"deepseek"}`),
+		provenanceEvent(t, runID, 5, "assistant_message", "adapter", `{"model_id":"deepseek-flash","provider":"deepseek"}`),
+		provenanceEvent(t, runID, 6, "assistant_message", "adapter", `{"model_id":"deepseek-flash","provider":"deepseek"}`),
 		provenanceEvent(t, runID, 7, "run.prepared", "app", fmt.Sprintf(`{"attempt_id":%q,"attempt_sequence":2}`, second.ID().String())),
 		provenanceEvent(t, runID, 8, "attempt.start_failed", "app", fmt.Sprintf(`{"attempt_id":%q,"attempt_sequence":2}`, second.ID().String())),
 		provenanceEvent(t, runID, 9, "assistant_message", "adapter", `{"model_id":"must-not-leak","provider":"old"}`),
 	}
 	got := modelProvenanceByAttempt([]domain.Attempt{first, second}, events)
 	observed := got[first.ID().String()]
-	if observed.Status != "observed" || len(observed.Identities) != 1 || observed.Identities[0] != (modelIdentityView{Provider: "deepseek", ModelID: "deepseek-v4-flash"}) {
+	if observed.Status != "observed" || len(observed.Identities) != 1 || observed.Identities[0] != (modelIdentityView{Provider: "deepseek", ModelID: "deepseek-flash"}) {
 		t.Fatalf("native message identity = %#v", observed)
 	}
 	if got[second.ID().String()].Status != "unknown" {

@@ -469,7 +469,7 @@ func TestExtractWorkbenchArchiveAcceptsDockerDirectoryHeaders(t *testing.T) {
 }
 
 func workbenchArguments() []string {
-	return []string{"--mode", "rpc", "--no-session", "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files", "--provider", "deepseek", "--model", "deepseek-v4-flash", "--extension", "/opt/chora/resource_check_observer.mjs"}
+	return []string{"--mode", "rpc", "--no-session", "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files", "--provider", "deepseek", "--model", "deepseek-flash", "--extension", "/opt/chora/resource_check_observer.mjs"}
 }
 
 func TestWorkbenchRecoveryPreservesInterruptedImportUntilReconciled(t *testing.T) {
