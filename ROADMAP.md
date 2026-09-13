@@ -7,6 +7,7 @@ qualification, `M2_S3_PASS` and local DA-1/O5 preparation are complete. Source w
 published on 2026-09-10; versioned prereleases are recorded on the
 [Releases page](https://github.com/Yangyang96/chora/releases). M2 as a whole is
 still active. M2-S4-1 passed technical acceptance on 2026-09-13; M2-S4-2 is deferred.
+M2-S5-1 passed technical acceptance on 2026-09-14; M2-S5-2 is next.
 
 Project is the long-lived owner of repository resources and topic Rooms. A Task
 belongs to one Room and selects its repository scope. Empty Projects, multiple
@@ -25,6 +26,7 @@ Local Connected / No Sandbox. It is not a stable or installed release.
 | P3/P4 redesign | Multi-repository Tasks, text/new-file review, automatic checks, large-repository policy and partial recovery | Real continuous multi-repository technical qualification passed. |
 | M2-S2 delivery | Task-branch Commit -> Push -> GitHub PR -> Merge -> safe cleanup, consistent task status/progress | Integrated real multi-repository qualification and repairs passed; legacy Apply retained. |
 | M2-S3-0..3 | Close unwanted results, Pi onboarding/model provenance, maintenance/recovery and public journey/CI | `M2_S3_PASS`: S3-0..3 technical acceptance and consolidated independent review complete. |
+| M2-S5-1 | Native in-flight instructions and evidence-linked decisions, risks, unknowns, human gates, resolution and reopening | Technical acceptance complete on 2026-09-14; internal evidence retained privately. |
 | DA-1 / O5 v2 | Exact local candidate, public checks, licenses/SBOM, secret scans and release materials | Local candidate preparation passed; final user acceptance and publication actions are recorded separately. |
 
 Technical acceptance was frozen on 2026-09-09, followed by identity and publication
