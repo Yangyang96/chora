@@ -13,7 +13,7 @@ Local Connected automatically.
   1.44 or later. The preparation probe must qualify the exact engine and image.
 - Pi `@earendil-works/pi-coding-agent@0.85.1`, Node.js `22.19.0`,
   Git `2.39.5` (Debian `1:2.39.5-0+deb12u3`), native Pi
-  `deepseek` provider and `deepseek-flash` model. Bring your own DeepSeek
+  `deepseek` provider and `deepseek-v4-pro` model. Bring your own DeepSeek
   API key with model access. This mode does not use the host Pi model selection or models.json.
 - Git repositories with at least one commit. The initial supported project
   scope is Node.js standard-library code/tests (`node --test`), without package

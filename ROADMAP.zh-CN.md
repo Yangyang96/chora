@@ -77,7 +77,7 @@ S3-0 结束不需要的未交付结果，保留历史和全部已有 Commit/Push
 ## 首次公开 Alpha 后的第一个功能里程碑：M2-S4
 
 M2-S4-1 已实现一种 [Isolated Local 模式](docs/isolated-local.zh-CN.md)，
-采用公开 Pi 0.85.1、DeepSeek/deepseek-flash 与本地 arm64 Docker，最终验收进行中。
+采用公开 Pi 0.85.1、DeepSeek/deepseek-v4-pro 与本地 arm64 Docker，最终验收进行中。
 覆盖公开准备、凭据、执行、检查、Review → Commit → Push → PR → Merge → 清理、
 取消、重启及 Resume；保留不可变多仓库任务基线与旧 Apply。M2-S4-2 在工具/依赖、网络、资源策略有清晰且经过验证的区别时开放
 Minimal/Standard，可先发布一种已验证模式。隔离失败绝不回退宿主执行。

@@ -291,7 +291,7 @@ func New(config Config) (*Supervisor, error) {
 func validWorkbenchConfig(config *WorkbenchConfig) bool {
 	return config != nil && slices.Equal(config.Arguments, []string{
 		"--mode", "rpc", "--no-session", "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files",
-		"--provider", "deepseek", "--model", "deepseek-flash", "--extension", "/opt/chora/resource_check_observer.mjs",
+		"--provider", "deepseek", "--model", "deepseek-v4-pro", "--extension", "/opt/chora/resource_check_observer.mjs",
 	}) && config.RuntimeVersion == "0.85.1" && validDigest(config.ObserverSHA256) && validDigest(config.HelperSHA256) &&
 		validDigest(config.RuntimeFingerprint) && config.PrepareWorkspace != nil && config.CollectWorkspace != nil && config.ReadOnlyWorkspacePaths != nil
 }
