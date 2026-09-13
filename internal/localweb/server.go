@@ -854,6 +854,7 @@ func (server *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/isolated-local", server.getIsolatedLocal)
 	mux.HandleFunc("POST /api/isolated-local/prepare", server.prepareIsolatedLocal)
 	mux.HandleFunc("GET /api/pi/discovery", server.getPiDiscovery)
+	mux.HandleFunc("GET /api/models", server.getSupportedModels)
 	mux.HandleFunc("GET /api/pi/installation", server.getPiInstallation)
 	mux.HandleFunc("POST /api/pi/installation", server.installPi)
 	mux.HandleFunc("POST /api/pi/installation/cancel", server.cancelPiInstallation)
