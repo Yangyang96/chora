@@ -55,3 +55,6 @@ playwright/.cache/
 /playwright.u4-real.config.ts
 /playwright.intent-real.config.ts
 /tools/o4visionocr/
+
+# Internal development notes and acceptance records; keep them outside the public tree.
+docs/internal/
