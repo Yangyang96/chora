@@ -146,6 +146,7 @@ func (server *Server) createResourceTask(w http.ResponseWriter, r *http.Request)
 		Requirement           string                       `json:"requirement"`
 		Title                 string                       `json:"title"`
 		AgentExecutionProfile domain.AgentExecutionProfile `json:"agentExecutionProfile"`
+		ModelBinding          json.RawMessage              `json:"modelBinding"`
 		RevisionIDs           []string                     `json:"revisionIds"`
 		Resources             []taskResourceSelection      `json:"resources"`
 	}
@@ -189,7 +190,14 @@ func (server *Server) createResourceTask(w http.ResponseWriter, r *http.Request)
 			title = string(runes[:96])
 		}
 	}
-	result, err := server.service.CreateTask(r.Context(), app.CreateTaskRequest{CommandMeta: requestCommandMeta(r, "create-task"), RoomID: roomID, Title: title, ExecutionProfile: app.TaskExecutionProfileRealSpecCoding, AgentExecutionProfile: input.AgentExecutionProfile, RevisionIDs: revisionIDs, RealSpecCoding: &app.RealSpecCodingInput{Resources: &snapshot, Requirement: input.Requirement, Constraints: []string{"Operate only in selected task repository worktrees, respecting access roles and limits. Report checks truthfully."}, OutOfScope: []string{"Changes to original checkouts, unselected repositories, automatic Commit/Push or host configuration."}, Criteria: []app.RealSpecCodingCriterion{{Title: "Requested behavior is implemented", Description: input.Requirement}}}})
+	var modelBinding domain.ModelBinding
+	if len(input.ModelBinding) > 0 {
+		if err := json.Unmarshal(input.ModelBinding, &modelBinding); err != nil {
+			writeError(w, http.StatusBadRequest, errors.New("invalid modelBinding"))
+			return
+		}
+	}
+	result, err := server.service.CreateTask(r.Context(), app.CreateTaskRequest{CommandMeta: requestCommandMeta(r, "create-task"), RoomID: roomID, Title: title, ExecutionProfile: app.TaskExecutionProfileRealSpecCoding, AgentExecutionProfile: input.AgentExecutionProfile, ModelBinding: modelBinding, RevisionIDs: revisionIDs, RealSpecCoding: &app.RealSpecCodingInput{Resources: &snapshot, Requirement: input.Requirement, Constraints: []string{"Operate only in selected task repository worktrees, respecting access roles and limits."}, OutOfScope: []string{"Changes to original checkouts, unselected repositories, automatic Commit/Push or host configuration."}, Criteria: []app.RealSpecCodingCriterion{{Title: "Requested behavior is implemented", Description: input.Requirement}}}})
 	if err != nil {
 		writeStoreError(w, err)
 		return

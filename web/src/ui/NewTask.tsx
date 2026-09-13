@@ -5,11 +5,12 @@ import { TaskResources } from './TaskResources'
 import { TaskProgress } from './TaskProgress'
 import type { FormEvent } from 'react'
 import { useI18n } from '../i18n'
-import type { AgentExecutionProfile, IsolatedLocalView } from '../types'
+import type { AgentExecutionProfile, IsolatedLocalView, ModelBinding } from '../types'
 import type { TaskResourceSelection } from '../taskFirstTypes'
 import { AgentExecutionDisclosure, AgentExecutionProfileSelector } from './AgentExecutionProfile'
 import type { PiDiscoveryFetch } from './PiDiscovery'
 import { IsolatedLocal } from './IsolatedLocal'
+import { ModelSelector } from './ModelSelector'
 
 type NewTaskProps = {
   projectId?: string
@@ -24,7 +25,7 @@ type NewTaskProps = {
   isolatedLocal?: IsolatedLocalView
   onPrepareIsolatedLocal?: () => Promise<void> | void
   onCancel: () => void
-  onSubmit: (requirement: string, agentExecutionProfile: AgentExecutionProfile, projectSettingsVersion?: number, resources?: TaskResourceSelection[]) => void
+	onSubmit: (requirement: string, agentExecutionProfile: AgentExecutionProfile, projectSettingsVersion?: number, resources?: TaskResourceSelection[], modelBinding?: ModelBinding) => void
   onAcknowledgeTrustedLocal: () => Promise<boolean>
 }
 
@@ -35,6 +36,7 @@ export function NewTask({ projectId, roomId, roomName, busy, preparationPending 
   const [resources, setResources] = useState<TaskResourceSelection[]>()
   const [requirement, setRequirement] = useState(initialRequirement)
   const [selectedProfile, setSelectedProfile] = useState<AgentExecutionProfile>()
+  const [modelBinding, setModelBinding] = useState<ModelBinding>()
   const localWorkbench = piDiscovery !== undefined
   const agentExecutionProfile = selectedProfile ?? 'isolated_local'
   const trustedLocalUnavailable = agentExecutionProfile === 'trusted_local' && (piDiscovery?.phase !== 'loaded' || (piDiscovery.discovery.state !== 'ready' && piDiscovery.discovery.state !== 'unavailable'))
@@ -59,9 +61,9 @@ export function NewTask({ projectId, roomId, roomName, busy, preparationPending 
     if (disclosurePending || unavailable || !agentExecutionProfile) return
     if (usesTaskResources && (!resources || resources.length === 0)) return
     if (projectId && !roomId && settingsVersion === undefined) return
-    if (projectId && roomId) onSubmit(requirement.trim(), agentExecutionProfile, undefined, resources)
-    else if (projectId) onSubmit(requirement.trim(), agentExecutionProfile, settingsVersion)
-    else onSubmit(requirement.trim(), agentExecutionProfile)
+    if (projectId && roomId) onSubmit(requirement.trim(), agentExecutionProfile, undefined, resources, modelBinding)
+    else if (projectId) onSubmit(requirement.trim(), agentExecutionProfile, settingsVersion, undefined, modelBinding)
+    else onSubmit(requirement.trim(), agentExecutionProfile, undefined, undefined, modelBinding)
   }
 
   return (
@@ -87,6 +89,7 @@ export function NewTask({ projectId, roomId, roomName, busy, preparationPending 
         onAcknowledgeTrustedLocal={onAcknowledgeTrustedLocal}
         onDisclosurePendingChange={setDisclosurePending}
       />
+      <ModelSelector value={modelBinding} onChange={setModelBinding} />
       {agentExecutionProfile === 'isolated_local' && isolatedLocal && <IsolatedLocal value={isolatedLocal} onPrepare={onPrepareIsolatedLocal ?? (() => {})} />}
       <p className="agent-profile-summary">
         {agentExecutionProfile ? <>{t('Selected profile:')} <AgentExecutionDisclosure profile={agentExecutionProfile} /></> : t('Choose Local Connected and acknowledge its host access before starting.')}

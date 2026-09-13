@@ -6,7 +6,7 @@ import { api, commandKey, message } from './api'
 import { LanguageProvider, useI18n } from './i18n'
 import { defaultAcceptReviewComment } from './runProvenance'
 import type { TaskResourceSelection } from './taskFirstTypes'
-import type { AgentExecutionProfile, IsolatedLocalView, PiDiscoveryView, ProjectView, RoomRef, RoomWorkspace, RunView, TaskRef, TaskSummary, TrustedLocalAcknowledgement, TrustedLocalAcknowledgementState } from './types'
+import type { AgentExecutionProfile, IsolatedLocalView, ModelBinding, PiDiscoveryView, ProjectView, RoomRef, RoomWorkspace, RunView, TaskRef, TaskSummary, TrustedLocalAcknowledgement, TrustedLocalAcknowledgementState } from './types'
 import { ExternalHandoff } from './ui/ExternalHandoff'
 import { AddProject } from './ui/AddProject'
 import { AppShell } from './ui/AppShell'
@@ -475,7 +475,7 @@ function NewAppContent() {
     }
   }
 
-  async function createTask(requirement: string, agentExecutionProfile: AgentExecutionProfile, projectSettingsVersion?: number, resources?: TaskResourceSelection[]) {
+  async function createTask(requirement: string, agentExecutionProfile: AgentExecutionProfile, projectSettingsVersion?: number, resources?: TaskResourceSelection[], modelBinding?: ModelBinding) {
     const briefLocator = roomID ? `room://${roomID}/brief` : ''
     const revisions = roomDetail?.revisions ?? []
     const currentBrief = [...revisions].reverse().find((revision) => revision.locator === briefLocator)
@@ -493,13 +493,13 @@ function NewAppContent() {
       const created = await api<TaskRef>(resources ? `/api/v2/rooms/${encodeURIComponent(roomID)}/tasks` : `/api/rooms/${encodeURIComponent(roomID)}/tasks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': commandKey('create-task') },
-        body: JSON.stringify(resources ? { requirement, title: requirement.slice(0,96), resources, revisionIds: [currentBrief.id], agentExecutionProfile } : {
+        body: JSON.stringify(resources ? { requirement, title: requirement.slice(0,96), resources, revisionIds: [currentBrief.id], agentExecutionProfile, modelBinding } : {
           title: requirement.slice(0, 96),
           goal: requirement,
           criteria: ['Requirement satisfied'],
           revisionIds: [currentBrief.id],
           agentExecutionProfile,
-          projectSettingsVersion,
+          projectSettingsVersion, modelBinding,
         }),
         signal: controller.signal,
       })

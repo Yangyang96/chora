@@ -54,7 +54,7 @@ const (
 type SupportedModel struct {
 	Provider string `json:"provider"`
 	ModelID  string `json:"modelId"`
-	Digest   string `json:"digest"`
+	Digest   string `json:"-"`
 }
 
 // SupportedModelCatalog is the provider-neutral wire shape used by control
@@ -74,7 +74,11 @@ func SupportedModels() []SupportedModel {
 
 func SupportedModelCatalogForManagedRuntime() SupportedModelCatalog {
 	models := SupportedModels()
-	return SupportedModelCatalog{AgentID: AdapterID, RuntimeIdentity: AttemptImageID, RuntimeVersion: RuntimeVersion, Models: models, Digest: frozenModelDigest}
+	catalog := SupportedModelCatalog{AgentID: AdapterID, RuntimeIdentity: AttemptImageID, RuntimeVersion: RuntimeVersion, Models: models}
+	canonical, _ := json.Marshal(catalog)
+	sum := sha256.Sum256(canonical)
+	catalog.Digest = hex.EncodeToString(sum[:])
+	return catalog
 }
 
 // IsSupportedModel reports whether a provider/model pair is in the managed

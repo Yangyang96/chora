@@ -14,7 +14,7 @@ export function ModelSelector({ value, onChange }: { value?: ModelBinding; onCha
     void api<Catalog>('/api/models').then((result) => {
       if (!active || result.models.length === 0) return
       setCatalog(result)
-      if (!value) setError('Model catalog must be bound by the coding agent before task creation.')
+      if (!value) setError('Select a model provided by the bound coding agent.')
     }).catch(() => { if (active) setError('Supported model catalog is unavailable.') })
     return () => { active = false }
   }, [value])
@@ -23,6 +23,6 @@ export function ModelSelector({ value, onChange }: { value?: ModelBinding; onCha
     const [provider, ...rest] = event.target.value.split(':')
     const modelId = rest.join(':')
     const model = catalog.models.find((item) => item.provider === provider && item.modelId === modelId)
-    if (model && value) onChange({ ...value, provider: model.provider, modelId: model.modelId })
+    if (model) onChange({ catalog, provider: model.provider, modelId: model.modelId, selectedAt: new Date().toISOString(), source: 'coding_agent' })
   }}><option value="">Select a supported model</option>{catalog.models.map((model) => <option key={`${model.provider}:${model.modelId}`} value={`${model.provider}:${model.modelId}`}>{model.provider} · {model.modelId}</option>)}</select>{error && <small>{error}</small>}</label>
 }
