@@ -73,8 +73,11 @@ func SupportedModels() []SupportedModel {
 }
 
 func SupportedModelCatalogForManagedRuntime() SupportedModelCatalog {
-	models := SupportedModels()
-	catalog := SupportedModelCatalog{AgentID: AdapterID, RuntimeIdentity: AttemptImageID, RuntimeVersion: RuntimeVersion, Models: models}
+	return NewSupportedModelCatalog(AdapterID, AttemptImageID, RuntimeVersion, SupportedModels())
+}
+
+func NewSupportedModelCatalog(agent, runtime, version string, models []SupportedModel) SupportedModelCatalog {
+	catalog := SupportedModelCatalog{AgentID: agent, RuntimeIdentity: runtime, RuntimeVersion: version, Models: models}
 	canonical, _ := json.Marshal(catalog)
 	sum := sha256.Sum256(canonical)
 	catalog.Digest = hex.EncodeToString(sum[:])

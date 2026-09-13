@@ -3,6 +3,7 @@ package localweb
 import (
 	"encoding/json"
 	agentpi "github.com/Yangyang96/chora/internal/agent/pi"
+	"github.com/Yangyang96/chora/internal/pidiscovery"
 	"net/http"
 )
 
@@ -15,5 +16,15 @@ func (server *Server) getSupportedModels(writer http.ResponseWriter, request *ht
 		return
 	}
 	writer.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(writer).Encode(agentpi.SupportedModelCatalogForManagedRuntime())
+	catalog := agentpi.SupportedModelCatalogForManagedRuntime()
+	if server.pathPiEnabled {
+		if options, err := pidiscovery.DiscoverModels(server.piDiscoveryOptions.PiHome); err == nil {
+			models := make([]agentpi.SupportedModel, 0, len(options))
+			for _, option := range options {
+				models = append(models, agentpi.SupportedModel{Provider: option.Provider, ModelID: option.ModelID})
+			}
+			catalog = agentpi.NewSupportedModelCatalog("path-pi", server.piDiscoveryOptions.PiHome, pidiscovery.MinimumVersion, models)
+		}
+	}
+	_ = json.NewEncoder(writer).Encode(catalog)
 }

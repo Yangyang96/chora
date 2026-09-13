@@ -47,6 +47,35 @@ type Result struct {
 	NotReadyProviders []string
 }
 
+// ModelOption is an identity-only model projection declared by Pi.
+type ModelOption struct {
+	Provider string
+	ModelID  string
+}
+
+// DiscoverModels reads the declared default model without contacting a provider.
+func DiscoverModels(piHome string) ([]ModelOption, error) {
+	if piHome == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, err
+		}
+		piHome = filepath.Join(home, ".pi", "agent")
+	}
+	data, err := os.ReadFile(filepath.Join(piHome, "settings.json"))
+	if err != nil {
+		return nil, err
+	}
+	var settings struct {
+		DefaultProvider string `json:"defaultProvider"`
+		DefaultModel    string `json:"defaultModel"`
+	}
+	if err := json.Unmarshal(data, &settings); err != nil || strings.TrimSpace(settings.DefaultProvider) == "" || strings.TrimSpace(settings.DefaultModel) == "" {
+		return nil, errors.New("Pi has no verifiable model catalog")
+	}
+	return []ModelOption{{Provider: strings.TrimSpace(settings.DefaultProvider), ModelID: strings.TrimSpace(settings.DefaultModel)}}, nil
+}
+
 // Options lets tests and embedding callers override the ambient environment.
 type Options struct {
 	LookPath func(string) (string, error)
