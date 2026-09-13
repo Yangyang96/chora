@@ -11,12 +11,10 @@ export function ModelSelector({ value, onChange }: { value?: ModelBinding; onCha
   const [error, setError] = useState('')
   useEffect(() => {
     let active = true
-    void api<{ models: Array<{ provider: string; modelId: string }> }>('/api/models').then((result) => {
+    void api<Catalog>('/api/models').then((result) => {
       if (!active || result.models.length === 0) return
-      const first = result.models[0]
-      setCatalog({ agentId: 'chora-managed-agent', runtimeIdentity: 'catalog', runtimeVersion: '1', models: result.models, digest: '' })
+      setCatalog(result)
       if (!value) setError('Model catalog must be bound by the coding agent before task creation.')
-      void first
     }).catch(() => { if (active) setError('Supported model catalog is unavailable.') })
     return () => { active = false }
   }, [value])

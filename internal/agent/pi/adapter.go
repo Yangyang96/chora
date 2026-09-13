@@ -57,9 +57,24 @@ type SupportedModel struct {
 	Digest   string `json:"digest"`
 }
 
+// SupportedModelCatalog is the provider-neutral wire shape used by control
+// planes. Its digest binds the list to this managed Runtime identity.
+type SupportedModelCatalog struct {
+	AgentID         string           `json:"agentId"`
+	RuntimeIdentity string           `json:"runtimeIdentity"`
+	RuntimeVersion  string           `json:"runtimeVersion"`
+	Models          []SupportedModel `json:"models"`
+	Digest          string           `json:"digest"`
+}
+
 // SupportedModels returns the immutable managed model catalog.
 func SupportedModels() []SupportedModel {
 	return []SupportedModel{{Provider: "openai-codex", ModelID: frozenModelID, Digest: frozenModelDigest}}
+}
+
+func SupportedModelCatalogForManagedRuntime() SupportedModelCatalog {
+	models := SupportedModels()
+	return SupportedModelCatalog{AgentID: AdapterID, RuntimeIdentity: AttemptImageID, RuntimeVersion: RuntimeVersion, Models: models, Digest: frozenModelDigest}
 }
 
 // IsSupportedModel reports whether a provider/model pair is in the managed

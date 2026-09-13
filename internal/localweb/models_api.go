@@ -3,8 +3,6 @@ package localweb
 import (
 	"encoding/json"
 	"net/http"
-
-	agentpi "github.com/Yangyang96/chora/internal/agent/pi"
 )
 
 // getSupportedModels exposes the immutable managed model catalog. Execution
@@ -16,7 +14,5 @@ func (server *Server) getSupportedModels(writer http.ResponseWriter, request *ht
 		return
 	}
 	writer.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(writer).Encode(struct {
-		Models []agentpi.SupportedModel `json:"models"`
-	}{Models: agentpi.SupportedModels()})
+	_ = json.NewEncoder(writer).Encode(agentpi.SupportedModelCatalogForManagedRuntime())
 }
