@@ -148,3 +148,21 @@ func (tx *writeTx) ResolveDecisionGateCAS(ctx context.Context, current, next dom
 	}
 	return nil
 }
+
+func (tx *writeTx) ReopenDecisionGateCAS(ctx context.Context, current, next domain.ExecutionDecisionGate) error {
+	if current.ID() != next.ID() || current.Status() != domain.DecisionGateResolved || next.Status() != domain.DecisionGateOpen {
+		return storecontract.ErrVersionConflict
+	}
+	result, err := tx.tx.ExecContext(ctx, `UPDATE execution_decision_gates SET status='open',selected_option_id=NULL,note=NULL,actor_id=NULL,session_id=NULL,resolved_at=NULL,requested_at=? WHERE id=? AND status='resolved'`, timeText(next.RequestedAt()), next.ID().String())
+	if err != nil {
+		return mapWriteError(err)
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return storecontract.ErrVersionConflict
+	}
+	return nil
+}
