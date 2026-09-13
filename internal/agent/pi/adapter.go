@@ -48,6 +48,31 @@ const (
 	maxAssistantText  = 64 * 1024
 )
 
+// SupportedModel is an explicitly supported model configuration. Keeping this
+// catalog separate from execution profiles prevents a UI mode selection from
+// silently changing the model used by an Attempt.
+type SupportedModel struct {
+	Provider string `json:"provider"`
+	ModelID  string `json:"modelId"`
+	Digest   string `json:"digest"`
+}
+
+// SupportedModels returns the immutable managed model catalog.
+func SupportedModels() []SupportedModel {
+	return []SupportedModel{{Provider: "openai-codex", ModelID: frozenModelID, Digest: frozenModelDigest}}
+}
+
+// IsSupportedModel reports whether a provider/model pair is in the managed
+// catalog. Callers must still bind the returned choice to a new Attempt.
+func IsSupportedModel(provider, modelID string) bool {
+	for _, model := range SupportedModels() {
+		if model.Provider == provider && model.ModelID == modelID {
+			return true
+		}
+	}
+	return false
+}
+
 var (
 	ErrResumeUnsupported = errors.New("Pi resume unsupported")
 	exactRPCArguments    = []string{
