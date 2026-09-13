@@ -150,9 +150,6 @@ func (s *Service) CreateTask(ctx context.Context, request CreateTaskRequest) (Cr
 		if err != nil {
 			return CreateTaskResult{}, err
 		}
-		if !request.ModelBinding.Configured() {
-			return CreateTaskResult{}, fmt.Errorf("%w: coding agent model catalog and explicit model selection are required", ErrInvalidCommand)
-		}
 	} else if request.AgentExecutionProfile != "" {
 		return CreateTaskResult{}, fmt.Errorf("%w: diagnostic Fake Tasks do not accept an Agent execution profile", ErrInvalidCommand)
 	}
