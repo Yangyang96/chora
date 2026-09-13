@@ -95,6 +95,13 @@ Task's existing worktree changes carry forward under the same frozen authority.
 An unproven old process blocks execution. Fix Docker availability and restart
 before retrying; do not delete ownership records to bypass recovery.
 
+If model requests time out, check outbound HTTPS from the Docker VM and a
+bridge-network container as well as from the host. A working host connection
+does not establish container connectivity. Restore the VM's network route before
+resuming; changing the model does not repair a network timeout. If you select a
+different Docker engine, prepare it in a separate data directory and create a
+new Task so existing Tasks retain their frozen engine and image identities.
+
 If Workbench stops during result import, restart attempts to roll back the
 interrupted changes before removing their recovery records. It first checks every
 repository against the saved Git identity and expected file states. Unknown or

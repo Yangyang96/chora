@@ -293,9 +293,10 @@ func isolatedAcceptanceRepository(t *testing.T, name string, files map[string]st
 		}
 		branch := "chora-isolated-fixture-" + time.Now().UTC().Format("20060102-150405.000000000")
 		isolatedAcceptanceGit(t, checkout, "branch", "-m", branch)
-		// Use GitHub's SSH endpoint because the acceptance host may have no
-		// direct HTTPS route; gh still resolves the repository for PR actions.
-		isolatedAcceptanceGit(t, checkout, "remote", "set-url", "origin", "ssh://git@ssh.github.com:443/"+remote+".git")
+		// Keep the canonical hosting identity while using GitHub's SSH-over-443
+		// transport only in this disposable repository's local configuration.
+		isolatedAcceptanceGit(t, checkout, "config", "core.sshCommand", "ssh -o Hostname=ssh.github.com -p 443")
+		isolatedAcceptanceGit(t, checkout, "remote", "set-url", "origin", "git@github.com:"+remote+".git")
 		isolatedAcceptanceGit(t, checkout, "push", "origin", "HEAD:refs/heads/"+branch)
 		t.Logf("real GitHub fixture: repository=%s base=%s (retained after acceptance)", remote, branch)
 	}

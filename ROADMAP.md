@@ -2,11 +2,11 @@
 
 [简体中文](ROADMAP.zh-CN.md) · [README](README.md)
 
-Status, 2026-09-12: Developer Alpha with public source. Real multi-repository delivery
+Status, 2026-09-13: Developer Alpha with public source. Real multi-repository delivery
 qualification, `M2_S3_PASS` and local DA-1/O5 preparation are complete. Source was
 published on 2026-09-10; versioned prereleases are recorded on the
 [Releases page](https://github.com/Yangyang96/chora/releases). M2 as a whole is
-still active. M2-S4-1 is in final real-environment acceptance; M2-S4-2 is deferred.
+still active. M2-S4-1 passed technical acceptance on 2026-09-13; M2-S4-2 is deferred.
 
 Project is the long-lived owner of repository resources and topic Rooms. A Task
 belongs to one Room and selects its repository scope. Empty Projects, multiple
@@ -97,7 +97,7 @@ These keep the priorities below and are not new first-Alpha requirements.
 
 M2-S4-1 implementation provides one [Isolated Local mode](docs/isolated-local.md)
 using public Pi 0.85.1, DeepSeek/deepseek-v4-pro and local arm64 Docker.
-Final acceptance is in progress. It covers public preparation, credentials,
+Technical acceptance passed on 2026-09-13, including public preparation, credentials,
 execution, checks, Review → Commit → Push → PR → Merge → cleanup, cancellation,
 restart and Resume. Immutable multi-repository Task bases and legacy Apply remain.
 M2-S4-2 is scheduled after S4-1 is stable and qualifies Minimal/Standard only when
@@ -115,9 +115,9 @@ Release or installer. M2 remains incomplete and S4-2 is not implemented.
 
 ## Prioritized post-Alpha schedule
 
-Default delivery priority, all PLANNED_NOT_STARTED; no calendar dates:
+Default delivery priority; successors remain PLANNED_NOT_STARTED without calendar dates:
 
-1. M2-S4: one usable isolated mode; Minimal/Standard when qualified.
+1. M2-S4: S4-1 complete with one usable isolated mode; S4-2 Minimal/Standard deferred.
 2. M2-S5-1: S5-1a native in-flight instructions; S5-1b evidence-linked decisions,
    risks and unknowns, necessary human gates, resolution and reopening.
 3. M2-S5-2: explicit supported model controls, separate from execution mode.
