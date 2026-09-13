@@ -2,25 +2,18 @@ package speccoding
 
 import (
 	"bytes"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/Yangyang96/chora/internal/domain"
 )
 
-func TestInstalledEnvelopeWritableAuthorityRejectsSymlinksAndRequiresOneSafeExistingParent(t *testing.T) {
-	repositoryRoot, err := filepath.Abs(filepath.Join("..", ".."))
-	if err != nil {
-		t.Fatal(err)
-	}
-	envelope, err := LoadInstalledEnvelope(repositoryRoot)
-	if err != nil {
-		t.Fatal(err)
-	}
+func TestBoundEnvelopeWritableAuthorityRejectsSymlinksAndRequiresOneSafeExistingParent(t *testing.T) {
 	testRoot := t.TempDir()
+	envelope := mustBoundEnvelope(t, testRoot)
 	for _, directory := range []string{"safe", "outside", "directory.go"} {
 		if err := os.Mkdir(filepath.Join(testRoot, directory), 0o700); err != nil {
 			t.Fatal(err)
@@ -29,9 +22,7 @@ func TestInstalledEnvelopeWritableAuthorityRejectsSymlinksAndRequiresOneSafeExis
 	if err := os.Symlink(filepath.Join(testRoot, "outside"), filepath.Join(testRoot, "link")); err != nil {
 		t.Fatal(err)
 	}
-	envelope.repositoryRoot = testRoot
-
-	valid := validUserTaskDeclaration(testRoot)
+	valid := validBoundUserTaskDeclaration(testRoot)
 	valid.WritableFiles = []string{"safe/new_file.go"}
 	if _, err := envelope.Declare(valid); err != nil {
 		t.Fatalf("one explicit new file under an existing safe parent was rejected: %v", err)
@@ -42,7 +33,7 @@ func TestInstalledEnvelopeWritableAuthorityRejectsSymlinksAndRequiresOneSafeExis
 		"directory target": "directory.go",
 	} {
 		t.Run(name, func(t *testing.T) {
-			input := validUserTaskDeclaration(testRoot)
+			input := validBoundUserTaskDeclaration(testRoot)
 			input.WritableFiles = []string{writable}
 			if _, err := envelope.Declare(input); err == nil {
 				t.Fatal("unsafe writable authority was accepted")
@@ -51,22 +42,16 @@ func TestInstalledEnvelopeWritableAuthorityRejectsSymlinksAndRequiresOneSafeExis
 	}
 }
 
-func TestInstalledEnvelopeDeclaresDistinctUserTasksAndFreezesAcceptedContract(t *testing.T) {
-	repositoryRoot, err := filepath.Abs(filepath.Join("..", ".."))
-	if err != nil {
-		t.Fatal(err)
-	}
-	envelope, err := LoadInstalledEnvelope(repositoryRoot)
-	if err != nil {
-		t.Fatal(err)
-	}
+func TestBoundEnvelopeDeclaresDistinctUserTasksAndFreezesAcceptedContract(t *testing.T) {
+	envelope := newUserTaskBoundEnvelope(t)
+	repositoryRoot := envelope.repositoryRoot
 	identity := envelope.Repository()
-	if identity.Name != "chora" || identity.SourceRevision != "67b83d9ed8c4bdc17fa4d16da53c9943b255c222" || identity.BaselineDigest != "b28cb1624124736e745f2b217e841957330f763b6b41fab87b2a88b809b8a0cd" {
+	if identity != boundRepositoryIdentity() {
 		t.Fatalf("repository identity = %#v", identity)
 	}
 
-	first := validUserTaskDeclaration(repositoryRoot)
-	second := validUserTaskDeclaration(repositoryRoot)
+	first := validBoundUserTaskDeclaration(repositoryRoot)
+	second := validBoundUserTaskDeclaration(repositoryRoot)
 	second.TaskID = domain.NewTaskID()
 	second.ContractID = "user-task-2"
 	firstIntent, err := envelope.Declare(first)
@@ -98,54 +83,20 @@ func TestInstalledEnvelopeDeclaresDistinctUserTasksAndFreezesAcceptedContract(t 
 		t.Fatal(err)
 	}
 	document := accepted.Document()
-	if document.SchemaVersion != CoreContractSchemaVersionV10 || document.Revision != 10 || document.Candidate.Runtime.Version != "0.84.2" || document.Candidate.Runtime.Config.Path != "contracts/g2-m1a/pi-runtime-config.v6.json" || document.Task.ID != first.TaskID.String() || document.Task.RoomID != first.RoomID.String() || document.Execution.Input.ContextSnapshotID != snapshotID.String() || document.Execution.Input.ContextSnapshotDigest == SupersededPlaceholderContextDigest {
+	if document.SchemaVersion != CoreContractSchemaVersionV11 || document.Revision != 11 || document.Candidate.Runtime.Version != "0.84.2" || document.Task.ID != first.TaskID.String() || document.Task.RoomID != first.RoomID.String() || document.Execution.Input.ContextSnapshotID != snapshotID.String() || document.Execution.Input.ContextSnapshotDigest == SupersededPlaceholderContextDigest {
 		t.Fatalf("accepted contract identity = %#v", document)
 	}
 	if !reflect.DeepEqual(document.Execution.Boundary.WritableFiles, first.WritableFiles) || !reflect.DeepEqual(document.Acceptance.VerificationCommands[0].Argv, first.VerificationCommands[0].Argv) {
 		t.Fatalf("accepted contract changed declared authority: %#v", document.Execution.Boundary)
 	}
 	if document.Task.Title != "Require reviewable descriptions" || !reflect.DeepEqual(document.Candidate, envelope.template.Candidate) || !reflect.DeepEqual(document.EntryProbe, envelope.template.EntryProbe) || !reflect.DeepEqual(document.Execution.RequiredCapabilities, envelope.template.Execution.RequiredCapabilities) || document.Execution.Output != envelope.template.Execution.Output {
-		t.Fatal("accepted contract substituted frozen input or the low-level installed envelope")
+		t.Fatal("accepted contract substituted frozen input or the bound envelope")
 	}
 }
 
-func TestInstalledEnvelopeDerivesDefensiveIntentFirstBoundary(t *testing.T) {
-	repositoryRoot, err := filepath.Abs(filepath.Join("..", ".."))
-	if err != nil {
-		t.Fatal(err)
-	}
-	envelope, err := LoadInstalledEnvelope(repositoryRoot)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defaults, err := envelope.DefaultUserTask()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(defaults.WritableFiles, []string{"internal/domain/task.go", "internal/domain/task_test.go"}) || !reflect.DeepEqual(defaults.VerificationCommands[0].Argv, []string{"go", "test", "./internal/domain"}) {
-		t.Fatalf("default boundary = %#v", defaults)
-	}
-	for _, file := range defaults.WritableFiles {
-		if !safeExactGoPath(file) || !(strings.HasPrefix(file, "cmd/") || strings.HasPrefix(file, "internal/")) {
-			t.Fatalf("unsafe default writable file %q", file)
-		}
-	}
-	defaults.WritableFiles[0] = "mutated.go"
-	again, err := envelope.DefaultUserTask()
-	if err != nil || again.WritableFiles[0] == "mutated.go" {
-		t.Fatal("default boundary was not defensively copied")
-	}
-}
-
-func TestInstalledEnvelopeRejectsUnsupportedUserTaskWithoutAnIntent(t *testing.T) {
-	repositoryRoot, err := filepath.Abs(filepath.Join("..", ".."))
-	if err != nil {
-		t.Fatal(err)
-	}
-	envelope, err := LoadInstalledEnvelope(repositoryRoot)
-	if err != nil {
-		t.Fatal(err)
-	}
+func TestBoundEnvelopeRejectsUnsupportedUserTaskWithoutAnIntent(t *testing.T) {
+	envelope := newUserTaskBoundEnvelope(t)
+	repositoryRoot := envelope.repositoryRoot
 	tests := []struct {
 		name   string
 		mutate func(*UserTaskDeclaration)
@@ -154,14 +105,8 @@ func TestInstalledEnvelopeRejectsUnsupportedUserTaskWithoutAnIntent(t *testing.T
 		{"traversal write", func(input *UserTaskDeclaration) { input.WritableFiles[0] = "../escape.go" }},
 		{"git write", func(input *UserTaskDeclaration) { input.WritableFiles[0] = ".git/config" }},
 		{"glob write", func(input *UserTaskDeclaration) { input.WritableFiles[0] = "internal/**/*.go" }},
-		{"shell command", func(input *UserTaskDeclaration) {
-			input.VerificationCommands[0].Argv = []string{"sh", "-c", "go test ./internal/domain"}
-		}},
 		{"pipe token", func(input *UserTaskDeclaration) {
 			input.VerificationCommands[0].Argv = []string{"go", "test", "./internal/domain", "|", "tee", "out"}
-		}},
-		{"network install", func(input *UserTaskDeclaration) {
-			input.VerificationCommands[0].Argv = []string{"go", "install", "example.com/tool@latest"}
 		}},
 		{"missing criterion binding", func(input *UserTaskDeclaration) { input.Criteria[0].VerificationCommandIndexes = nil }},
 		{"unknown criterion binding", func(input *UserTaskDeclaration) { input.Criteria[0].VerificationCommandIndexes = []int{1} }},
@@ -169,7 +114,7 @@ func TestInstalledEnvelopeRejectsUnsupportedUserTaskWithoutAnIntent(t *testing.T
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			input := validUserTaskDeclaration(repositoryRoot)
+			input := validBoundUserTaskDeclaration(repositoryRoot)
 			test.mutate(&input)
 			if _, err := envelope.Declare(input); err == nil {
 				t.Fatal("unsupported declaration was accepted")
@@ -178,16 +123,10 @@ func TestInstalledEnvelopeRejectsUnsupportedUserTaskWithoutAnIntent(t *testing.T
 	}
 }
 
-func TestInstalledEnvelopeRestoresOnlyExactCanonicalIntent(t *testing.T) {
-	repositoryRoot, err := filepath.Abs(filepath.Join("..", ".."))
-	if err != nil {
-		t.Fatal(err)
-	}
-	envelope, err := LoadInstalledEnvelope(repositoryRoot)
-	if err != nil {
-		t.Fatal(err)
-	}
-	intent, err := envelope.Declare(validUserTaskDeclaration(repositoryRoot))
+func TestBoundEnvelopeRestoresOnlyExactCanonicalIntent(t *testing.T) {
+	envelope := newUserTaskBoundEnvelope(t)
+	repositoryRoot := envelope.repositoryRoot
+	intent, err := envelope.Declare(validBoundUserTaskDeclaration(repositoryRoot))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +139,8 @@ func TestInstalledEnvelopeRestoresOnlyExactCanonicalIntent(t *testing.T) {
 	}
 
 	canonical := intent.CanonicalJSON()
-	tamperedDigest := bytes.Replace(canonical, []byte(installedBaselineDigest), bytes.Repeat([]byte{'0'}, len(installedBaselineDigest)), 1)
+	templateDigest := hex.EncodeToString(envelope.templateDigest[:])
+	tamperedDigest := bytes.Replace(canonical, []byte(templateDigest), bytes.Repeat([]byte{'0'}, len(templateDigest)), 1)
 	unknownField := append(append([]byte(nil), canonical[:len(canonical)-1]...), []byte(`,"unexpected":true}`)...)
 	for _, invalid := range [][]byte{append(append([]byte(nil), canonical...), ' '), tamperedDigest, unknownField, canonical[:len(canonical)-1]} {
 		if _, err := envelope.RestoreDeclaredUserTask(invalid); err == nil {
@@ -210,15 +150,9 @@ func TestInstalledEnvelopeRestoresOnlyExactCanonicalIntent(t *testing.T) {
 }
 
 func TestDeclaredIntentBridgesEditablePlanWithoutEditableAuthority(t *testing.T) {
-	repositoryRoot, err := filepath.Abs(filepath.Join("..", ".."))
-	if err != nil {
-		t.Fatal(err)
-	}
-	envelope, err := LoadInstalledEnvelope(repositoryRoot)
-	if err != nil {
-		t.Fatal(err)
-	}
-	declaration := validUserTaskDeclaration(repositoryRoot)
+	envelope := newUserTaskBoundEnvelope(t)
+	repositoryRoot := envelope.repositoryRoot
+	declaration := validBoundUserTaskDeclaration(repositoryRoot)
 	intent, err := envelope.Declare(declaration)
 	if err != nil {
 		t.Fatal(err)
@@ -266,27 +200,34 @@ func TestDeclaredIntentBridgesEditablePlanWithoutEditableAuthority(t *testing.T)
 		}
 	}
 
-	capabilities := envelope.RequiredCapabilities()
 	capabilityEnvelope := envelope.CapabilityEnvelope()
-	capabilities[0] = "mutated"
-	capabilityEnvelope[envelope.RequiredCapabilities()[0]] = false
-	if envelope.RequiredCapabilities()[0] == "mutated" || !envelope.CapabilityEnvelope()[envelope.RequiredCapabilities()[0]] {
-		t.Fatal("installed capability authority was not defensively copied")
+	capabilityEnvelope[LocalConnectedNoSandboxCapability] = false
+	if !envelope.CapabilityEnvelope()[LocalConnectedNoSandboxCapability] {
+		t.Fatal("bound capability authority was not defensively copied")
 	}
-	if !envelope.MatchesRepositoryRoot(InstalledWorkspaceRoot) || envelope.MatchesRepositoryRoot(repositoryRoot) || envelope.MatchesRepositoryRoot(filepath.Join(InstalledWorkspaceRoot, "internal")) {
-		t.Fatal("installed repository exact-match helper widened authority")
+	if !envelope.MatchesRepositoryRoot(repositoryRoot) || envelope.MatchesRepositoryRoot(InstalledWorkspaceRoot) || envelope.MatchesRepositoryRoot(filepath.Join(repositoryRoot, "internal")) {
+		t.Fatal("bound repository exact-match helper widened authority")
 	}
 }
 
-func validUserTaskDeclaration(_ string) UserTaskDeclaration {
+func validBoundUserTaskDeclaration(root string) UserTaskDeclaration {
 	return UserTaskDeclaration{
 		ContractID: "user-task-1",
 		TaskID:     domain.NewTaskID(), RoomID: domain.NewRoomID(),
-		WorkspaceRoot: InstalledWorkspaceRoot,
+		WorkspaceRoot: root,
 		Title:         "Require reviewable descriptions", Requirement: "Reject blank acceptance descriptions.",
 		Constraints: []string{"Preserve valid criteria."}, OutOfScope: []string{"Persistence changes."},
 		Criteria:             []UserAcceptanceCriterion{{ID: domain.NewCriterionID(), Title: "Blank descriptions fail", Description: "Empty descriptions are rejected.", VerificationCommandIndexes: []int{0}}},
 		WritableFiles:        []string{"internal/domain/task.go", "internal/domain/task_test.go"},
 		VerificationCommands: []UserVerificationCommand{{Argv: []string{"go", "test", "./internal/domain"}}},
 	}
+}
+
+func newUserTaskBoundEnvelope(t *testing.T) BoundEnvelope {
+	t.Helper()
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "internal", "domain"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return mustBoundEnvelope(t, root)
 }

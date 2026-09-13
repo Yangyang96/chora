@@ -147,6 +147,7 @@ func TestStartReadsSensitiveProjectionOnlyAfterAllQualificationObservations(t *t
 	runner := &fakeRunner{processes: []*fakeProcess{process}}
 	supervisor := newTestSupervisor(t, runner)
 	projectionReadAt := -1
+	loadProjection := supervisor.loadProjection
 	supervisor.loadProjection = func(credentialSource, trustAnchorSource string) (taskProjection, error) {
 		commands := runner.allCommands()
 		projectionReadAt = len(commands)
@@ -157,7 +158,7 @@ func TestStartReadsSensitiveProjectionOnlyAfterAllQualificationObservations(t *t
 		if err != nil || len(entries) != 0 {
 			return taskProjection{}, errors.New("Attempt resource existed before sensitive projection read")
 		}
-		return loadTaskProjection(credentialSource, trustAnchorSource)
+		return loadProjection(credentialSource, trustAnchorSource)
 	}
 	invocation := testInvocation(t, testSource(t), "launch-sensitive-read-order")
 	outcome := supervisor.Start(context.Background(), invocation, &testSink{binding: invocation.LaunchToken()})

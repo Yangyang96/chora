@@ -52,6 +52,12 @@ npm run e2e
 git diff --check
 ```
 
+Source tests use self-contained fixtures. Historical installed-M1 acceptance
+checks that required unpublished source baselines, a private release tree, or
+the retired enterprise CA have been removed. Shared task-contract, transaction,
+and container-lifecycle checks run with temporary repositories or synthetic
+projections; they do not certify those old release artifacts.
+
 Some real-Agent checks need the private, pre-provisioned Local Alpha environment.
 If you cannot run one, state exactly what you ran and what remains unverified;
 do not replace it with a weaker support claim.

@@ -2,13 +2,13 @@
 
 GO_PRODUCT_PACKAGES = go list -e ./... | grep -Ev '/spikes/[^/]+/evidence(/|$$)|/contracts/g2-m4/source-baseline-v[456]/delta(/|$$)'
 GO_REMAINING_PRODUCT_PACKAGES = $(GO_PRODUCT_PACKAGES) | grep -Ev '/internal/(app|localweb)$$'
-GO_PUBLIC_PACKAGES = go list -e ./... | grep -Ev '/(contracts/g2-m4/source-baseline-v[456]/delta|cmd/o4-service-controller|distribution/v1/artifacts|internal/(baselinebundle|sourcebundle)|spikes)(/|$$)'
+GO_PUBLIC_PACKAGES = go list -e ./... | grep -Ev '/(contracts/g2-m4/source-baseline-v[456]/delta|cmd/o4-service-controller|distribution/v1/artifacts|spikes)(/|$$)'
 GO_TEST_TIMEOUT ?= 15m
 GO_LOCALWEB_RACE_TIMEOUT ?= 45m
 GO_TEST_PACKAGE_PARALLEL ?= 4
 GO_RACE_PACKAGE_PARALLEL ?= 3
 GO_TEST_HEARTBEAT_SECONDS ?= 30
-GO_TAGGED_LOCALWEB_TEST_PATTERN ?= ^(TestVerifiedReviewPublicAPIExposesPatchAcceptAndUnconfiguredSCM|TestE2EVerifierStartupCandidateRecoveryDoesNotUseAmbientDocker|TestVerifiedRejectAndAgentRetryPreservePredecessorAndReverifySuccessor)$$
+GO_TAGGED_LOCALWEB_TEST_PATTERN ?= ^TestE2EVerifierStartupCandidateRecoveryDoesNotUseAmbientDocker$$
 
 define RUN_WITH_PROGRESS
 	@start="$$(date +%s)"; \

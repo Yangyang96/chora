@@ -3,14 +3,11 @@ package speccoding
 import (
 	"bytes"
 	"crypto/sha256"
-	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
-	"encoding/pem"
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 )
 
 func TestV4CoreContractPinsEnterpriseTrustAmendment(t *testing.T) {
@@ -106,25 +103,6 @@ func TestV4ContractsRejectTrustAndEgressRelaxation(t *testing.T) {
 				t.Fatal("unsafe v4 Sandbox policy accepted")
 			}
 		})
-	}
-}
-
-func TestV4TrustAnchorIsExactSelfSignedCA(t *testing.T) {
-	data := readV4ContractFixture(t, "starpoint-root-ca-2048-g2.pem")
-	digest := sha256.Sum256(data)
-	if hex.EncodeToString(digest[:]) != starpointRootCASHA256 {
-		t.Fatal("v4 CA digest drift")
-	}
-	block, rest := pem.Decode(data)
-	if block == nil || block.Type != "CERTIFICATE" || len(bytes.TrimSpace(rest)) != 0 {
-		t.Fatal("v4 CA is not one PEM certificate")
-	}
-	certificate, err := x509.ParseCertificate(block.Bytes)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if certificate.Subject.String() != certificate.Issuer.String() || certificate.Subject.CommonName != "StarPoint Root CA 2048 - G2" || !certificate.IsCA || time.Now().After(certificate.NotAfter) {
-		t.Fatalf("unexpected v4 CA identity = %#v", certificate.Subject)
 	}
 }
 

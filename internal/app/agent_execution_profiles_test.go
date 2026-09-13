@@ -8,7 +8,6 @@ import (
 
 	"github.com/Yangyang96/chora/internal/app"
 	"github.com/Yangyang96/chora/internal/domain"
-	"github.com/Yangyang96/chora/internal/speccoding"
 	storecontract "github.com/Yangyang96/chora/internal/store"
 )
 
@@ -16,7 +15,7 @@ func TestTrustedLocalRequiresCurrentAcknowledgementBeforeAnyTaskSideEffect(t *te
 	ctx := context.Background()
 	service, db, raw, room := realSpecCodingAppFixture(t, ctx)
 	newer, err := domain.NewTrustedLocalAcknowledgement(domain.TrustedLocalAcknowledgementRecord{
-		PolicyVersion: "chora.trusted-local-disclosure.v2", ActorID: "owner", SessionID: "newer-policy", AcknowledgedAt: time.Now().UTC(),
+		PolicyVersion: "chora.trusted-local-disclosure.v2", ActorID: "unacknowledged-owner", SessionID: "newer-policy", AcknowledgedAt: time.Now().UTC(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -27,7 +26,8 @@ func TestTrustedLocalRequiresCurrentAcknowledgementBeforeAnyTaskSideEffect(t *te
 		t.Fatal(err)
 	}
 	request := realSpecCodingCreateRequest(room)
-	request.AgentExecutionProfile = domain.AgentExecutionProfileTrustedLocal
+	// The fixture owner is acknowledged; this Task has a different human owner.
+	request.ActorID = "unacknowledged-owner"
 	if _, err := service.CreateTask(ctx, request); !errors.Is(err, app.ErrUnauthorizedCommand) {
 		t.Fatalf("Trusted Local without current acknowledgement error=%v", err)
 	}
@@ -35,8 +35,10 @@ func TestTrustedLocalRequiresCurrentAcknowledgementBeforeAnyTaskSideEffect(t *te
 		"tasks": 0, "agent_execution_profile_preferences": 0, "user_spec_coding_intents": 0,
 	})
 
+	ackMeta := meta("ack-trusted-local", "ack-trusted-local")
+	ackMeta.ActorID = request.ActorID
 	acknowledged, err := service.AcknowledgeTrustedLocal(ctx, app.AcknowledgeTrustedLocalRequest{
-		CommandMeta: meta("ack-trusted-local", "ack-trusted-local"), PolicyVersion: domain.TrustedLocalDisclosurePolicy,
+		CommandMeta: ackMeta, PolicyVersion: domain.TrustedLocalDisclosurePolicy,
 	})
 	if err != nil || acknowledged.Acknowledgement.PolicyVersion() != domain.TrustedLocalDisclosurePolicy {
 		t.Fatalf("acknowledgement=%#v err=%v", acknowledged, err)
@@ -59,14 +61,14 @@ func TestProfileSwitchChangesOnlySuccessorAndOrdinaryRetryInheritsCurrentProfile
 		t.Fatal(err)
 	}
 	accepted := submitAndAcceptRealTask(t, ctx, service, created, "profile-switch")
-	envelope, err := speccoding.LoadInstalledEnvelope(room.repositoryRoot)
+	envelope, err := newRealSpecCodingTestEnvelope(room.repositoryRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
 	service = app.NewService(app.Dependencies{
 		Store: db, Context: app.ContextAssembler{}, Agents: fakeRegistry{&fakeAdapter{id: "pi"}}, Supervisor: &fakeSupervisor{},
 		Presence: fakePresence{}, Authorizer: allowAuthorizer{}, Clock: &fixedClock{now: time.Date(2026, 8, 27, 10, 0, 0, 0, time.UTC)},
-		IDs: app.RandomIDs{}, InstalledSpecCodingEnvelope: &envelope,
+		IDs: app.RandomIDs{}, SpecCodingEnvelopeResolver: fixedSpecCodingEnvelopeResolver{envelope},
 	})
 	runResult, err := service.CreateRun(ctx, app.CreateRunRequest{
 		CommandMeta: meta("create-profile-switch-run", "create-profile-switch-run"), TaskID: created.Task.ID(), RevisionID: accepted.Review.RevisionID(),
@@ -117,7 +119,7 @@ func TestProfileSwitchChangesOnlySuccessorAndOrdinaryRetryInheritsCurrentProfile
 	if err != nil {
 		t.Fatal(err)
 	}
-	if oldAttempt.AgentExecutionProfileBinding().Profile() != domain.AgentExecutionProfileStandard || charter.AgentExecutionProfileBinding().Profile() != domain.AgentExecutionProfileStandard || switched.Attempt.AgentExecutionProfileBinding().Profile() != domain.AgentExecutionProfileMinimal {
+	if oldAttempt.AgentExecutionProfileBinding().Profile() != domain.AgentExecutionProfileTrustedLocal || charter.AgentExecutionProfileBinding().Profile() != domain.AgentExecutionProfileTrustedLocal || switched.Attempt.AgentExecutionProfileBinding().Profile() != domain.AgentExecutionProfileMinimal {
 		t.Fatalf("historical Charter/Attempt mutated: charter=%q old=%q successor=%q", charter.AgentExecutionProfileBinding().Profile(), oldAttempt.AgentExecutionProfileBinding().Profile(), switched.Attempt.AgentExecutionProfileBinding().Profile())
 	}
 	preference, err := db.Reader().GetTaskAgentExecutionProfilePreference(ctx, created.Task.ID())

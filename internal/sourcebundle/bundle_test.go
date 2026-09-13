@@ -56,16 +56,6 @@ func TestCreateVerifyInstallDeterministicSourceBundle(t *testing.T) {
 	}
 }
 
-func TestRepositorySourcePathPolicyMatchesDeclaredCoverage(t *testing.T) {
-	root, err := filepath.Abs(filepath.Join("..", ".."))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := CheckPolicy(root); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestCheckPolicyRejectsGroupWorldWritableSourceFile(t *testing.T) {
 	root := t.TempDir()
 	source := filepath.Join(root, "source")

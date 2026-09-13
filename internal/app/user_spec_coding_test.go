@@ -33,14 +33,14 @@ func TestAcceptRealSpecCodingPlanRollsBackEveryResourceAfterSnapshotFailure(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	envelope, err := speccoding.LoadInstalledEnvelope(room.repositoryRoot)
+	envelope, err := newRealSpecCodingTestEnvelope(room.repositoryRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
 	failing := app.NewService(app.Dependencies{
 		Store: db, Context: saveSnapshotThenFail{}, Authorizer: allowAuthorizer{},
 		Clock: &fixedClock{now: time.Date(2026, 8, 17, 14, 0, 0, 0, time.UTC)}, IDs: app.RandomIDs{},
-		InstalledSpecCodingEnvelope: &envelope,
+		SpecCodingEnvelopeResolver: fixedSpecCodingEnvelopeResolver{envelope},
 	})
 	if _, err := failing.ReviewTechnicalPlanRevision(ctx, app.ReviewTechnicalPlanRevisionRequest{
 		CommandMeta: meta("accept-rollback-plan", "accept-rollback-plan"), RevisionID: submitted.Revision.ID(), Kind: domain.TechnicalPlanReviewAccept, Note: "Must roll back.",
@@ -189,7 +189,7 @@ func TestAcceptRealSpecCodingPlanAfterRestartAtomicallyBindsExecution(t *testing
 	if accepted.Binding == nil || accepted.Charter == nil || accepted.Snapshot == nil {
 		t.Fatalf("accepted resources = %#v", accepted)
 	}
-	if accepted.Charter.AdapterID() != "pi" || accepted.Charter.AgentExecutionProfileBinding().Profile() != domain.AgentExecutionProfileStandard || accepted.Charter.SandboxMode() != "colima-docker" || accepted.Charter.WorkspaceRoot() != mustRoomRoot(t, db, room) || !sameCapabilities(accepted.Charter.CapabilityEnvelope(), envelope.CapabilityEnvelope()) {
+	if accepted.Charter.AdapterID() != "pi" || accepted.Charter.AgentExecutionProfileBinding().Profile() != domain.AgentExecutionProfileTrustedLocal || accepted.Charter.SandboxMode() != "trusted-host" || accepted.Charter.WorkspaceRoot() != mustRoomRoot(t, db, room) || !sameCapabilities(accepted.Charter.CapabilityEnvelope(), envelope.CapabilityEnvelope()) {
 		t.Fatalf("accepted Charter = %#v", accepted.Charter)
 	}
 	if accepted.Binding.SnapshotID() != accepted.Snapshot.ID() || accepted.Binding.SnapshotDigest() != accepted.Snapshot.Digest() || sha256.Sum256(accepted.Snapshot.CanonicalJSON()) != accepted.Snapshot.Digest() {
@@ -208,11 +208,11 @@ func TestAcceptRealSpecCodingPlanAfterRestartAtomicallyBindsExecution(t *testing
 	}
 	document := contract.Document()
 	snapshotDigest := accepted.Snapshot.Digest()
-	if document.SchemaVersion != speccoding.CoreContractSchemaVersionV10 || document.Revision != 10 || document.Candidate.Runtime.Version != "0.84.2" || document.Task.ID != created.Task.ID().String() || document.Task.RoomID != created.Task.RoomID().String() || document.Execution.Input.ContextSnapshotID != accepted.Snapshot.ID().String() || document.Execution.Input.ContextSnapshotDigest != hex.EncodeToString(snapshotDigest[:]) {
-		t.Fatalf("active v8 contract identity = %#v", document)
+	if document.SchemaVersion != speccoding.CoreContractSchemaVersionV11 || document.Revision != 11 || document.Candidate.Runtime.Version != "0.84.2" || document.Task.ID != created.Task.ID().String() || document.Task.RoomID != created.Task.RoomID().String() || document.Execution.Input.ContextSnapshotID != accepted.Snapshot.ID().String() || document.Execution.Input.ContextSnapshotDigest != hex.EncodeToString(snapshotDigest[:]) {
+		t.Fatalf("active v11 contract identity = %#v", document)
 	}
 	if !equalStrings(document.Execution.Boundary.WritableFiles, request.RealSpecCoding.WritableFiles) || !equalStrings(document.Acceptance.VerificationCommands[0].Argv, request.RealSpecCoding.VerificationCommands[0].Argv) {
-		t.Fatalf("active v8 authority = %#v", document.Execution.Boundary)
+		t.Fatalf("active v11 authority = %#v", document.Execution.Boundary)
 	}
 	assertRawCounts(t, raw, map[string]int{
 		"run_charters": 1, "context_snapshots": 1, "spec_coding_bindings": 1,
@@ -254,13 +254,13 @@ func TestStartRealSpecCodingAttemptReceivesExactRegisteredContract(t *testing.T)
 	}
 	adapter := &fakeAdapter{id: "pi"}
 	supervisor := &fakeSupervisor{outcome: execution.StartOutcome{Kind: execution.Started, Handle: execution.RuntimeHandle{Value: "handle"}, Identity: execution.ProcessIdentity{Value: "pid:real"}}}
-	envelope, err := speccoding.LoadInstalledEnvelope(room.repositoryRoot)
+	envelope, err := newRealSpecCodingTestEnvelope(room.repositoryRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
 	executor := app.NewService(app.Dependencies{
 		Store: db, Context: app.ContextAssembler{}, Agents: fakeRegistry{adapter}, Supervisor: supervisor, Presence: fakePresence{}, Authorizer: allowAuthorizer{},
-		Clock: &fixedClock{now: time.Date(2026, 8, 17, 15, 0, 0, 0, time.UTC)}, IDs: app.RandomIDs{}, InstalledSpecCodingEnvelope: &envelope,
+		Clock: &fixedClock{now: time.Date(2026, 8, 17, 15, 0, 0, 0, time.UTC)}, IDs: app.RandomIDs{}, SpecCodingEnvelopeResolver: fixedSpecCodingEnvelopeResolver{envelope},
 	})
 	run, err := executor.CreateRun(ctx, app.CreateRunRequest{
 		CommandMeta: meta("create-real-execution-input-run", "create-real-execution-input-run"), TaskID: created.Task.ID(), RevisionID: accepted.Binding.RevisionID(),
@@ -273,7 +273,7 @@ func TestStartRealSpecCodingAttemptReceivesExactRegisteredContract(t *testing.T)
 		t.Fatal(err)
 	}
 	charter, err := db.Reader().GetCharter(ctx, run.Run.CharterID())
-	if err != nil || prepared.Attempt.AgentExecutionProfileBinding() != charter.AgentExecutionProfileBinding() || prepared.Attempt.AgentExecutionProfileBinding().Profile() != domain.AgentExecutionProfileStandard {
+	if err != nil || prepared.Attempt.AgentExecutionProfileBinding() != charter.AgentExecutionProfileBinding() || prepared.Attempt.AgentExecutionProfileBinding().Profile() != domain.AgentExecutionProfileTrustedLocal {
 		t.Fatalf("first Attempt profile=%#v Charter profile=%#v err=%v", prepared.Attempt.AgentExecutionProfileBinding(), charter.AgentExecutionProfileBinding(), err)
 	}
 	if _, err := executor.StartAttempt(ctx, app.StartAttemptRequest{CommandMeta: meta("start-real-execution-input", "start-real-execution-input"), RunID: run.Run.ID(), ExpectedVersion: prepared.Run.Version(), Mode: app.StartFresh}); err != nil {
@@ -282,7 +282,7 @@ func TestStartRealSpecCodingAttemptReceivesExactRegisteredContract(t *testing.T)
 	if !bytes.Equal(adapter.startRequest.ExecutionContractDocument, registered.ActiveContractJSON) || !bytes.Equal(adapter.startRequest.SnapshotDocument, accepted.Snapshot.CanonicalJSON()) {
 		t.Fatal("Pi start did not receive the exact registered Contract and accepted Snapshot")
 	}
-	if adapter.prepareCalls != 1 || supervisor.invocation.Target().AdapterID() != "pi" || supervisor.invocation.Target().ProviderID() != domain.DockerExecutionProvider {
+	if adapter.prepareCalls != 1 || supervisor.invocation.Target().AdapterID() != "pi" || supervisor.invocation.Target().ProviderID() != domain.TrustedHostExecutionProvider {
 		t.Fatalf("atomic bound prepare calls=%d target=%q/%q", adapter.prepareCalls, supervisor.invocation.Target().AdapterID(), supervisor.invocation.Target().ProviderID())
 	}
 }
@@ -346,11 +346,11 @@ type realSpecCodingRoom struct {
 
 func realSpecCodingAppFixture(t *testing.T, ctx context.Context) (*app.Service, storecontract.Store, *sql.DB, realSpecCodingRoom) {
 	t.Helper()
-	repositoryRoot, err := filepath.Abs(filepath.Join("..", ".."))
-	if err != nil {
+	repositoryRoot := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repositoryRoot, "internal", "domain"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	envelope, err := speccoding.LoadInstalledEnvelope(repositoryRoot)
+	envelope, err := newRealSpecCodingTestEnvelope(repositoryRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -372,12 +372,17 @@ func realSpecCodingAppFixture(t *testing.T, ctx context.Context) (*app.Service, 
 	service := app.NewService(app.Dependencies{
 		Store: db, Context: app.ContextAssembler{}, Authorizer: allowAuthorizer{},
 		Clock: &fixedClock{now: time.Date(2026, 8, 17, 12, 0, 0, 0, time.UTC)}, IDs: app.RandomIDs{},
-		InstalledSpecCodingEnvelope: &envelope,
+		SpecCodingEnvelopeResolver: fixedSpecCodingEnvelopeResolver{envelope},
 	})
 	createdRoom, err := service.CreateRoom(ctx, app.CreateRoomRequest{
-		CommandMeta: meta("create-real-room", "create-real-room"), Name: "chora", Description: "Installed Chora source baseline", WorkspaceRoot: speccoding.InstalledWorkspaceRoot,
+		CommandMeta: meta("create-real-room", "create-real-room"), Name: "chora", Description: "Temporary Local Connected repository", WorkspaceRoot: repositoryRoot,
 	})
 	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.AcknowledgeTrustedLocal(ctx, app.AcknowledgeTrustedLocalRequest{
+		CommandMeta: meta("ack-test-local", "ack-test-local"), PolicyVersion: domain.TrustedLocalDisclosurePolicy,
+	}); err != nil {
 		t.Fatal(err)
 	}
 	return service, db, raw, realSpecCodingRoom{id: createdRoom.Room.ID().String(), revisionID: createdRoom.InitialRevision.ID().String(), repositoryRoot: repositoryRoot}
@@ -389,7 +394,8 @@ func realSpecCodingCreateRequest(room realSpecCodingRoom) app.CreateTaskRequest 
 	return app.CreateTaskRequest{
 		CommandMeta: meta("create-real-task", "create-real-task"), RoomID: roomID,
 		Title: "Require reviewable descriptions", ExecutionProfile: app.TaskExecutionProfileRealSpecCoding,
-		RevisionIDs: []domain.ContextRevisionID{revisionID},
+		AgentExecutionProfile: domain.AgentExecutionProfileTrustedLocal,
+		RevisionIDs:           []domain.ContextRevisionID{revisionID},
 		RealSpecCoding: &app.RealSpecCodingInput{
 			Requirement: "Reject blank acceptance descriptions.",
 			Constraints: []string{"Preserve valid criteria."}, OutOfScope: []string{"Persistence changes."},
@@ -413,16 +419,16 @@ func assertRawCounts(t *testing.T, db *sql.DB, expected map[string]int) {
 	}
 }
 
-func restartedRealSpecCodingService(t *testing.T, db storecontract.Store, room realSpecCodingRoom) (*app.Service, speccoding.InstalledEnvelope) {
+func restartedRealSpecCodingService(t *testing.T, db storecontract.Store, room realSpecCodingRoom) (*app.Service, speccoding.BoundEnvelope) {
 	t.Helper()
-	envelope, err := speccoding.LoadInstalledEnvelope(room.repositoryRoot)
+	envelope, err := newRealSpecCodingTestEnvelope(room.repositoryRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return app.NewService(app.Dependencies{
 		Store: db, Context: app.ContextAssembler{}, Authorizer: allowAuthorizer{},
 		Clock: &fixedClock{now: time.Date(2026, 8, 17, 13, 0, 0, 0, time.UTC)}, IDs: app.RandomIDs{},
-		InstalledSpecCodingEnvelope: &envelope,
+		SpecCodingEnvelopeResolver: fixedSpecCodingEnvelopeResolver{envelope},
 	}), envelope
 }
 
@@ -481,4 +487,20 @@ func submitAndAcceptRealTask(t *testing.T, ctx context.Context, service *app.Ser
 		t.Fatalf("accepted %s resources = %#v", suffix, accepted)
 	}
 	return accepted
+}
+
+// Rebuild the same public task boundary after a restart without a release tree.
+func newRealSpecCodingTestEnvelope(root string) (speccoding.BoundEnvelope, error) {
+	return speccoding.NewBoundEnvelope(root, speccoding.RepositoryIdentity{
+		Name: "test-project", SourceRevision: "0123456789abcdef0123456789abcdef01234567",
+	}, "0.84.2")
+}
+
+type fixedSpecCodingEnvelopeResolver struct{ envelope speccoding.BoundEnvelope }
+
+func (resolver fixedSpecCodingEnvelopeResolver) ResolveSpecCodingEnvelope(_ context.Context, room domain.Room) (app.SpecCodingEnvelope, error) {
+	if !resolver.envelope.MatchesRepositoryRoot(room.WorkspaceRoot()) {
+		return nil, speccoding.ErrInvalidInstalledEnvelope
+	}
+	return resolver.envelope, nil
 }

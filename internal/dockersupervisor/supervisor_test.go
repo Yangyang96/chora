@@ -93,6 +93,7 @@ func TestPiAdapterInvocationIsAcceptedWithoutContractTranslation(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			supervisor.loadProjection = loadTestTaskProjection
 			supervisor.providerIdentity = ProviderIdentity{
 				DockerClientVersion: DockerEngineVersion, DockerServerVersion: DockerEngineVersion,
 				DockerContext: DockerContext, ColimaVersion: RequiredColimaVersion,
@@ -725,15 +726,16 @@ func TestDeadlineCauseCannotOverwriteObservedExit(t *testing.T) {
 
 func TestStartFailsClosedBeforeDockerWhenProjectionSourcesDrift(t *testing.T) {
 	for _, test := range []struct {
-		name   string
-		mutate func(*testing.T, *Supervisor)
+		name       string
+		diagnostic string
+		mutate     func(*testing.T, *Supervisor)
 	}{
-		{name: "credential permissions", mutate: func(t *testing.T, supervisor *Supervisor) {
+		{name: "credential permissions", diagnostic: "Pi OAuth source must be a regular owner-only file", mutate: func(t *testing.T, supervisor *Supervisor) {
 			if err := os.Chmod(supervisor.config.CredentialSource, 0o644); err != nil {
 				t.Fatal(err)
 			}
 		}},
-		{name: "trust identity", mutate: func(t *testing.T, supervisor *Supervisor) {
+		{name: "trust identity", diagnostic: "enterprise trust source identity mismatch", mutate: func(t *testing.T, supervisor *Supervisor) {
 			path := filepath.Join(t.TempDir(), "wrong-ca.pem")
 			if err := os.WriteFile(path, []byte("wrong trust\n"), 0o600); err != nil {
 				t.Fatal(err)
@@ -744,10 +746,11 @@ func TestStartFailsClosedBeforeDockerWhenProjectionSourcesDrift(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			runner := &fakeRunner{processes: []*fakeProcess{newFakeProcess()}}
 			supervisor := newTestSupervisor(t, runner)
+			supervisor.loadProjection = loadTaskProjection
 			test.mutate(t, supervisor)
 			invocation := testInvocation(t, testSource(t), "launch-projection-drift")
 			outcome := supervisor.Start(context.Background(), invocation, &testSink{binding: invocation.LaunchToken()})
-			if outcome.Kind != execution.StartProvenNoChild || len(runner.commands()) != 0 {
+			if outcome.Kind != execution.StartProvenNoChild || len(runner.commands()) != 0 || !strings.Contains(outcome.Diagnostic, test.diagnostic) {
 				t.Fatalf("projection drift did not fail closed: outcome=%#v commands=%#v", outcome, runner.commands())
 			}
 		})
@@ -1132,6 +1135,7 @@ func newTestSupervisor(t *testing.T, runner *fakeRunner) *Supervisor {
 			return nil
 		})
 	})
+	supervisor.loadProjection = loadTestTaskProjection
 	supervisor.providerIdentity = ProviderIdentity{
 		DockerClientVersion: DockerEngineVersion, DockerServerVersion: DockerEngineVersion,
 		DockerContext: DockerContext, ColimaVersion: RequiredColimaVersion,
@@ -1196,11 +1200,23 @@ func testCredentialSource(t *testing.T) string {
 
 func testTrustAnchorSource(t *testing.T) string {
 	t.Helper()
-	path, err := filepath.Abs(filepath.Join("..", "..", "contracts", "g2-m1a", "starpoint-root-ca-2048-g2.pem"))
-	if err != nil {
+	path := filepath.Join(t.TempDir(), "test-trust.pem")
+	if err := os.WriteFile(path, []byte("synthetic test trust projection\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return path
+}
+
+// Lifecycle tests use a fake Docker runner and synthetic trust bytes. The
+// production loader's pinned enterprise CA belongs to the retired M1 release;
+// source-drift tests explicitly retain that loader to check fail-closed behavior.
+func loadTestTaskProjection(credentialSource, trustSource string) (taskProjection, error) {
+	projection, err := loadOAuthProjection(credentialSource)
+	if err != nil {
+		return taskProjection{}, err
+	}
+	projection.trust, _, err = readProjectionSource(trustSource)
+	return projection, err
 }
 
 func testSource(t *testing.T) string {

@@ -15,7 +15,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Yangyang96/chora/internal/baselinebundle"
 	"github.com/Yangyang96/chora/internal/dockersupervisor"
 	"github.com/Yangyang96/chora/internal/releaseassets"
 	storecontract "github.com/Yangyang96/chora/internal/store"
@@ -280,37 +279,4 @@ type recordingVerifierRecovery struct {
 func (recovery *recordingVerifierRecovery) Recover(context.Context) error {
 	recovery.calls++
 	return recovery.err
-}
-
-func TestPrepareProductBaselineReconstructsAndReusesBundledIdentity(t *testing.T) {
-	if os.Getenv("CHORA_BASELINE_BUNDLE_REAL") != "1" {
-		t.Skip("set CHORA_BASELINE_BUNDLE_REAL=1 for the 139 MiB product Baseline v6 gate")
-	}
-	repositoryRoot, err := filepath.Abs(filepath.Join("..", ".."))
-	if err != nil {
-		t.Fatal(err)
-	}
-	runtimeRoot := filepath.Join(t.TempDir(), "runtime")
-	if err := os.Mkdir(runtimeRoot, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	baseline, manifestPath, err := prepareProductBaseline(context.Background(), repositoryRoot, runtimeRoot, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if filepath.Base(baseline) != "baseline-v6" || filepath.Base(filepath.Dir(manifestPath)) != "source-baseline-v6" {
-		t.Fatalf("product baseline paths = %q, %q", baseline, manifestPath)
-	}
-	manifest, err := os.ReadFile(manifestPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	result, err := baselinebundle.Verify(baseline, manifest)
-	if err != nil || result.AggregateSHA256 != "b28cb1624124736e745f2b217e841957330f763b6b41fab87b2a88b809b8a0cd" {
-		t.Fatalf("reconstructed baseline = %#v, err = %v", result, err)
-	}
-	reused, _, err := prepareProductBaseline(context.Background(), repositoryRoot, runtimeRoot, true)
-	if err != nil || reused != baseline {
-		t.Fatalf("reused baseline = %q, err = %v", reused, err)
-	}
 }
