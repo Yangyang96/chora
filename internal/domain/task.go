@@ -31,6 +31,7 @@ const (
 )
 
 type Task struct {
+	modelBinding      ModelBinding
 	id                TaskID
 	roomID            RoomID
 	predecessorTaskID TaskID
@@ -106,4 +107,15 @@ func validCriteria(criteria []AcceptanceCriterion) bool {
 
 func cloneCriteria(criteria []AcceptanceCriterion) []AcceptanceCriterion {
 	return append([]AcceptanceCriterion(nil), criteria...)
+}
+
+func (task Task) ModelBinding() ModelBinding { return task.modelBinding }
+
+// BindModel freezes the initial choice; later choices belong to successor Attempts.
+func (task Task) BindModel(binding ModelBinding) (Task, error) {
+	if !binding.Configured() || task.modelBinding.Configured() {
+		return Task{}, fmt.Errorf("%w: model binding already frozen or missing", ErrInvalidArgument)
+	}
+	task.modelBinding = binding
+	return task, nil
 }

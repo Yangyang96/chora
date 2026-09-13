@@ -109,17 +109,18 @@ func (tx *writeTx) InsertAttempt(ctx context.Context, attempt domain.Attempt) er
 	}
 	digest := attempt.ContextDigest()
 	profile := attempt.AgentExecutionProfileBinding()
-	_, err := tx.tx.ExecContext(ctx, `INSERT INTO attempts(id,run_id,sequence,predecessor_attempt_id,context_snapshot_id,context_digest,adapter_id,state,retry_reason,intervention_reason,context_delta,external_session,created_at,agent_execution_profile,agent_runtime_source,agent_execution_provider,agent_capability_policy,agent_trust_disclosure_policy) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, attempt.ID().String(), attempt.RunID().String(), attempt.Sequence(), predecessor, attempt.ContextSnapshotID().String(), digest[:], attempt.AdapterID(), string(attempt.State()), attempt.RetryReason(), attempt.InterventionReason(), attempt.ContextDelta(), attempt.ExternalSession(), timeText(attempt.CreatedAt()), string(profile.Profile()), profile.RuntimeSource(), profile.ExecutionProvider(), profile.CapabilityPolicy(), profile.TrustDisclosurePolicy())
+	_, err := tx.tx.ExecContext(ctx, `INSERT INTO attempts(id,run_id,sequence,predecessor_attempt_id,context_snapshot_id,context_digest,adapter_id,state,retry_reason,intervention_reason,context_delta,external_session,created_at,agent_execution_profile,agent_runtime_source,agent_execution_provider,agent_capability_policy,agent_trust_disclosure_policy,model_binding) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, attempt.ID().String(), attempt.RunID().String(), attempt.Sequence(), predecessor, attempt.ContextSnapshotID().String(), digest[:], attempt.AdapterID(), string(attempt.State()), attempt.RetryReason(), attempt.InterventionReason(), attempt.ContextDelta(), attempt.ExternalSession(), timeText(attempt.CreatedAt()), string(profile.Profile()), profile.RuntimeSource(), profile.ExecutionProvider(), profile.CapabilityPolicy(), profile.TrustDisclosurePolicy(), nullableString(attempt.ModelBinding().JSON()))
 	return mapWriteError(err)
 }
 
 func (reader *reader) GetAttempt(ctx context.Context, id domain.AttemptID) (domain.Attempt, error) {
 	var idText, runText, snapshotText, adapter, state, retry, intervention, delta, external, created string
 	var profileText, runtimeSource, executionProvider, capabilityPolicy, trustDisclosure string
+	var modelBinding sql.NullString
 	var sequence int
 	var predecessor sql.NullString
 	var digest []byte
-	err := reader.q.QueryRowContext(ctx, `SELECT id,run_id,sequence,predecessor_attempt_id,context_snapshot_id,context_digest,adapter_id,state,retry_reason,intervention_reason,context_delta,external_session,created_at,agent_execution_profile,agent_runtime_source,agent_execution_provider,agent_capability_policy,agent_trust_disclosure_policy FROM attempts WHERE id=?`, id.String()).Scan(&idText, &runText, &sequence, &predecessor, &snapshotText, &digest, &adapter, &state, &retry, &intervention, &delta, &external, &created, &profileText, &runtimeSource, &executionProvider, &capabilityPolicy, &trustDisclosure)
+	err := reader.q.QueryRowContext(ctx, `SELECT id,run_id,sequence,predecessor_attempt_id,context_snapshot_id,context_digest,adapter_id,state,retry_reason,intervention_reason,context_delta,external_session,created_at,agent_execution_profile,agent_runtime_source,agent_execution_provider,agent_capability_policy,agent_trust_disclosure_policy,model_binding FROM attempts WHERE id=?`, id.String()).Scan(&idText, &runText, &sequence, &predecessor, &snapshotText, &digest, &adapter, &state, &retry, &intervention, &delta, &external, &created, &profileText, &runtimeSource, &executionProvider, &capabilityPolicy, &trustDisclosure, &modelBinding)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Attempt{}, storecontract.ErrNotFound
 	}
@@ -159,7 +160,11 @@ func (reader *reader) GetAttempt(ctx context.Context, id domain.AttemptID) (doma
 	if err != nil {
 		return domain.Attempt{}, err
 	}
-	return domain.RestoreAttempt(domain.AttemptRecord{ID: aid, RunID: rid, Sequence: sequence, Predecessor: pred, ContextSnapshotID: sid, ContextDigest: sum, AdapterID: adapter, AgentExecutionProfileBinding: profile, ExternalSession: external, RetryReason: retry, InterventionReason: intervention, ContextDelta: delta, State: domain.AttemptState(state), CreatedAt: createdAt})
+	binding, err := domain.ParseModelBinding(modelBinding.String)
+	if err != nil {
+		return domain.Attempt{}, err
+	}
+	return domain.RestoreAttempt(domain.AttemptRecord{ID: aid, RunID: rid, Sequence: sequence, Predecessor: pred, ContextSnapshotID: sid, ContextDigest: sum, AdapterID: adapter, AgentExecutionProfileBinding: profile, ModelBinding: binding, ExternalSession: external, RetryReason: retry, InterventionReason: intervention, ContextDelta: delta, State: domain.AttemptState(state), CreatedAt: createdAt})
 }
 
 func (reader *reader) GetCurrentAttempt(ctx context.Context, runID domain.RunID) (domain.Attempt, error) {

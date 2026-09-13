@@ -7,6 +7,7 @@ import (
 )
 
 type TaskRecord struct {
+	ModelBinding      ModelBinding
 	ID                TaskID
 	RoomID            RoomID
 	PredecessorTaskID TaskID
@@ -29,6 +30,7 @@ func RestoreTask(record TaskRecord) (Task, error) {
 		}
 		task.predecessorTaskID = record.PredecessorTaskID
 	}
+	task.modelBinding = record.ModelBinding
 	switch record.State {
 	case TaskStateOpen:
 	case TaskStateClosed:
@@ -83,6 +85,7 @@ func validOptionalTimestamp(value, lower, upper time.Time) bool {
 }
 
 type AttemptRecord struct {
+	ModelBinding                 ModelBinding
 	ID                           AttemptID
 	RunID                        RunID
 	Sequence                     int
@@ -100,7 +103,7 @@ type AttemptRecord struct {
 }
 
 func RestoreAttempt(record AttemptRecord) (Attempt, error) {
-	attempt, err := NewAttempt(AttemptParams{ID: record.ID, RunID: record.RunID, Sequence: record.Sequence, Predecessor: record.Predecessor, ContextSnapshotID: record.ContextSnapshotID, ContextDigest: record.ContextDigest, AdapterID: record.AdapterID, AgentExecutionProfileBinding: record.AgentExecutionProfileBinding, ExternalSession: record.ExternalSession, RetryReason: record.RetryReason, InterventionReason: record.InterventionReason, ContextDelta: record.ContextDelta, CreatedAt: record.CreatedAt})
+	attempt, err := NewAttempt(AttemptParams{ModelBinding: record.ModelBinding, ID: record.ID, RunID: record.RunID, Sequence: record.Sequence, Predecessor: record.Predecessor, ContextSnapshotID: record.ContextSnapshotID, ContextDigest: record.ContextDigest, AdapterID: record.AdapterID, AgentExecutionProfileBinding: record.AgentExecutionProfileBinding, ExternalSession: record.ExternalSession, RetryReason: record.RetryReason, InterventionReason: record.InterventionReason, ContextDelta: record.ContextDelta, CreatedAt: record.CreatedAt})
 	if err != nil {
 		return Attempt{}, err
 	}

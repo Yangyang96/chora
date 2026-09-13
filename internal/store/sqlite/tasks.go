@@ -97,7 +97,7 @@ func (tx *writeTx) InsertCharter(ctx context.Context, charter domain.RunCharter)
 		return err
 	}
 	profile := charter.AgentExecutionProfileBinding()
-	_, err := tx.tx.ExecContext(ctx, `INSERT INTO run_charters(id,task_id,task_goal,workspace_root,adapter_id,sandbox_mode,expected_output,responsible_human,initiator,created_at,agent_execution_profile,agent_runtime_source,agent_execution_provider,agent_capability_policy,agent_trust_disclosure_policy) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, charter.ID().String(), charter.TaskID().String(), charter.TaskGoal(), charter.WorkspaceRoot(), charter.AdapterID(), charter.SandboxMode(), charter.ExpectedOutput(), charter.ResponsibleHuman(), charter.Initiator(), timeText(charter.CreatedAt()), string(profile.Profile()), profile.RuntimeSource(), profile.ExecutionProvider(), profile.CapabilityPolicy(), profile.TrustDisclosurePolicy())
+	_, err := tx.tx.ExecContext(ctx, `INSERT INTO run_charters(id,task_id,task_goal,workspace_root,adapter_id,sandbox_mode,expected_output,responsible_human,initiator,created_at,agent_execution_profile,agent_runtime_source,agent_execution_provider,agent_capability_policy,agent_trust_disclosure_policy,model_binding) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, charter.ID().String(), charter.TaskID().String(), charter.TaskGoal(), charter.WorkspaceRoot(), charter.AdapterID(), charter.SandboxMode(), charter.ExpectedOutput(), charter.ResponsibleHuman(), charter.Initiator(), timeText(charter.CreatedAt()), string(profile.Profile()), profile.RuntimeSource(), profile.ExecutionProvider(), profile.CapabilityPolicy(), profile.TrustDisclosurePolicy(), nullableString(charter.ModelBinding().JSON()))
 	if err != nil {
 		return mapWriteError(err)
 	}
@@ -155,7 +155,8 @@ func requireFrozenReference(result sql.Result, kind, id string) error {
 func (reader *reader) GetCharter(ctx context.Context, id domain.CharterID) (domain.RunCharter, error) {
 	var idText, taskText, goal, root, adapter, sandbox, output, human, initiator, created string
 	var profileText, runtimeSource, executionProvider, capabilityPolicy, trustDisclosure string
-	err := reader.q.QueryRowContext(ctx, `SELECT id,task_id,task_goal,workspace_root,adapter_id,sandbox_mode,expected_output,responsible_human,initiator,created_at,agent_execution_profile,agent_runtime_source,agent_execution_provider,agent_capability_policy,agent_trust_disclosure_policy FROM run_charters WHERE id=?`, id.String()).Scan(&idText, &taskText, &goal, &root, &adapter, &sandbox, &output, &human, &initiator, &created, &profileText, &runtimeSource, &executionProvider, &capabilityPolicy, &trustDisclosure)
+	var modelBinding sql.NullString
+	err := reader.q.QueryRowContext(ctx, `SELECT id,task_id,task_goal,workspace_root,adapter_id,sandbox_mode,expected_output,responsible_human,initiator,created_at,agent_execution_profile,agent_runtime_source,agent_execution_provider,agent_capability_policy,agent_trust_disclosure_policy,model_binding FROM run_charters WHERE id=?`, id.String()).Scan(&idText, &taskText, &goal, &root, &adapter, &sandbox, &output, &human, &initiator, &created, &profileText, &runtimeSource, &executionProvider, &capabilityPolicy, &trustDisclosure, &modelBinding)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.RunCharter{}, storecontract.ErrNotFound
 	}
@@ -299,7 +300,11 @@ func (reader *reader) GetCharter(ctx context.Context, id domain.CharterID) (doma
 	if err != nil {
 		return domain.RunCharter{}, err
 	}
-	return domain.NewRunCharter(domain.RunCharterParams{ID: parsedID, TaskID: taskID, TaskGoal: goal, Criteria: criteria, ContextRevisionIDs: revisions, ConfirmedSensitiveRevisionIDs: confirmed, SensitiveExclusions: exclusions, WorkspaceRoot: root, AdapterID: adapter, SandboxMode: sandbox, ExpectedOutput: output, ResponsibleHuman: human, CapabilityEnvelope: caps, AgentExecutionProfileBinding: profile, Initiator: initiator, CreatedAt: createdAt})
+	binding, err := domain.ParseModelBinding(modelBinding.String)
+	if err != nil {
+		return domain.RunCharter{}, err
+	}
+	return domain.NewRunCharter(domain.RunCharterParams{ID: parsedID, TaskID: taskID, TaskGoal: goal, Criteria: criteria, ContextRevisionIDs: revisions, ConfirmedSensitiveRevisionIDs: confirmed, SensitiveExclusions: exclusions, WorkspaceRoot: root, AdapterID: adapter, SandboxMode: sandbox, ExpectedOutput: output, ResponsibleHuman: human, CapabilityEnvelope: caps, AgentExecutionProfileBinding: profile, ModelBinding: binding, Initiator: initiator, CreatedAt: createdAt})
 }
 
 func (tx *writeTx) CloseTaskForAcceptedRun(ctx context.Context, taskID domain.TaskID, runID domain.RunID, acceptedVersion uint64) error {

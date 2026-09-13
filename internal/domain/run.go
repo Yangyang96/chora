@@ -9,6 +9,7 @@ import (
 type CapabilityEnvelope map[string]bool
 
 type RunCharterParams struct {
+	ModelBinding                  ModelBinding
 	ID                            CharterID
 	TaskID                        TaskID
 	TaskGoal                      string
@@ -28,6 +29,7 @@ type RunCharterParams struct {
 }
 
 type RunCharter struct {
+	modelBinding                  ModelBinding
 	id                            CharterID
 	taskID                        TaskID
 	taskGoal                      string
@@ -51,7 +53,7 @@ func NewRunCharter(params RunCharterParams) (RunCharter, error) {
 		return RunCharter{}, fmt.Errorf("%w: invalid run charter", ErrInvalidArgument)
 	}
 	return RunCharter{
-		id: params.ID, taskID: params.TaskID, taskGoal: params.TaskGoal, criteria: cloneCriteria(params.Criteria),
+		modelBinding: params.ModelBinding, id: params.ID, taskID: params.TaskID, taskGoal: params.TaskGoal, criteria: cloneCriteria(params.Criteria),
 		contextRevisionIDs: append([]ContextRevisionID(nil), params.ContextRevisionIDs...), workspaceRoot: params.WorkspaceRoot,
 		confirmedSensitiveRevisionIDs: uniqueContextRevisionIDs(params.ConfirmedSensitiveRevisionIDs),
 		adapterID:                     params.AdapterID, sandboxMode: params.SandboxMode, sensitiveExclusions: append([]ContextEntryID(nil), params.SensitiveExclusions...),
@@ -232,6 +234,7 @@ const (
 )
 
 type AttemptParams struct {
+	ModelBinding                 ModelBinding
 	ID                           AttemptID
 	RunID                        RunID
 	Sequence                     int
@@ -248,6 +251,7 @@ type AttemptParams struct {
 }
 
 type Attempt struct {
+	modelBinding                 ModelBinding
 	id                           AttemptID
 	runID                        RunID
 	sequence                     int
@@ -272,7 +276,7 @@ func NewAttempt(params AttemptParams) (Attempt, error) {
 	if params.Sequence == 1 && params.Predecessor != nil || params.Sequence > 1 && (params.Predecessor == nil || !params.Predecessor.Valid()) {
 		return Attempt{}, fmt.Errorf("%w: invalid attempt predecessor", ErrInvalidArgument)
 	}
-	attempt := Attempt{id: params.ID, runID: params.RunID, sequence: params.Sequence, contextSnapshotID: params.ContextSnapshotID, contextDigest: params.ContextDigest, adapterID: params.AdapterID, agentExecutionProfileBinding: params.AgentExecutionProfileBinding, externalSession: params.ExternalSession, retryReason: params.RetryReason, interventionReason: params.InterventionReason, contextDelta: params.ContextDelta, state: AttemptStateCreated, createdAt: params.CreatedAt}
+	attempt := Attempt{modelBinding: params.ModelBinding, id: params.ID, runID: params.RunID, sequence: params.Sequence, contextSnapshotID: params.ContextSnapshotID, contextDigest: params.ContextDigest, adapterID: params.AdapterID, agentExecutionProfileBinding: params.AgentExecutionProfileBinding, externalSession: params.ExternalSession, retryReason: params.RetryReason, interventionReason: params.InterventionReason, contextDelta: params.ContextDelta, state: AttemptStateCreated, createdAt: params.CreatedAt}
 	if params.Predecessor != nil {
 		attempt.predecessor = *params.Predecessor
 		attempt.hasPredecessor = true
@@ -400,3 +404,6 @@ func (decision ReviewDecision) LinkedArtifacts() []ArtifactLink {
 	return append([]ArtifactLink(nil), decision.linkedArtifacts...)
 }
 func (decision ReviewDecision) DecidedAt() time.Time { return decision.decidedAt }
+
+func (charter RunCharter) ModelBinding() ModelBinding { return charter.modelBinding }
+func (attempt Attempt) ModelBinding() ModelBinding    { return attempt.modelBinding }
