@@ -134,3 +134,39 @@ go test -tags isolated_acceptance ./internal/dockersupervisor \
 会在使用该路径前拒绝执行。保留的契约夹具使用非 URL 退役标记及重新计算的策略摘要；
 它们是清理后的参考文件，不是可执行代理配置，也不代表旧证据重新验收。
 当前运行与诊断使用 `chora workbench` 和 `chora workbench doctor`。
+
+## 为模型请求配置代理
+
+Isolated Local 支持显式配置 HTTP 或 HTTPS 代理。在 Workbench 的 `--data`
+目录内创建 `isolated-proxy.json`，放在所有仓库之外，由当前用户拥有，权限为 `0600`：
+
+```json
+{
+  "schema": "chora.isolated-proxy.v1",
+  "httpsProxy": "http://proxy.example:8080",
+  "noProxy": "localhost,127.0.0.1"
+}
+```
+
+把示例替换成**容器能够访问的地址**。代理地址不能使用回环地址：容器里的
+`127.0.0.1` 指向容器自身，不是 Mac。若代理运行在 Mac 上，使用 Docker VM
+可访问的宿主机地址，并让代理允许该连接。Chora 不猜测或自动改写地址。
+URL 的协议描述到代理的连接；`http://` 代理可以通过 CONNECT 转发 HTTPS 模型请求。
+
+`httpProxy` 可选；只配置它时，HTTPS 请求也使用它。只配置 `httpsProxy` 时，
+HTTPS 请求走代理，HTTP 请求仍直连。`noProxy` 是可选的逗号分隔绕过列表，
+拒绝通配绕过及绕过模型 API 的配置。本配置暂不支持带账号密码的代理 URL、
+SOCKS 或自定义代理 CA；HTTPS 代理证书必须被运行环境信任。
+
+修改文件后重启 Workbench。状态只显示代理是否启用，不返回地址。每次新 Attempt
+开始前会检查配置；新增、删除、修改或破坏配置都需要重启。Task 冻结了创建时的
+代理身份，更换代理后需要创建新 Task；使用相同配置重启不会改变身份。
+删除文件并重启可恢复直连；空文件或格式错误不会静默切回直连。代理连接失败时，
+模型请求也不会自动改为直连。
+
+配置通过临时私有环境文件传入任务容器，容器准备结束后删除该文件。Docker
+管理员和容器内进程仍可看到这些环境变量。Chora 对捕获的运行输出做端点脱敏；
+任务不应将环境配置打印或复制到仓库产物中。这只是出站路由配置，不是网络白名单，
+Docker bridge 网络及宿主服务可达性保持不变。
+镜像下载使用 Docker/Colima 自己的代理配置；Local Connected 仍继承启动
+Workbench 进程的环境变量。

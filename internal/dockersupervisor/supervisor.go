@@ -27,6 +27,7 @@ import (
 	agentpi "github.com/Yangyang96/chora/internal/agent/pi"
 	"github.com/Yangyang96/chora/internal/domain"
 	"github.com/Yangyang96/chora/internal/execution"
+	"github.com/Yangyang96/chora/internal/isolatedproxy"
 )
 
 const (
@@ -134,6 +135,7 @@ type Config struct {
 // lifecycle. The top-level Config remains the authority for Runtime source,
 // image, credential, policy, and Engine qualification identities.
 type WorkbenchConfig struct {
+	Proxy                  isolatedproxy.Config
 	Arguments              []string
 	RuntimeVersion         string
 	ObserverSHA256         string
@@ -229,6 +231,11 @@ func New(config Config) (*Supervisor, error) {
 		config.ArtifactRoot = filepath.Join(filepath.Dir(config.RuntimeRoot), "artifacts")
 	}
 	config.ArtifactRoot = filepath.Clean(config.ArtifactRoot)
+	if config.Workbench != nil {
+		copy := *config.Workbench
+		copy.Arguments = slices.Clone(copy.Arguments)
+		config.Workbench = &copy
+	}
 	workbench := config.Workbench != nil
 	validWorkbench := !workbench || validWorkbenchConfig(config.Workbench)
 	if !filepath.IsAbs(config.RuntimeRoot) || !validDigest(config.PolicyDigest) ||
@@ -289,7 +296,7 @@ func New(config Config) (*Supervisor, error) {
 }
 
 func validWorkbenchConfig(config *WorkbenchConfig) bool {
-	return config != nil && slices.Equal(config.Arguments, []string{
+	return config != nil && config.Proxy.Validate() == nil && slices.Equal(config.Arguments, []string{
 		"--mode", "rpc", "--no-session", "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files",
 		"--provider", "deepseek", "--model", "deepseek-v4-pro", "--extension", "/opt/chora/resource_check_observer.mjs",
 	}) && config.RuntimeVersion == "0.85.1" && validDigest(config.ObserverSHA256) && validDigest(config.HelperSHA256) &&
@@ -686,6 +693,9 @@ func (supervisor *Supervisor) validateWorkbenchInvocation(invocation execution.I
 	if err != nil {
 		return invocationMetadata{}, err
 	}
+	for key, value := range workbench.Proxy.Environment() {
+		environment[key] = value
+	}
 	return invocationMetadata{runID: environment[EnvRunID], attemptID: environment[EnvAttemptID], taskID: taskID, environment: environment, prompt: prompt}, nil
 }
 
@@ -1046,8 +1056,9 @@ func (supervisor *Supervisor) setupWorkbench(ctx context.Context, record *attemp
 		"--label", "chora.image_digest=" + supervisor.config.AttemptImageID, "--label", "chora.policy_digest=" + WorkbenchPolicyDigest}
 	stdout := &streamWriter{record: record, kind: execution.StreamStdout}
 	stderr := &streamWriter{record: record, kind: execution.StreamStderr}
-	record.stdout.setSecrets(projection.secrets)
-	record.stderr.setSecrets(projection.secrets)
+	privateValues := append(projection.secrets, supervisor.config.Workbench.Proxy.PrivateValues()...)
+	record.stdout.setSecrets(privateValues)
+	record.stderr.setSecrets(privateValues)
 	attempt := append([]string{"create", "--pull=never", "--name", record.container}, labels...)
 	volume := []string{"volume", "create", "--driver", "local", "--opt", "type=tmpfs", "--opt", "device=tmpfs", "--opt", "o=size=256m,uid=1000,gid=1000,nosuid,nodev"}
 	volume = append(volume, labels...)
@@ -1067,8 +1078,25 @@ func (supervisor *Supervisor) setupWorkbench(ctx context.Context, record *attemp
 		"--pids-limit", "256", "--cpus", "2", "--memory", "4096m", "--memory-swap", "4096m", "--ulimit", "nofile=1024:1024", "--log-driver", "none",
 		"--mount", "type=volume,src="+record.workspaceVolume+",dst=/workspace", "--tmpfs", "/tmp:rw,nosuid,nodev,noexec,uid=1000,gid=1000,size=64m", "--tmpfs", "/run/chora/pi:rw,nosuid,nodev,noexec,uid=1000,gid=1000,size=16m",
 		"--env", "HOME=/run/chora/pi", "--env", "PI_CODING_AGENT_DIR=/run/chora/pi", "--env", "PI_SKIP_VERSION_CHECK=1", "--env", "PI_TELEMETRY=0")
+	proxyEnvironment := supervisor.config.Workbench.Proxy.Environment()
+	if len(proxyEnvironment) > 0 {
+		var lines []string
+		for key, value := range proxyEnvironment {
+			lines = append(lines, key+"="+value)
+		}
+		slices.Sort(lines)
+		proxyFile := filepath.Join(record.root, "proxy.env")
+		if err := writeExclusive(proxyFile, []byte(strings.Join(lines, "\n")+"\n")); err != nil {
+			return errors.New("cannot stage private proxy environment")
+		}
+		defer os.Remove(proxyFile)
+		attempt = append(attempt, "--env-file", proxyFile, "--label", "chora.proxy_digest="+supervisor.config.Workbench.Proxy.Digest())
+	}
 	keys := make([]string, 0, len(metadata.environment))
 	for key := range metadata.environment {
+		if _, proxyKey := proxyEnvironment[key]; proxyKey {
+			continue
+		}
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
@@ -1285,6 +1313,13 @@ func (supervisor *Supervisor) dockerContainerID(ctx context.Context, name string
 
 func (supervisor *Supervisor) runOK(ctx context.Context, args []string) error {
 	result, err := supervisor.config.Runner.Run(ctx, Command{Args: args})
+	if supervisor.config.Workbench != nil {
+		proxy := supervisor.config.Workbench.Proxy
+		if err != nil {
+			return fmt.Errorf("%w: %s", proxy.RedactError(err), proxy.Redact(boundedDiagnostic(result.Stderr)))
+		}
+		result.Stderr = []byte(proxy.Redact(string(result.Stderr)))
+	}
 	if err != nil {
 		return err
 	}
@@ -2389,6 +2424,9 @@ func (supervisor *Supervisor) deriveTerminal(record *attemptRecord) {
 		identity["acceptance_authority_digest"] = record.acceptanceDirective.AuthorityDigest
 		identity["acceptance_consumption_digest"] = record.acceptanceDirective.ConsumptionDigest
 	}
+	if supervisor.config.Workbench != nil && supervisor.config.Workbench.Proxy.Enabled() {
+		identity["proxy_config_sha256"] = supervisor.config.Workbench.Proxy.Digest()
+	}
 	identityBytes, _ := json.Marshal(identity)
 	identityBytes = append(identityBytes, '\n')
 	identityErr := writeExclusive(record.terminal.Paths["runtime_identity"], identityBytes)
@@ -2443,6 +2481,9 @@ func (supervisor *Supervisor) deriveTimeoutTerminal(record *attemptRecord) {
 		"docker_client_version": providerIdentity.DockerClientVersion, "docker_server_version": providerIdentity.DockerServerVersion,
 		"docker_context": providerIdentity.DockerContext, "colima_version": providerIdentity.ColimaVersion,
 	}
+	if supervisor.config.Workbench != nil && supervisor.config.Workbench.Proxy.Enabled() {
+		identity["proxy_config_sha256"] = supervisor.config.Workbench.Proxy.Digest()
+	}
 	identityBytes, _ := json.Marshal(identity)
 	identityBytes = append(identityBytes, '\n')
 	identityErr := writeExclusive(record.terminal.Paths["runtime_identity"], identityBytes)
@@ -2491,6 +2532,9 @@ func (supervisor *Supervisor) deriveInjectedFailureTerminal(record *attemptRecor
 		"engine_qualification_digest":   supervisor.config.EngineQualification.Digest(), "docker_engine_digest": engineIdentity.Digest(), "docker_api_version": engineIdentity.APIVersion(), "docker_provider": engineIdentity.ProviderName(),
 		"docker_client_version": providerIdentity.DockerClientVersion, "docker_server_version": providerIdentity.DockerServerVersion,
 		"docker_context": providerIdentity.DockerContext, "colima_version": providerIdentity.ColimaVersion,
+	}
+	if supervisor.config.Workbench != nil && supervisor.config.Workbench.Proxy.Enabled() {
+		identity["proxy_config_sha256"] = supervisor.config.Workbench.Proxy.Digest()
 	}
 	identityBytes, _ := json.Marshal(identity)
 	identityBytes = append(identityBytes, '\n')

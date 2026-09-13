@@ -20,6 +20,7 @@ import (
 	"github.com/Yangyang96/chora/internal/domain"
 	"github.com/Yangyang96/chora/internal/execution"
 	"github.com/Yangyang96/chora/internal/isolatedenv"
+	"github.com/Yangyang96/chora/internal/isolatedproxy"
 	"github.com/Yangyang96/chora/internal/isolatedworkspace"
 	"github.com/Yangyang96/chora/internal/speccoding"
 	storecontract "github.com/Yangyang96/chora/internal/store"
@@ -33,6 +34,7 @@ type isolatedLocalView struct {
 	PiVersion            string             `json:"piVersion"`
 	NodeVersion          string             `json:"nodeVersion"`
 	PreparationAvailable bool               `json:"preparationAvailable"`
+	ProxyEnabled         bool               `json:"proxyEnabled"`
 	RestartRequired      bool               `json:"restartRequired"`
 }
 type isolatedPolicyView struct {
@@ -56,6 +58,7 @@ type isolatedLocalEnvironment struct {
 	view                 isolatedLocalView
 	sourceRoot, dataRoot string
 	source               agentpi.IsolatedSource
+	proxy                isolatedproxy.Config
 }
 
 func newIsolatedLocalEnvironment(sourceRoot, dataRoot string) *isolatedLocalEnvironment {
@@ -76,7 +79,7 @@ func (s *Server) getIsolatedLocal(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		defer cancel()
 		loaded, err := isolatedenv.Load(ctx, s.isolatedLocal.dataRoot)
-		if err != nil || loaded.Source != s.isolatedLocal.source {
+		if err != nil || loaded.Source != s.isolatedLocal.source || s.isolatedLocal.proxyUnchanged() != nil {
 			view.State = "failed"
 			view.Reason = "The prepared Docker environment is unavailable or changed. Restore it and restart Workbench; execution will not fall back to the host."
 		}
@@ -128,6 +131,9 @@ func (e *isolatedLocalEnvironment) available(ctx context.Context) error {
 	if e == nil || e.status().State != "ready" {
 		return errors.New("Isolated Local is not ready; prepare the environment and restart Workbench")
 	}
+	if err := e.proxyUnchanged(); err != nil {
+		return err
+	}
 	record, err := isolatedenv.Load(ctx, e.dataRoot)
 	if err != nil {
 		return err
@@ -137,16 +143,39 @@ func (e *isolatedLocalEnvironment) available(ctx context.Context) error {
 	}
 	return nil
 }
+func (e *isolatedLocalEnvironment) proxyUnchanged() error {
+	proxy, err := isolatedproxy.Load(e.dataRoot)
+	if err != nil || proxy != e.proxy {
+		return errors.New("Isolated Local proxy configuration changed or is invalid; restore it or restart Workbench")
+	}
+	return nil
+}
+
 func composeIsolatedLocal(ctx context.Context, composition piComposition, runtimeRoot string, reader storecontract.Reader, e *isolatedLocalEnvironment, authHome string) (piComposition, error) {
 	record, err := isolatedenv.Load(ctx, e.dataRoot)
 	if err != nil {
 		return composition, err
 	}
+	proxy, err := isolatedproxy.Load(e.dataRoot)
+	if err != nil {
+		return composition, err
+	}
+	e.proxy = proxy
+	params := record.Source.Record()
+	if proxy.Enabled() {
+		params.ProxySHA256 = proxy.Digest()
+	} else {
+		params.ProxySHA256 = ""
+	}
+	effectiveSource, err := agentpi.NewIsolatedSource(params)
+	if err != nil {
+		return composition, err
+	}
 	var adapter *agentpi.Adapter
 	if composition.adapter == nil {
-		adapter, err = agentpi.New(agentpi.Config{IsolatedSource: record.Source})
+		adapter, err = agentpi.New(agentpi.Config{IsolatedSource: effectiveSource})
 	} else if base, ok := composition.adapter.(*agentpi.Adapter); ok {
-		adapter, err = base.WithIsolatedSource(record.Source)
+		adapter, err = base.WithIsolatedSource(effectiveSource)
 	} else {
 		err = errors.New("incompatible public Pi adapter composition")
 	}
@@ -160,13 +189,13 @@ func composeIsolatedLocal(ctx context.Context, composition piComposition, runtim
 		}
 		authHome = filepath.Join(home, ".pi", "agent")
 	}
-	workspace := isolatedWorkspaceCallbacks{reader: reader, source: record.Source, environment: e}
-	fp := record.Source.Fingerprint()
+	workspace := isolatedWorkspaceCallbacks{reader: reader, source: effectiveSource, environment: e}
+	fp := effectiveSource.Fingerprint()
 	docker, err := dockersupervisor.New(dockersupervisor.Config{
 		Runner: record.Runner, RuntimeRoot: filepath.Join(runtimeRoot, "pi-isolated"), ArtifactRoot: filepath.Join(runtimeRoot, "artifacts-isolated"),
-		PolicyDigest: record.Source.PolicySHA256(), AttemptImageID: record.Source.ImageID(), RuntimeSourceIdentity: fmt.Sprintf("%x", record.Source.SourceIdentity()),
+		PolicyDigest: record.Source.PolicySHA256(), AttemptImageID: record.Source.ImageID(), RuntimeSourceIdentity: fmt.Sprintf("%x", effectiveSource.SourceIdentity()),
 		CredentialSource: filepath.Join(authHome, "auth.json"), AttemptTimeout: 20 * time.Minute, CapabilityContract: record.Capability, EngineQualification: record.Qualification,
-		Workbench: &dockersupervisor.WorkbenchConfig{Arguments: agentpi.IsolatedRPCArguments(), RuntimeVersion: agentpi.IsolatedPiVersion, ObserverSHA256: agentpi.ResourceObserverSHA256(), HelperSHA256: record.Source.HelperSHA256(), RuntimeFingerprint: hex.EncodeToString(fp.Digest[:]), PrepareWorkspace: workspace.prepare, CollectWorkspace: workspace.collect, RecoverWorkspace: isolatedworkspace.Recover, ReadOnlyWorkspacePaths: workspace.readonly},
+		Workbench: &dockersupervisor.WorkbenchConfig{Proxy: proxy, Arguments: agentpi.IsolatedRPCArguments(), RuntimeVersion: agentpi.IsolatedPiVersion, ObserverSHA256: agentpi.ResourceObserverSHA256(), HelperSHA256: record.Source.HelperSHA256(), RuntimeFingerprint: hex.EncodeToString(fp.Digest[:]), PrepareWorkspace: workspace.prepare, CollectWorkspace: workspace.collect, RecoverWorkspace: isolatedworkspace.Recover, ReadOnlyWorkspacePaths: workspace.readonly},
 	})
 	if err != nil {
 		return composition, err
@@ -180,10 +209,14 @@ func composeIsolatedLocal(ctx context.Context, composition piComposition, runtim
 	composition.adapter = adapter
 	composition.dockerSupervisor = docker
 	composition.attemptImageID = record.Source.ImageID()
-	composition.isolatedSource = record.Source
+	composition.isolatedSource = effectiveSource
 	e.source = record.Source
+	e.view.ProxyEnabled = proxy.Enabled()
 	e.view.State = "ready"
 	e.view.Reason = "Public Pi image and Docker isolation are ready."
+	if proxy.Enabled() {
+		e.view.Reason += " Explicit local proxy configuration is active; model traffic uses your proxy."
+	}
 	e.view.ImageID = record.Source.ImageID()
 	return composition, nil
 }

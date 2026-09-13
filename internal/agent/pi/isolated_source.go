@@ -19,6 +19,7 @@ const IsolatedObserverPath = "/opt/chora/resource_check_observer.mjs"
 const IsolatedHelperPath = "/usr/local/bin/chora"
 
 type IsolatedSourceParams struct {
+	ProxySHA256  string `json:"proxySha256,omitempty"`
 	ImageID      string `json:"imageId"`
 	HelperSHA256 string `json:"helperSha256"`
 	PolicySHA256 string `json:"policySha256"`
@@ -32,7 +33,7 @@ type IsolatedSource struct {
 }
 
 func NewIsolatedSource(p IsolatedSourceParams) (IsolatedSource, error) {
-	if !validSHA256Identity(p.ImageID) || !validSHA256Identity("sha256:"+p.HelperSHA256) || !validSHA256Identity("sha256:"+p.PolicySHA256) {
+	if (p.ProxySHA256 != "" && !validSHA256Identity("sha256:"+p.ProxySHA256)) || !validSHA256Identity(p.ImageID) || !validSHA256Identity("sha256:"+p.HelperSHA256) || !validSHA256Identity("sha256:"+p.PolicySHA256) {
 		return IsolatedSource{}, errors.New("incomplete public isolated Runtime identity")
 	}
 	b, _ := json.Marshal(p)

@@ -201,6 +201,9 @@ func workbenchEnvironmentMatches(environment []string, metadata map[string]strin
 		if !ok || key == "" {
 			return false
 		}
+		if _, duplicate := values[key]; duplicate {
+			return false
+		}
 		values[key] = value
 	}
 	for key, value := range expected {
@@ -210,7 +213,7 @@ func workbenchEnvironmentMatches(environment []string, metadata map[string]strin
 	}
 	for key := range values {
 		upper := strings.ToUpper(key)
-		if key == "DOCKER_HOST" || key == "HTTP_PROXY" || key == "HTTPS_PROXY" || key == "ALL_PROXY" || strings.Contains(upper, "TOKEN") || strings.Contains(upper, "SECRET") || strings.Contains(upper, "PASSWORD") || strings.Contains(upper, "CREDENTIAL") || strings.Contains(upper, "API_KEY") {
+		if upper == "DOCKER_HOST" || upper == "HTTP_PROXY" || upper == "HTTPS_PROXY" || upper == "ALL_PROXY" || upper == "NO_PROXY" || strings.Contains(upper, "TOKEN") || strings.Contains(upper, "SECRET") || strings.Contains(upper, "PASSWORD") || strings.Contains(upper, "CREDENTIAL") || strings.Contains(upper, "API_KEY") {
 			if _, explicitlyBound := expected[key]; !explicitlyBound {
 				return false
 			}
@@ -253,6 +256,9 @@ func (supervisor *Supervisor) verifyEffectiveWorkbench(agent effectiveContainer,
 	if !tmpfsMatches(agent.HostConfig.Tmpfs["/tmp"], []string{"rw", "nosuid", "nodev", "noexec", "uid=1000", "gid=1000", "size=64m"}) ||
 		!tmpfsMatches(agent.HostConfig.Tmpfs["/run/chora/pi"], []string{"rw", "nosuid", "nodev", "noexec", "uid=1000", "gid=1000", "size=16m"}) {
 		return errors.New("effective Workbench private tmpfs drift")
+	}
+	if supervisor.config.Workbench.Proxy.Enabled() && agent.Config.Labels["chora.proxy_digest"] != supervisor.config.Workbench.Proxy.Digest() {
+		return errors.New("effective Workbench proxy identity drift")
 	}
 	if !workbenchEnvironmentMatches(agent.Config.Env, metadata.environment) {
 		return errors.New("effective Workbench environment drift")

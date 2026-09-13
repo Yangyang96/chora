@@ -66,3 +66,30 @@ func TestIsolatedDecoderRejectsModelDriftWithoutRestrictingConnected(t *testing.
 		t.Fatalf("connected model restricted: %v", err)
 	}
 }
+
+func TestIsolatedProxyChangeRejectsFrozenTaskWithoutChangingImage(t *testing.T) {
+	p := IsolatedSourceParams{ImageID: "sha256:" + strings.Repeat("a", 64), HelperSHA256: strings.Repeat("b", 64), PolicySHA256: strings.Repeat("c", 64)}
+	direct, _ := NewIsolatedSource(p)
+	contract := []byte(`{"candidate":{"sandbox":{"sha256":"` + strings.Repeat("a", 64) + `"},"runtime":{"config":{"sha256":"` + fmt.Sprintf("%x", direct.SourceIdentity()) + `"}}}}`)
+	p.ProxySHA256 = strings.Repeat("d", 64)
+	proxied, err := NewIsolatedSource(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if direct.ImageID() != proxied.ImageID() || direct.Fingerprint() == proxied.Fingerprint() {
+		t.Fatal("proxy not bound separately from image")
+	}
+	if direct.ValidateContract(contract) != nil || proxied.ValidateContract(contract) == nil {
+		t.Fatal("old Task accepted a new proxy")
+	}
+	newContract := []byte(strings.ReplaceAll(string(contract), fmt.Sprintf("%x", direct.SourceIdentity()), fmt.Sprintf("%x", proxied.SourceIdentity())))
+	restarted, _ := NewIsolatedSource(p)
+	if restarted != proxied || restarted.ValidateContract(newContract) != nil {
+		t.Fatal("same-config restart lost Task binding")
+	}
+	p.ProxySHA256 = strings.Repeat("e", 64)
+	changed, _ := NewIsolatedSource(p)
+	if changed.ValidateContract(newContract) == nil {
+		t.Fatal("changed proxy accepted old Task")
+	}
+}

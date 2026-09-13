@@ -3,6 +3,7 @@
 package dockersupervisor
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -18,6 +19,7 @@ import (
 
 	agentpi "github.com/Yangyang96/chora/internal/agent/pi"
 	"github.com/Yangyang96/chora/internal/execution"
+	"github.com/Yangyang96/chora/internal/isolatedproxy"
 )
 
 func TestRealWorkbenchCancelIsolationAndZeroResidue(t *testing.T) {
@@ -64,10 +66,14 @@ func TestRealWorkbenchCancelIsolationAndZeroResidue(t *testing.T) {
 	}
 	observerSHA := agentpi.ResourceObserverSHA256()
 	collectCalls := 0
-	config := Config{Runner: runner, RuntimeRoot: filepath.Join(runtimeRoot, "runtime"), ArtifactRoot: filepath.Join(runtimeRoot, "artifacts"), PolicyDigest: WorkbenchPolicyDigest,
+	config := Config{Runner: idleModelRunner{runner}, RuntimeRoot: filepath.Join(runtimeRoot, "runtime"), ArtifactRoot: filepath.Join(runtimeRoot, "artifacts"), PolicyDigest: WorkbenchPolicyDigest,
 		AttemptImageID: metadata.Source.ImageID, RuntimeSourceIdentity: strings.Repeat("a", 64), CredentialSource: credential,
 		CapabilityContract: contract, EngineQualification: qualification, CooperativeWait: 50 * time.Millisecond, DeathWait: 10 * time.Second}
-	config.Workbench = &WorkbenchConfig{Arguments: workbenchArguments(), RuntimeVersion: "0.85.1", ObserverSHA256: observerSHA, HelperSHA256: metadata.Source.HelperSHA256, RuntimeFingerprint: strings.Repeat("d", 64),
+	proxy, err := isolatedproxy.Load(filepath.Dir(metadataPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	config.Workbench = &WorkbenchConfig{Proxy: proxy, Arguments: workbenchArguments(), RuntimeVersion: "0.85.1", ObserverSHA256: observerSHA, HelperSHA256: metadata.Source.HelperSHA256, RuntimeFingerprint: strings.Repeat("d", 64),
 		PrepareWorkspace: func(_ context.Context, _ execution.Invocation, repository string) error {
 			repo := filepath.Join(repository, "repo")
 			if err := os.MkdirAll(repo, 0o700); err != nil {
@@ -334,4 +340,26 @@ func TestRealWorkbenchRejectsWrongExistingWorkspaceVolume(t *testing.T) {
 	if err := supervisor.verifyWorkbenchWorkspaceVolume(context.Background(), &attemptRecord{workspaceVolume: volume}, labels); err == nil {
 		t.Fatal("accepted real pre-existing workspace volume with wrong options")
 	}
+}
+
+// The boundary test exercises a real idle Pi process, never a synthetic model
+// credential. Keep the prompt out of its stdin until cancellation; real model
+// completion belongs to the separate Workbench acceptance journey.
+type idleModelRunner struct{ CommandRunner }
+
+func (r idleModelRunner) Start(ctx context.Context, command Command) (Process, error) {
+	process, err := r.CommandRunner.Start(ctx, command)
+	if err != nil || process == nil {
+		return process, err
+	}
+	return &idleModelProcess{Process: process}, nil
+}
+
+type idleModelProcess struct{ Process }
+
+func (p *idleModelProcess) Write(data []byte) (int, error) {
+	if bytes.Contains(data, []byte(`"type":"prompt"`)) {
+		return len(data), nil
+	}
+	return p.Process.Write(data)
 }

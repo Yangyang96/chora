@@ -1704,6 +1704,12 @@ func fakeEffectiveContainer(commands []Command, name string) (effectiveContainer
 			if ok {
 				document.HostConfig.Tmpfs[path] = options
 			}
+		case "--env-file":
+			body, err := os.ReadFile(next())
+			if err != nil {
+				panic(err)
+			}
+			document.Config.Env = append(document.Config.Env, strings.Split(strings.TrimSuffix(string(body), "\n"), "\n")...)
 		case "--env":
 			document.Config.Env = append(document.Config.Env, next())
 		case "--mount":

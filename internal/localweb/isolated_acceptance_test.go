@@ -58,6 +58,9 @@ func TestIsolatedLocalRealWorkbenchTwoRepositoryClosure(t *testing.T) {
 	handler := server.Handler()
 	var readiness isolatedLocalView
 	requestJSON(t, handler, http.MethodGet, "/api/isolated-local", nil, http.StatusOK, &readiness)
+	if os.Getenv("CHORA_ISOLATED_REQUIRE_PROXY") == "1" && !readiness.ProxyEnabled {
+		t.Fatal("explicit proxy acceptance requires active local proxy configuration")
+	}
 	if readiness.State != "ready" || readiness.ImageID == "" {
 		t.Fatalf("prepared Isolated Local is not ready: %#v", readiness)
 	}

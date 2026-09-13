@@ -1,10 +1,14 @@
 package localweb
 
 import (
+	"bytes"
 	"context"
 	agentpi "github.com/Yangyang96/chora/internal/agent/pi"
 	"github.com/Yangyang96/chora/internal/domain"
+	"github.com/Yangyang96/chora/internal/isolatedproxy"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -36,5 +40,35 @@ func TestIsolatedUnavailableNeverAdmitsHostExecution(t *testing.T) {
 	host, _ := domain.NewAgentExecutionProfileBinding(domain.AgentExecutionProfileTrustedLocal)
 	if _, err = adapter.FingerprintForBinding(context.Background(), host); err == nil {
 		t.Fatal("isolated adapter became a host source")
+	}
+}
+
+func TestIsolatedProxyFileChangesRequireRestart(t *testing.T) {
+	root := t.TempDir()
+	e := newIsolatedLocalEnvironment("", root)
+	if e.proxyUnchanged() != nil {
+		t.Fatal("absent configuration changed")
+	}
+	path := filepath.Join(root, isolatedproxy.Filename)
+	data := []byte(`{"schema":"chora.isolated-proxy.v1","httpsProxy":"http://proxy.example:8080"}`)
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if e.proxyUnchanged() == nil {
+		t.Fatal("new proxy was hot-loaded")
+	}
+	e.proxy, _ = isolatedproxy.Load(root)
+	if e.proxyUnchanged() != nil {
+		t.Fatal("stable proxy rejected")
+	}
+	if err := os.WriteFile(path, bytes.ReplaceAll(data, []byte("8080"), []byte("8081")), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if e.proxyUnchanged() == nil {
+		t.Fatal("changed proxy accepted")
+	}
+	os.Remove(path)
+	if e.proxyUnchanged() == nil {
+		t.Fatal("proxy removal silently switched to direct")
 	}
 }

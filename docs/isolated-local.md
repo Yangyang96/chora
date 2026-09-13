@@ -170,3 +170,49 @@ contract fixtures contain a non-URL retirement marker and recomputed policy
 digests; they are sanitized references, not executable proxy configuration or
 requalification of historical evidence. Use `chora workbench` and
 `chora workbench doctor` for current operation.
+
+## Optional proxy for model requests
+
+Isolated Local can use an explicit HTTP or HTTPS proxy. Create
+`isolated-proxy.json` directly inside your Workbench `--data` directory, outside
+any repository, with mode `0600` and owned by your current user:
+
+```json
+{
+  "schema": "chora.isolated-proxy.v1",
+  "httpsProxy": "http://proxy.example:8080",
+  "noProxy": "localhost,127.0.0.1"
+}
+```
+
+Replace the example with an address reachable **from the container**. Loopback
+addresses point at the container, not your Mac, and are rejected as proxy
+endpoints. For a proxy on your Mac, use the host address reachable from your
+Docker VM and configure the proxy to accept that connection. Chora does not
+guess or rewrite this address. The URL scheme describes the connection to the
+proxy; an `http://` proxy can tunnel HTTPS model requests with CONNECT.
+
+`httpProxy` is optional; when provided without `httpsProxy`, HTTPS requests use
+it too. `httpsProxy` alone routes HTTPS requests while HTTP requests remain
+direct. `noProxy` is an optional comma-separated bypass list; wildcard bypass
+and entries that bypass the model API are rejected. Credentials in proxy URLs,
+SOCKS proxies and custom proxy CA injection are not supported by this setting.
+An HTTPS proxy must present a certificate trusted by the runtime.
+
+Restart Workbench after editing the file. Its status reports whether the proxy
+is active without returning the address. Chora checks for changes before each
+new attempt; adding, removing, changing or invalidating the file requires a
+restart. Existing Tasks retain their frozen proxy identity: after a proxy change,
+create a new Task. Restarting with the same configuration preserves that identity.
+To return to direct access, remove the file and restart; an empty or malformed
+file does not silently enable direct access. A failed proxy connection is not
+retried through a direct model connection.
+
+The selected variables enter only the attempt container through a temporary
+private environment file, removed after container setup. They are visible to
+Docker administrators and processes inside the container. Chora scrubs endpoint
+text from captured runtime streams; Tasks should not print or copy environment
+configuration into their repository output. This is outbound routing, not a
+network allowlist: bridge networking and host-service reachability are unchanged.
+Docker image downloads use Docker/Colima's own proxy settings; Local Connected
+continues to use the environment of the process that starts Workbench.
