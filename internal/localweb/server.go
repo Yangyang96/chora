@@ -1534,6 +1534,7 @@ func (server *Server) createTask(writer http.ResponseWriter, request *http.Reque
 		Goal                   string                       `json:"goal"`
 		ExecutionProfile       app.TaskExecutionProfile     `json:"executionProfile"`
 		AgentExecutionProfile  domain.AgentExecutionProfile `json:"agentExecutionProfile"`
+		ModelBinding           json.RawMessage              `json:"modelBinding"`
 		Criteria               []string                     `json:"criteria"`
 		RevisionIDs            []string                     `json:"revisionIds"`
 		RealSpecCoding         *struct {
@@ -1697,6 +1698,13 @@ func (server *Server) createTask(writer http.ResponseWriter, request *http.Reque
 			realInput.VerificationCommands = append(realInput.VerificationCommands, app.RealSpecCodingVerificationCommand{Argv: command.Argv, WorkingDirectory: command.WorkingDirectory})
 		}
 	}
+	var modelBinding domain.ModelBinding
+	if len(input.ModelBinding) > 0 {
+		if err := json.Unmarshal(input.ModelBinding, &modelBinding); err != nil {
+			writeError(writer, http.StatusBadRequest, errors.New("invalid modelBinding"))
+			return
+		}
+	}
 	meta := requestCommandMeta(request, "create-task")
 	if server.product || input.ExecutionProfile == app.TaskExecutionProfileRealSpecCoding {
 		var ok bool
@@ -1707,7 +1715,7 @@ func (server *Server) createTask(writer http.ResponseWriter, request *http.Reque
 	}
 	result, err := server.service.CreateTask(request.Context(), app.CreateTaskRequest{
 		CommandMeta: meta, RoomID: roomID, Title: input.Title, Goal: input.Goal, ExecutionProfile: input.ExecutionProfile,
-		AgentExecutionProfile: input.AgentExecutionProfile, Criteria: criteria, RevisionIDs: revisionIDs, PlanContent: planContent, RealSpecCoding: realInput,
+		AgentExecutionProfile: input.AgentExecutionProfile, ModelBinding: modelBinding, Criteria: criteria, RevisionIDs: revisionIDs, PlanContent: planContent, RealSpecCoding: realInput,
 	})
 	if err != nil {
 		writePlanningCommandError(writer, err)

@@ -269,6 +269,12 @@ func (s *Service) CreateTask(ctx context.Context, request CreateTaskRequest) (Cr
 				return err
 			}
 		}
+		if request.ModelBinding.Configured() {
+			task, err = task.BindModel(request.ModelBinding)
+			if err != nil {
+				return err
+			}
+		}
 		available, err := tx.ListRoomRevisions(ctx, request.RoomID)
 		if err != nil {
 			return err

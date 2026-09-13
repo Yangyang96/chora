@@ -197,6 +197,7 @@ func (s *Service) acceptRealSpecCodingResources(
 		ID: charterID, TaskID: task.ID(), TaskGoal: task.Goal(), Criteria: task.Criteria(), ContextRevisionIDs: selection.SelectedRevisionIDs(),
 		WorkspaceRoot: room.WorkspaceRoot(), AdapterID: "pi", SandboxMode: sandboxModeForAgentExecutionProfile(profile), ExpectedOutput: expectedOutput,
 		ResponsibleHuman: responsibleHuman, CapabilityEnvelope: envelope.CapabilityEnvelope(), AgentExecutionProfileBinding: profile, Initiator: review.Reviewer(), CreatedAt: now,
+		ModelBinding: task.ModelBinding(),
 	})
 	if err != nil {
 		return domain.RunCharter{}, contextcore.Snapshot{}, err

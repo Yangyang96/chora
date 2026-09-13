@@ -20,7 +20,7 @@ func (tx *writeTx) InsertTask(ctx context.Context, task domain.Task) error {
 	if task.PredecessorTaskID().Valid() {
 		predecessor = task.PredecessorTaskID().String()
 	}
-	_, err := tx.tx.ExecContext(ctx, `INSERT INTO tasks(id,room_id,title,goal,state,predecessor_task_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)`, task.ID().String(), task.RoomID().String(), task.Title(), task.Goal(), string(task.State()), predecessor, now, now)
+	_, err := tx.tx.ExecContext(ctx, `INSERT INTO tasks(id,room_id,title,goal,state,predecessor_task_id,created_at,updated_at,model_binding) VALUES(?,?,?,?,?,?,?,?,?)`, task.ID().String(), task.RoomID().String(), task.Title(), task.Goal(), string(task.State()), predecessor, now, now, nullableString(task.ModelBinding().JSON()))
 	if err != nil {
 		return mapWriteError(err)
 	}
@@ -36,7 +36,8 @@ func (reader *reader) GetTask(ctx context.Context, id domain.TaskID) (domain.Tas
 	var idText, roomText, title, goal, state string
 	var predecessor, archivedAt sql.NullString
 	var archived bool
-	err := reader.q.QueryRowContext(ctx, `SELECT id,room_id,title,goal,state,predecessor_task_id,archived,archived_at FROM tasks WHERE id=?`, id.String()).Scan(&idText, &roomText, &title, &goal, &state, &predecessor, &archived, &archivedAt)
+	var modelBinding sql.NullString
+	err := reader.q.QueryRowContext(ctx, `SELECT id,room_id,title,goal,state,predecessor_task_id,archived,archived_at,model_binding FROM tasks WHERE id=?`, id.String()).Scan(&idText, &roomText, &title, &goal, &state, &predecessor, &archived, &archivedAt, &modelBinding)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Task{}, storecontract.ErrNotFound
 	}
@@ -89,7 +90,11 @@ func (reader *reader) GetTask(ctx context.Context, id domain.TaskID) (domain.Tas
 			return domain.Task{}, err
 		}
 	}
-	return domain.RestoreTask(domain.TaskRecord{ID: parsedID, RoomID: roomID, PredecessorTaskID: predecessorID, Title: title, Goal: goal, Criteria: criteria, State: domain.TaskState(state), Archived: archived, ArchivedAt: archivedTime})
+	binding, err := domain.ParseModelBinding(modelBinding.String)
+	if err != nil {
+		return domain.Task{}, err
+	}
+	return domain.RestoreTask(domain.TaskRecord{ID: parsedID, RoomID: roomID, PredecessorTaskID: predecessorID, Title: title, Goal: goal, Criteria: criteria, State: domain.TaskState(state), Archived: archived, ArchivedAt: archivedTime, ModelBinding: binding})
 }
 
 func (tx *writeTx) InsertCharter(ctx context.Context, charter domain.RunCharter) error {

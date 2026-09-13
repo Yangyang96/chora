@@ -317,7 +317,7 @@ func contractCharter(request MaterializeSpecCodingContractRequest, task domain.T
 		}
 		sandboxMode = sandboxModeForAgentExecutionProfile(profileBinding)
 	}
-	return domain.NewRunCharter(domain.RunCharterParams{ID: request.CharterID, TaskID: task.ID(), TaskGoal: task.Goal(), Criteria: task.Criteria(), ContextRevisionIDs: []domain.ContextRevisionID{request.ContextRevisionID}, WorkspaceRoot: request.WorkspaceRoot, AdapterID: request.AgentAdapter, SandboxMode: sandboxMode, ExpectedOutput: "non-empty patch", ResponsibleHuman: request.ActorID, CapabilityEnvelope: capabilities, AgentExecutionProfileBinding: profileBinding, Initiator: request.ActorID, CreatedAt: request.FrozenAt})
+	return domain.NewRunCharter(domain.RunCharterParams{ID: request.CharterID, TaskID: task.ID(), TaskGoal: task.Goal(), Criteria: task.Criteria(), ContextRevisionIDs: []domain.ContextRevisionID{request.ContextRevisionID}, WorkspaceRoot: request.WorkspaceRoot, AdapterID: request.AgentAdapter, SandboxMode: sandboxMode, ExpectedOutput: "non-empty patch", ResponsibleHuman: request.ActorID, CapabilityEnvelope: capabilities, AgentExecutionProfileBinding: profileBinding, ModelBinding: task.ModelBinding(), Initiator: request.ActorID, CreatedAt: request.FrozenAt})
 }
 
 func loadMaterializedSpecCoding(ctx context.Context, reader storecontract.Reader, taskID domain.TaskID, draftID domain.TechnicalPlanDraftID, contractDigest [32]byte) (MaterializeSpecCodingContractResult, error) {

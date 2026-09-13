@@ -83,6 +83,7 @@ type CreateTaskRequest struct {
 	Title, Goal           string
 	ExecutionProfile      TaskExecutionProfile
 	AgentExecutionProfile domain.AgentExecutionProfile
+	ModelBinding          domain.ModelBinding
 	Criteria              []domain.AcceptanceCriterion
 	RevisionIDs           []domain.ContextRevisionID
 	PlanContent           domain.TechnicalPlanContent
