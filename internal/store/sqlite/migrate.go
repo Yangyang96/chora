@@ -82,11 +82,49 @@ func migrate(ctx context.Context, db *sql.DB) error {
 			}
 			continue
 		}
+		if m.version == 43 {
+			if err := applyModelBindingMigration(ctx, db, m); err != nil {
+				return err
+			}
+			continue
+		}
 		if err := applyMigration(ctx, db, m); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func applyModelBindingMigration(ctx context.Context, db *sql.DB, m migration) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	for _, table := range []string{"tasks", "run_charters", "attempts"} {
+		var count int
+		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM pragma_table_info(?) WHERE name='model_binding'`, table).Scan(&count); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+		if count == 0 {
+			if _, err := tx.ExecContext(ctx, `ALTER TABLE `+table+` ADD COLUMN model_binding TEXT`); err != nil {
+				_ = tx.Rollback()
+				return err
+			}
+		}
+	}
+	for _, table := range []string{"tasks", "run_charters", "attempts"} {
+		name := table + "_model_binding_immutable_update"
+		if _, err := tx.ExecContext(ctx, `CREATE TRIGGER IF NOT EXISTS `+name+` BEFORE UPDATE OF model_binding ON `+table+` WHEN OLD.model_binding IS NOT NEW.model_binding BEGIN SELECT RAISE(ABORT, 'model binding is immutable'); END`); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO schema_migrations(version,name,checksum,applied_at) VALUES(?,?,?,?)`, m.version, m.name, m.checksum[:], time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	return tx.Commit()
 }
 
 func applyMigration(ctx context.Context, db *sql.DB, m migration) error {
