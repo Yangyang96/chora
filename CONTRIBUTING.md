@@ -107,3 +107,8 @@ force pushes for every other role. Routine development still uses normal
 pushes. Agents must obtain explicit authorization for a specific history rewrite
 before using that permission. Branch deletion remains disabled. Tag, release,
 and package publication remain separate actions.
+
+Internal acceptance records, release checklists, and maintainer-only evidence
+belong outside the public tree. For local use, place them under `docs/internal/`;
+do not commit them to public `docs/`. Update the public roadmap when a milestone
+status changes.

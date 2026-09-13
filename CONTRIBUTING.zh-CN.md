@@ -93,3 +93,6 @@ Validate documentation links and matching shell examples.
 只有仓库管理员有权限强推 `main`；独立的生效规则阻止其他角色强推。
 日常开发仍使用普通推送。Agent 只有获得针对具体历史重写操作的明确授权后，
 才可使用强推权限。分支删除保持禁用；Tag、Release 和包发布仍是独立操作。
+
+内部验收记录、发布清单和仅供维护者使用的证据不属于公开仓库内容。本地资料可放在
+`docs/internal/`；不要将这些材料提交到公开 `docs/`。里程碑状态变化时更新公开路线图。
