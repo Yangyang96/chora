@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -352,6 +353,9 @@ func realSpecCodingAppFixture(t *testing.T, ctx context.Context) (*app.Service, 
 	}
 	envelope, err := speccoding.LoadInstalledEnvelope(repositoryRoot)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) || strings.Contains(err.Error(), "no such file or directory") {
+			t.Skip("historical installed source-baseline fixture is not distributed in the public repository")
+		}
 		t.Fatal(err)
 	}
 	dbDir := t.TempDir()

@@ -41,6 +41,9 @@ func TestRealFrozenBaselineV5Fixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	fixtureRoot := filepath.Join(repositoryRoot, "contracts", "g2-m4", "source-baseline-v5")
+	if _, err := os.Stat(filepath.Join(fixtureRoot, "manifest.json")); os.IsNotExist(err) {
+		t.Skip("historical source-baseline-v5 fixture is not distributed in the public repository")
+	}
 	manifest, err := os.ReadFile(filepath.Join(fixtureRoot, "manifest.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -66,6 +69,9 @@ func TestRealFrozenBaselineV6Fixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	fixtureRoot := filepath.Join(repositoryRoot, "contracts", "g2-m4", "source-baseline-v6")
+	if _, err := os.Stat(filepath.Join(fixtureRoot, "manifest.json")); os.IsNotExist(err) {
+		t.Skip("historical source-baseline-v6 fixture is not distributed in the public repository")
+	}
 	manifest, err := os.ReadFile(filepath.Join(fixtureRoot, "manifest.json"))
 	if err != nil {
 		t.Fatal(err)
