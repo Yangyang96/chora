@@ -284,6 +284,9 @@ func (adapter *Adapter) PrepareBoundStart(ctx context.Context, request execution
 	if err := adapter.validateSelectedSource(ctx, source); err != nil {
 		return execution.StartPreparation{}, err
 	}
+	if err := adapter.validateModelBinding(source, request.Attempt.ModelBinding()); err != nil {
+		return execution.StartPreparation{}, err
+	}
 	if source.isolated {
 		if err := adapter.config.IsolatedSource.ValidateContract(request.ExecutionContractDocument); err != nil {
 			return execution.StartPreparation{}, err
@@ -298,6 +301,43 @@ func (adapter *Adapter) PrepareBoundStart(ctx context.Context, request execution
 		return execution.StartPreparation{}, err
 	}
 	return execution.NewStartPreparation(invocation, fingerprint)
+}
+
+func (adapter *Adapter) validateModelBinding(source selectedSource, binding domain.ModelBinding) error {
+	if !source.managed {
+		// PATH/Local catalogs are discovered outside the managed runtime. Ensure
+		// an explicit binding is validated when present. Legacy attempts without
+		// a binding retain their historical native configuration.
+		if !binding.Configured() {
+			return nil
+		}
+		r := binding.Record()
+		if source.pathPi {
+			if r.Catalog.AgentID != "path-pi" || r.Catalog.RuntimeVersion != source.version {
+				return errors.New("PATH Pi model catalog does not match discovered runtime")
+			}
+		}
+		if !r.Catalog.Contains(r.ModelIdentity) {
+			return errors.New("Pi model binding does not contain selected model")
+		}
+		return nil
+	}
+	if !binding.Configured() {
+		return nil
+	}
+	managed := SupportedModelCatalogForManagedRuntime()
+	models := make([]domain.ModelIdentity, 0, len(managed.Models))
+	for _, m := range managed.Models {
+		models = append(models, domain.ModelIdentity{Provider: m.Provider, ModelID: m.ModelID})
+	}
+	catalog, err := domain.NewModelCatalog(managed.AgentID, managed.RuntimeIdentity, managed.RuntimeVersion, models)
+	if err != nil {
+		return err
+	}
+	if err := binding.ValidateCatalog(catalog); err != nil {
+		return fmt.Errorf("managed Pi model binding drift: %w", err)
+	}
+	return nil
 }
 
 func (adapter *Adapter) prepareStartForSource(request execution.StartRequest, source selectedSource) (execution.Invocation, error) {
@@ -402,6 +442,10 @@ func (adapter *Adapter) prepareStartForSource(request execution.StartRequest, so
 		return execution.Invocation{}, errors.New("Pi execution target binding is invalid")
 	}
 	arguments := append([]string(nil), source.arguments...)
+	if source.managed && request.Attempt.ModelBinding().Configured() {
+		model := request.Attempt.ModelBinding().Record().ModelIdentity
+		arguments = replaceModelArguments(arguments, model.Provider, model.ModelID)
+	}
 	if source.pathPi {
 		sessionDir := filepath.Join(adapter.sessionRoot, request.Attempt.ID().String())
 		arguments = append(arguments, "--session-dir", sessionDir)
@@ -415,6 +459,19 @@ func (adapter *Adapter) prepareStartForSource(request execution.StartRequest, so
 		Environment: environment, WorkingRoot: request.WorkspaceRoot, Stdin: prompt,
 		LaunchToken: request.LaunchToken, Target: target,
 	})
+}
+
+func replaceModelArguments(arguments []string, provider, model string) []string {
+	result := append([]string(nil), arguments...)
+	for i := 0; i+1 < len(result); i++ {
+		if result[i] == "--provider" {
+			result[i+1] = provider
+		}
+		if result[i] == "--model" {
+			result[i+1] = model
+		}
+	}
+	return result
 }
 
 func (adapter *Adapter) PrepareResume(ctx context.Context, request execution.ResumeRequest) (execution.Invocation, error) {
