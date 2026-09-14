@@ -12,13 +12,21 @@ export function ModelSelector({ value, onChange }: { value?: ModelBinding; onCha
   useEffect(() => {
     let active = true
     void api<Catalog>('/api/models').then((result) => {
-      if (!active || result.models.length === 0) return
+      if (!active) return
       setCatalog(result)
-      if (!value) setError('Select a model provided by the bound coding agent.')
-    }).catch(() => { if (active) setError('Supported model catalog is unavailable.') })
+      setError(result.models.length === 0
+        ? 'No supported models are available from the bound coding agent.'
+        : (!value ? 'Select a model provided by the bound coding agent.' : ''))
+    }).catch(() => {
+      if (active) {
+        setCatalog({ agentId: '', runtimeIdentity: '', runtimeVersion: '', models: [], digest: '' })
+        setError('Supported model catalog is unavailable.')
+      }
+    })
     return () => { active = false }
   }, [value])
   if (!catalog) return <p role="status">Loading supported models…</p>
+  if (catalog.models.length === 0) return <p role="status">{error || 'No supported models are available.'}</p>
   return <label>Model<select value={value ? `${value.provider}:${value.modelId}` : ''} onChange={(event) => {
     const [provider, ...rest] = event.target.value.split(':')
     const modelId = rest.join(':')
