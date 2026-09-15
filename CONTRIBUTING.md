@@ -2,59 +2,47 @@
 
 [简体中文](CONTRIBUTING.zh-CN.md)
 
-Chora is currently a source-checkout Local Alpha, not a public release. The only
-validated development host is Apple Silicon macOS. Work on other hosts is
-welcome as investigation, but it must not be described as supported without
-equivalent evidence.
+Chora is a source-checkout Local Alpha. Apple Silicon macOS is the only validated
+host; other hosts need equivalent evidence before being described as supported.
+See the [Roadmap](ROADMAP.md) for current capabilities and pending milestones.
 
-## Before contributing
+## Scope and publication
 
-Chora is licensed under the GNU Affero General Public License v3.0. By
-submitting a contribution, you agree that it may be distributed under the same
-license and represent that you have the right to submit it.
-
-Read the [publication file policy](.github/publication-policy.json) before adding files.
-Do not add vendored dependencies, private assets, raw evidence, credentials, or
-unreviewed experiments or developer-specific proxy endpoints.
-
-Agree on a narrow scope before starting. Preserve unrelated and uncommitted
-work, and do not weaken these product boundaries:
-
-- managed execution fails closed when isolation or identity cannot be proved;
-- it never falls back silently to direct host execution;
-- the legacy Codex Runtime stays disabled;
-- private release assets, credentials, and acceptance evidence are not public;
-- a Local Alpha result is not a release or cross-platform support claim.
-
-The [Roadmap](ROADMAP.md) distinguishes the current public target and
-pending gates. Local Connected uses user-installed/configured Pi, does not
-require private M1 images, and makes no Sandbox-isolation claim.
+- Contributions use [AGPL-3.0](LICENSE). Submit only work you have the right to
+  distribute under that license.
+- Keep changes focused and preserve unrelated work.
+- Managed execution must fail closed when isolation or identity cannot be
+  proved, with no silent host fallback. The legacy Codex Runtime stays disabled.
+- Local Connected uses user-configured Pi, requires no private M1 image and
+  makes no Sandbox claim. Alpha acceptance does not establish release readiness
+  or support for other platforms.
+- Follow the [publication policy](.github/publication-policy.json). Keep secrets,
+  private assets/history, maintainer state, acceptance records, release checklists,
+  generated artifacts, machine paths and private proxy endpoints outside this
+  repository. Do not add vendored dependencies or unreviewed experiments.
 
 ## Documentation language
 
-English is the primary, authoritative language for Chora's public documentation.
-Files without a language suffix, such as `README.md` and `ROADMAP.md`, are the
-canonical versions; `.zh-CN.md` files are Simplified Chinese translations.
+English is authoritative for public documentation. Files such as `README.md`
+and `ROADMAP.md` are the primary versions; `.zh-CN.md` files are translations.
 
-Update the English version and its existing translations in the same change.
-Keep milestone status, dates, commands, links and support limits consistent.
-Resolve language differences against the English version and correct the
-translations. When reporting documentation changes, link the English version
-first; a translated link may be added for convenience.
+- **Read:** use English documents as the baseline for requirements, design,
+  references and current status. Translations are supplementary.
+- **Write:** update English first, including plans, roadmap milestones and
+  status records; synchronize existing translations in the same change.
+- Keep meaning, status, dates, commands, links and support limits aligned.
+  Resolve differences against English and correct translations.
+- Update the roadmap when milestones change. Link English documents first
+  when reporting results; translated links may be added.
 
-## Development workflow
+## Development and verification
 
-Use Node.js 22.12 or newer, npm 11 or newer, and Go 1.26 or newer. Install the
-JavaScript dependencies before running focused checks:
+Use Node.js 22.12+, npm 11+ and Go 1.26+. Install dependencies with `npm ci`
+and `go mod download all`.
 
-```sh
-npm ci
-go mod download all
-```
-
-Run the smallest relevant Go, Web, and end-to-end checks while iterating. Add or
-update tests for observable behavior, persistence, API, or security-boundary
-changes. Before a change is accepted on the validated host, the complete gate is:
+Run focused checks while iterating. Cover observable behavior with relevant
+tests; run E2E for user-visible, persistence, API or cross-layer changes.
+The complete code acceptance gate on the validated host is:
 
 ```sh
 make test
@@ -64,68 +52,29 @@ npm run e2e
 git diff --check
 ```
 
-Source tests use self-contained fixtures. Historical installed-M1 acceptance
-checks that required unpublished source baselines, a private release tree, or
-the retired enterprise CA have been removed. Shared task-contract, transaction,
-and container-lifecycle checks run with temporary repositories or synthetic
-projections; they do not certify those old release artifacts.
+For documentation-only changes, check accuracy, translation consistency, links
+and diff formatting; run the full suite only when the task requires it.
+Source tests use self-contained fixtures and do not certify historical private
+release artifacts. State checks passed, skipped or blocked, including real-Agent
+environment limits. Explain behavior changes, compatibility effects and known risks.
 
-Some real-Agent checks need the private, pre-provisioned Local Alpha environment.
-If you cannot run one, state exactly what you ran and what remains unverified;
-do not replace it with a weaker support claim.
+## Git
 
-Keep changes focused, explain user-visible and contract effects, and document
-known risks. Never include credentials, private endpoints, machine-specific
-paths, or generated acceptance evidence in a contribution.
+Use English Conventional Commits: `<type>[(<scope>)][!]: <subject>`.
 
+- Types: `build`, `chore`, `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`,
+  `revert`, `style`, `test`. Optional scope names a stable subsystem.
+- Keep each commit focused. Use a concrete lowercase imperative title, aim for
+  50 characters, at most 72, with no final period or AI attribution.
+- Non-trivial commits need a body after a blank line, wrapped at 72 characters:
+  explain why, the outcome, compatibility effects and actual validation.
+- Breaking changes need `!` and a `BREAKING CHANGE:` footer. Cite only real issues.
 
-## Commit messages and maintainer pushes
+Maintainers validate, commit and push normally to `main`; external contributors
+use PRs. CI runs on `main`. Before pushing, check repository, remote, branch,
+identity and staged diff; commit only task files within the publication boundary.
+Report the commit SHA, target branch, push result and verification limits.
 
-Write commit messages entirely in English using Conventional Commits:
-
-```text
-<type>[(<scope>)][!]: <subject>
-
-<body>
-
-<footer>
-```
-
-- Allowed types: `build`, `chore`, `ci`, `docs`, `feat`, `fix`, `perf`,
-  `refactor`, `revert`, `style`, and `test`.
-- Use a scope only for a stable subsystem, never a temporary project phase.
-- Use a lowercase imperative subject. Aim for 50 characters, never exceed
-  72 characters, and omit the final period. Describe the outcome; avoid
-  vague subjects such as `WIP`, `misc`, or `updates` and AI attribution.
-- Non-trivial commits need a body, separated by a blank line and wrapped at
-  72 characters. Explain the reason and primary outcome, then material
-  compatibility or migration effects and actual validation. Keep it concise;
-  group by capability rather than listing files. Fixed headings are optional.
-- Mark breaking changes with `!` and a `BREAKING CHANGE:` footer. Reference
-  only real issues. Keep each commit focused on one coherent change.
-
-For example:
-
-```text
-docs: make bilingual onboarding easy to follow
-
-Lead with startup commands and the first task workflow so new users can
-start without reading maintainer history. Keep both languages aligned.
-
-Validate documentation links and matching shell examples.
-```
-
-The maintainer's development workflow is validate, commit, then push directly
-and without force to `main`; a separate PR is not required for maintainer work.
-External contributors should use pull requests. CI continues to run on `main`.
-Review the staged diff, preserve unrelated work, and exclude private history,
-secrets, local agent state, and generated artifacts. Only repository
-administrators have permission to force-push `main`; an active ruleset blocks
-force pushes for every other role. Routine development still uses normal
-pushes. Agents must obtain explicit authorization for a specific history rewrite
-before using that permission. Branch deletion remains disabled. Tag, release,
-and package publication remain separate actions.
-
-Internal acceptance records, release checklists, and maintainer-only evidence
-belong outside this repository in the maintainer workspace. Do not add them to
-the public tree. Update the public roadmap when a milestone status changes.
+Do not force-push or rewrite published history without explicit authorization
+for that operation and the required repository permissions. Branch deletion
+remains disabled. Tags, releases and packages require separate authorization.
