@@ -77,11 +77,19 @@ func SupportedModelCatalogForManagedRuntime() SupportedModelCatalog {
 }
 
 func NewSupportedModelCatalog(agent, runtime, version string, models []SupportedModel) SupportedModelCatalog {
-	catalog := SupportedModelCatalog{AgentID: agent, RuntimeIdentity: runtime, RuntimeVersion: version, Models: models}
-	canonical, _ := json.Marshal(catalog)
-	sum := sha256.Sum256(canonical)
-	catalog.Digest = hex.EncodeToString(sum[:])
-	return catalog
+	identities := make([]domain.ModelIdentity, 0, len(models))
+	for _, m := range models {
+		identities = append(identities, domain.ModelIdentity{Provider: m.Provider, ModelID: m.ModelID})
+	}
+	canonical, err := domain.NewModelCatalog(agent, runtime, version, identities)
+	if err != nil {
+		return SupportedModelCatalog{}
+	}
+	sorted := make([]SupportedModel, 0, len(canonical.Models))
+	for _, m := range canonical.Models {
+		sorted = append(sorted, SupportedModel{Provider: m.Provider, ModelID: m.ModelID})
+	}
+	return SupportedModelCatalog{AgentID: canonical.AgentID, RuntimeIdentity: canonical.RuntimeIdentity, RuntimeVersion: canonical.RuntimeVersion, Models: sorted, Digest: canonical.Digest}
 }
 
 // IsSupportedModel reports whether a provider/model pair is in the managed
@@ -178,6 +186,7 @@ type Config struct {
 	ReadFile            func(string) ([]byte, error)
 	ReadSourceFile      func(string) ([]byte, error)
 	ValidateLocalSource func(context.Context, LocalPiSource) error
+	ModelCatalog        func(context.Context, domain.AgentExecutionProfile) (domain.ModelCatalog, error)
 }
 
 type Adapter struct {
@@ -284,7 +293,7 @@ func (adapter *Adapter) PrepareBoundStart(ctx context.Context, request execution
 	if err := adapter.validateSelectedSource(ctx, source); err != nil {
 		return execution.StartPreparation{}, err
 	}
-	if err := adapter.validateModelBinding(source, request.Attempt.ModelBinding()); err != nil {
+	if err := adapter.validateModelBinding(ctx, source, request.Attempt.ModelBinding()); err != nil {
 		return execution.StartPreparation{}, err
 	}
 	if source.isolated {
@@ -303,33 +312,42 @@ func (adapter *Adapter) PrepareBoundStart(ctx context.Context, request execution
 	return execution.NewStartPreparation(invocation, fingerprint)
 }
 
-func (adapter *Adapter) validateModelBinding(source selectedSource, binding domain.ModelBinding) error {
-	if !source.managed {
-		// PATH/Local catalogs are discovered outside the managed runtime. Ensure
-		// an explicit binding is validated when present. Legacy attempts without
-		// a binding retain their historical native configuration.
-		if !binding.Configured() {
-			return nil
-		}
-		r := binding.Record()
-		if source.pathPi {
-			if r.Catalog.AgentID != "path-pi" || r.Catalog.RuntimeVersion != source.version {
-				return errors.New("PATH Pi model catalog does not match discovered runtime")
-			}
-		}
-		if !r.Catalog.Contains(r.ModelIdentity) {
-			return errors.New("Pi model binding does not contain selected model")
-		}
-		return nil
-	}
+func (adapter *Adapter) validateModelBinding(ctx context.Context, source selectedSource, binding domain.ModelBinding) error {
 	if !binding.Configured() {
 		return nil
 	}
-	record := binding.Record()
-	if record.Catalog.AgentID == "" || record.Catalog.RuntimeIdentity == "" || record.Catalog.RuntimeVersion == "" || !record.Catalog.Contains(record.ModelIdentity) {
-		return errors.New("managed Pi model binding is not a valid Runtime capability snapshot")
+	if adapter.config.ModelCatalog == nil {
+		return errors.New("Pi Runtime model discovery is unavailable")
 	}
-	return nil
+	catalog, err := adapter.config.ModelCatalog(ctx, source.binding.Profile())
+	if err != nil {
+		return fmt.Errorf("discover Pi Runtime models: %w", err)
+	}
+	expectedAgent, expectedIdentity := "", fmt.Sprintf("%x", source.identity)
+	switch {
+	case source.pathPi:
+		expectedAgent = "path-pi"
+	case source.isolated:
+		expectedAgent, expectedIdentity = "pi-isolated", adapter.config.IsolatedSource.ImageID()
+	case source.managed:
+		expectedAgent, expectedIdentity = AdapterID, adapter.managedSource.RuntimeImageID()
+	default:
+		return errors.New("Pi Runtime does not support explicit model discovery")
+	}
+	if catalog.AgentID != expectedAgent || catalog.RuntimeIdentity != expectedIdentity || catalog.RuntimeVersion != source.version {
+		return errors.New("Pi model catalog does not match the bound execution Runtime")
+	}
+	if err := binding.ValidateCatalog(catalog); err != nil {
+		return err
+	}
+	return ValidateExactModelArguments(catalog, binding.Record().ModelIdentity)
+}
+
+// WithModelCatalog binds authoritative launch-time discovery to the composition.
+func (adapter *Adapter) WithModelCatalog(discover func(context.Context, domain.AgentExecutionProfile) (domain.ModelCatalog, error)) (*Adapter, error) {
+	config := adapter.config
+	config.ModelCatalog = discover
+	return New(config)
 }
 
 func (adapter *Adapter) prepareStartForSource(request execution.StartRequest, source selectedSource) (execution.Invocation, error) {
@@ -434,13 +452,17 @@ func (adapter *Adapter) prepareStartForSource(request execution.StartRequest, so
 		return execution.Invocation{}, errors.New("Pi execution target binding is invalid")
 	}
 	arguments := append([]string(nil), source.arguments...)
-	if (source.managed || source.isolated) && request.Attempt.ModelBinding().Configured() {
+	if !source.pathPi && request.Attempt.ModelBinding().Configured() {
 		model := request.Attempt.ModelBinding().Record().ModelIdentity
 		arguments = replaceModelArguments(arguments, model.Provider, model.ModelID)
 	}
 	if source.pathPi {
 		sessionDir := filepath.Join(adapter.sessionRoot, request.Attempt.ID().String())
 		arguments = append(arguments, "--session-dir", sessionDir)
+		if request.Attempt.ModelBinding().Configured() {
+			m := request.Attempt.ModelBinding().Record()
+			arguments = append(arguments, "--provider", m.Provider, "--model", m.ModelID)
+		}
 	}
 	arguments, err = adapter.configureResourceObserver(source, request.Attempt.ID(), request.WorkspaceRoot, request.ExecutionContractDocument, arguments, environment)
 	if err != nil {
@@ -475,6 +497,9 @@ func (adapter *Adapter) PrepareResume(ctx context.Context, request execution.Res
 		return execution.Invocation{}, errors.New("Pi explicit-session resume requires PATH Pi")
 	}
 	if err := adapter.validateSelectedSource(ctx, source); err != nil {
+		return execution.Invocation{}, err
+	}
+	if err := adapter.validateModelBinding(ctx, source, request.Attempt.ModelBinding()); err != nil {
 		return execution.Invocation{}, err
 	}
 	fingerprint := fingerprintForSource(source)
@@ -523,6 +548,10 @@ func (adapter *Adapter) PrepareResume(ctx context.Context, request execution.Res
 		"CHORA_RESULT_PATH":             ResultPath, "CHORA_PATCH_PATH": PatchPath, "CHORA_CHECKS_PATH": ChecksPath, "CHORA_RUNTIME_IDENTITY_PATH": RuntimeIdentityPath,
 	}
 	arguments := []string{"--mode", "rpc", "--session-dir", sessionDir, "--session", sessionID}
+	if request.Attempt.ModelBinding().Configured() {
+		m := request.Attempt.ModelBinding().Record()
+		arguments = append(arguments, "--provider", m.Provider, "--model", m.ModelID)
+	}
 	if len(request.ExecutionContractDocument) > 0 {
 		arguments, err = adapter.configureResourceObserver(source, request.Attempt.ID(), request.Binding.WorkingRoot, request.ExecutionContractDocument, arguments, environment)
 		if err != nil {
@@ -1256,4 +1285,25 @@ func reportedPiCost(usage map[string]json.RawMessage) (float64, bool) {
 		return 0, false
 	}
 	return cost, true
+}
+
+func (adapter *Adapter) DiscoverModelCatalog(ctx context.Context, profile domain.AgentExecutionProfile) (domain.ModelCatalog, error) {
+	if adapter == nil || adapter.config.ModelCatalog == nil {
+		return domain.ModelCatalog{}, errors.New("Runtime model discovery is unavailable")
+	}
+	return adapter.config.ModelCatalog(ctx, profile)
+}
+
+// ValidateExactModelArguments rejects identities that Pi's CLI reference syntax
+// cannot express unambiguously. It never guesses an alias or another model.
+func ValidateExactModelArguments(catalog domain.ModelCatalog, selected domain.ModelIdentity) error {
+	if !catalog.Contains(selected) || strings.HasPrefix(strings.ToLower(selected.ModelID), strings.ToLower(selected.Provider)+"/") {
+		return errors.New("Pi CLI cannot bind this model identity exactly")
+	}
+	for _, m := range catalog.Models {
+		if strings.EqualFold(m.Provider, selected.Provider) && (m.Provider != selected.Provider || strings.EqualFold(m.ModelID, selected.ModelID) && m.ModelID != selected.ModelID) {
+			return errors.New("Pi CLI model identity is ambiguous")
+		}
+	}
+	return nil
 }

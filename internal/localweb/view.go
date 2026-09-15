@@ -561,6 +561,7 @@ type attemptDetailView struct {
 	Runtime            *runtimeIdentityView `json:"runtime,omitempty"`
 	Sandbox            sandboxIdentityView  `json:"sandbox"`
 	AgentExecution     *agentExecutionView  `json:"agentExecution,omitempty"`
+	ModelBinding       domain.ModelBinding  `json:"modelBinding,omitempty"`
 	ModelProvenance    modelProvenanceView  `json:"modelProvenance"`
 }
 
@@ -615,6 +616,7 @@ type attemptHistoryView struct {
 	Artifacts       []artifactView      `json:"artifacts"`
 	Unknowns        []string            `json:"unknowns"`
 	AgentExecution  *agentExecutionView `json:"agentExecution,omitempty"`
+	ModelBinding    domain.ModelBinding `json:"modelBinding,omitempty"`
 	ModelProvenance modelProvenanceView `json:"modelProvenance"`
 }
 
@@ -682,7 +684,7 @@ type taskRefView struct {
 	Goal                  string                       `json:"goal"`
 	ExecutionProfile      string                       `json:"executionProfile"`
 	AgentExecutionProfile string                       `json:"agentExecutionProfile,omitempty"`
-	ModelBinding          domain.ModelBinding           `json:"modelBinding,omitempty"`
+	ModelBinding          domain.ModelBinding          `json:"modelBinding,omitempty"`
 	Repository            *repositoryIdentityView      `json:"repository,omitempty"`
 	Worktree              *taskWorktreeView            `json:"worktree,omitempty"`
 	Criteria              []taskCriterionView          `json:"criteria"`
@@ -1443,7 +1445,7 @@ func (server *Server) runView(ctx context.Context, runID domain.RunID) (runView,
 		view.Attempt = attempt.Sequence()
 		view.AttemptDetail = &attemptDetailView{
 			ID: attempt.ID().String(), Sequence: attempt.Sequence(), State: attempt.State(),
-			ExecutionWorkspace: executionWorkspace, Sandbox: sandbox, AgentExecution: agentExecutionViewOf(attempt.AgentExecutionProfileBinding()), ModelProvenance: modelProvenance[attempt.ID().String()],
+			ExecutionWorkspace: executionWorkspace, Sandbox: sandbox, AgentExecution: agentExecutionViewOf(attempt.AgentExecutionProfileBinding()), ModelBinding: attempt.ModelBinding(), ModelProvenance: modelProvenance[attempt.ID().String()],
 		}
 		var sessionFound bool
 		var attemptSession storecontract.RuntimeSession
@@ -1638,7 +1640,7 @@ func (server *Server) runView(ctx context.Context, runID domain.RunID) (runView,
 		}
 	}
 	for _, attempt := range attempts {
-		item := attemptHistoryView{ID: attempt.ID().String(), Sequence: attempt.Sequence(), State: attempt.State(), SnapshotID: attempt.ContextSnapshotID().String(), SnapshotDigest: fmt.Sprintf("%x", attempt.ContextDigest()), Artifacts: []artifactView{}, Unknowns: []string{}, AgentExecution: agentExecutionViewOf(attempt.AgentExecutionProfileBinding()), ModelProvenance: modelProvenance[attempt.ID().String()]}
+		item := attemptHistoryView{ID: attempt.ID().String(), Sequence: attempt.Sequence(), State: attempt.State(), SnapshotID: attempt.ContextSnapshotID().String(), SnapshotDigest: fmt.Sprintf("%x", attempt.ContextDigest()), Artifacts: []artifactView{}, Unknowns: []string{}, AgentExecution: agentExecutionViewOf(attempt.AgentExecutionProfileBinding()), ModelBinding: attempt.ModelBinding(), ModelProvenance: modelProvenance[attempt.ID().String()]}
 		if predecessor, ok := attempt.Predecessor(); ok {
 			item.PredecessorID = predecessor.String()
 		}

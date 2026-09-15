@@ -604,14 +604,14 @@ function NewAppContent() {
 	}
   }
 
-  async function retryRun(instructions: string) {
+  async function retryRun(instructions: string, modelBinding?: ModelBinding) {
     if (!run) return
     setBusy(true)
     try {
       const next = await api<RunView>(`/api/runs/${encodeURIComponent(run.id)}/retry`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': commandKey('retry-run') },
-        body: JSON.stringify({ expectedVersion: run.version, instructions }),
+        body: JSON.stringify({ expectedVersion: run.version, instructions, modelBinding }),
       })
       setRun(next)
     } catch (reason) {

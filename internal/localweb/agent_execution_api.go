@@ -105,9 +105,38 @@ func (server *Server) switchAgentExecutionProfile(writer http.ResponseWriter, re
 	if !server.requireAgentExecutionRoute(writer, request, binding) {
 		return
 	}
+	var modelBinding domain.ModelBinding
+	currentAttempt, err := server.store.Reader().GetCurrentAttempt(request.Context(), runID)
+	if err != nil {
+		writeStoreError(writer, err)
+		return
+	}
+	if currentAttempt.ModelBinding().Configured() {
+		var catalog domain.ModelCatalog
+		if profile == domain.AgentExecutionProfileIsolatedLocal {
+			catalog, err = server.isolatedLocal.modelCatalog(request.Context())
+		} else if profile == domain.AgentExecutionProfileTrustedLocal {
+			catalog, err = pathModelCatalog(request.Context(), server.piDiscoveryOptions)
+		} else {
+			err = errors.New("target Runtime model discovery is unavailable")
+		}
+		selected := currentAttempt.ModelBinding().Record().ModelIdentity
+		if err == nil {
+			err = agentpi.ValidateExactModelArguments(catalog, selected)
+		}
+		if err != nil {
+			writeError(writer, http.StatusConflict, errors.New("the selected model is unavailable in the target Runtime; keep the current profile or choose a supported model before switching"))
+			return
+		}
+		modelBinding, err = domain.NewModelBinding(catalog, selected, currentAttempt.ModelBinding().Record().SelectedAt)
+		if err != nil {
+			writeError(writer, http.StatusConflict, err)
+			return
+		}
+	}
 	prepared, err := server.prepareAndBindManagedAttempt(request.Context(), func(prepareCtx context.Context) (app.PrepareRunResult, error) {
 		return server.service.PrepareProfileSwitch(prepareCtx, app.PrepareProfileSwitchRequest{
-			CommandMeta: meta, RunID: runID, ExpectedVersion: *input.ExpectedVersion, Profile: profile, Reason: input.Reason,
+			CommandMeta: meta, RunID: runID, ExpectedVersion: *input.ExpectedVersion, Profile: profile, Reason: input.Reason, ModelBinding: modelBinding,
 		})
 	})
 	if err != nil {

@@ -39,7 +39,15 @@ func (s *Service) PrepareVerifiedAgentRetry(ctx context.Context, request Prepare
 	unlock := s.runLock(request.RunID)
 	defer unlock()
 	now := s.deps.Clock.Now()
-	key, err := s.commandKey(request.CommandMeta, "prepare_verified_agent_retry", request.RunID.String(), request.ExpectedVersion, request.Instructions, now)
+	// Preserve existing command fingerprints when no explicit model is supplied.
+	var semantic any = request.Instructions
+	if request.ModelBinding.Configured() {
+		semantic = struct {
+			Instructions string
+			ModelBinding domain.ModelBinding
+		}{request.Instructions, request.ModelBinding}
+	}
+	key, err := s.commandKey(request.CommandMeta, "prepare_verified_agent_retry", request.RunID.String(), request.ExpectedVersion, semantic, now)
 	if err != nil {
 		return PrepareRunResult{}, err
 	}
@@ -111,10 +119,15 @@ func (s *Service) PrepareVerifiedAgentRetry(ctx context.Context, request Prepare
 			return err
 		}
 		predecessor := oldAttempt.ID()
+		modelBinding := oldAttempt.ModelBinding()
+		if request.ModelBinding.Configured() {
+			modelBinding = request.ModelBinding
+		}
 		nextAttempt, err := domain.NewAttempt(domain.AttemptParams{
 			ID: s.deps.IDs.AttemptID(), RunID: run.ID(), Sequence: nextRun.CurrentAttemptNumber(), Predecessor: &predecessor,
 			ContextSnapshotID: oldAttempt.ContextSnapshotID(), ContextDigest: oldAttempt.ContextDigest(), AdapterID: oldAttempt.AdapterID(), AgentExecutionProfileBinding: oldAttempt.AgentExecutionProfileBinding(),
 			RetryReason: reason, ContextDelta: string(deltaBytes), ExternalSession: "", CreatedAt: now,
+			ModelBinding: modelBinding,
 		})
 		if err != nil {
 			return err

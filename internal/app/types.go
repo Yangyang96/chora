@@ -247,12 +247,14 @@ type PrepareProfileSwitchRequest struct {
 	ExpectedVersion uint64
 	Profile         domain.AgentExecutionProfile
 	Reason          string
+	ModelBinding    domain.ModelBinding
 }
 type PrepareVerifiedAgentRetryRequest struct {
 	CommandMeta
 	RunID           domain.RunID
 	ExpectedVersion uint64
 	Instructions    string
+	ModelBinding    domain.ModelBinding
 }
 type PrepareRunResult struct {
 	Run      domain.AgentRun

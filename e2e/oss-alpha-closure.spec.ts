@@ -35,13 +35,13 @@ test('OSS Alpha public journey is explicit, fail-closed, replay-safe, and execut
   await setAcknowledgementMode(request, 'missing')
   await page.goto('/')
   await createRoomAndOpenTaskComposer(page)
-  await assertSingleStandardProfileSelector(page)
+  await assertSingleExecutionProfileSelector(page)
   await proveTrustedLocalFailsClosed(page)
 
   await setAcknowledgementMode(request, 'stale')
   await page.reload()
   await page.getByRole('button', { name: '＋ New Task' }).first().click()
-  await assertSingleStandardProfileSelector(page)
+  await assertSingleExecutionProfileSelector(page)
   await proveTrustedLocalFailsClosed(page)
 
   await page.getByRole('radio', { name: 'Trusted Local · No Sandbox' }).click()
@@ -174,11 +174,11 @@ async function createRoomAndOpenTaskComposer(page: Page) {
   await page.getByRole('button', { name: '＋ New Task' }).first().click()
 }
 
-async function assertSingleStandardProfileSelector(page: Page) {
+async function assertSingleExecutionProfileSelector(page: Page) {
   const selector = page.getByRole('group', { name: 'Agent profile' })
   await expect(selector).toHaveCount(1)
-  await expect(selector.getByRole('radio')).toHaveCount(3)
-  await expect(selector.getByRole('radio', { name: 'Standard' })).toBeChecked()
+  await expect(selector.getByRole('radio')).toHaveCount(2)
+  await expect(selector.getByRole('radio', { name: 'Isolated Local' })).toBeChecked()
 }
 
 async function proveTrustedLocalFailsClosed(page: Page) {
@@ -186,7 +186,7 @@ async function proveTrustedLocalFailsClosed(page: Page) {
   const disclosure = page.getByRole('dialog', { name: 'Trusted Local · No Sandbox' })
   await expect(disclosure).toContainText('There is no Sandbox.')
   await disclosure.getByRole('button', { name: 'Cancel' }).click()
-  await expect(page.getByRole('radio', { name: 'Standard' })).toBeChecked()
+  await expect(page.getByRole('radio', { name: 'Isolated Local' })).toBeChecked()
   await expect(page.getByRole('radio', { name: 'Trusted Local · No Sandbox' })).not.toBeChecked()
 }
 

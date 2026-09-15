@@ -161,3 +161,13 @@ Initial usage feedback can be manual and does not require a telemetry platform.
 ### Runtime-owned model capability discovery
 
 M2-S5-2 does not require Chora to maintain a hand-authored model allowlist. Each Runtime owns capability discovery and validation. Chora may cache an identity-only catalog for display, but revalidates the selection with the Runtime at launch. A model change applies only to a new Attempt; prior requested and observed provider/model provenance remains immutable. Runtime removal or authentication failure fails closed without substitution.
+
+Local Connected discovers models from the selected Pi executable and configuration.
+Isolated Local reads its prepared image's built-in Pi catalog without credentials
+or network access; this catalog does not promise authentication for every provider.
+The current isolated credential projection remains DeepSeek-only. New tasks can
+use the Runtime default or an explicit selection. Retries inherit the preceding
+Attempt's selection unless a new model is chosen; requested and observed models
+are shown separately. Changing execution mode preserves the model identity and
+requires that the target Runtime support it. Ambiguous Pi CLI model references
+are rejected rather than resolved to an alias.

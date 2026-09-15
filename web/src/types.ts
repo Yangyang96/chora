@@ -220,6 +220,7 @@ export type RunView = {
     executionWorkspace: string
     runtime?: { sessionId: string; adapterId: string; kind: string; version: string; fingerprint: string; externalSession?: string; state: string }
     agentExecution?: AgentExecution
+    modelBinding?: ModelBinding | null
     modelProvenance?: ModelProvenance
     sandbox: { status: string; provider: string; mode: string; image: string; policyFingerprint: string }
   }
@@ -232,7 +233,7 @@ export type RunView = {
   blockers?: string[]
   decisionGate?: DecisionGate
   decisionHistory?: DecisionGate[]
-  attemptHistory?: Array<{ id: string; sequence: number; predecessorId?: string; state: string; snapshotId: string; snapshotDigest: string; agentExecution?: AgentExecution; modelProvenance?: ModelProvenance; summary?: string; artifacts: Array<{ id: string; kind: string; locator: string; digest?: string; mediaType?: string; description: string }>; unknowns: string[] }>
+  attemptHistory?: Array<{ id: string; sequence: number; predecessorId?: string; state: string; snapshotId: string; snapshotDigest: string; agentExecution?: AgentExecution; modelBinding?: ModelBinding | null; modelProvenance?: ModelProvenance; summary?: string; artifacts: Array<{ id: string; kind: string; locator: string; digest?: string; mediaType?: string; description: string }>; unknowns: string[] }>
   reviewHistory?: Array<{ kind: string; comment: string; decidedAt: string }>
   contextConsumption?: { snapshotId: string; snapshotDigest: string; candidateRevisionId: string; includedRevisionIds: string[]; excludedRevisionIds: string[]; derivation: string; excludedContentObserved: boolean }
   agentReport?: { id: string; attemptId: string; summary: string; finalText: string; completedAt: string; authority: string; claimedChecks: Array<{ criterionId: string; status: string; evidence: string }> }

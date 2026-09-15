@@ -2850,6 +2850,10 @@ func (server *Server) retryRun(writer http.ResponseWriter, request *http.Request
 		return
 	}
 	if blockedPreparedRetry {
+		if modelBinding.Configured() {
+			writeError(writer, http.StatusConflict, errors.New("a prepared Attempt cannot change its model"))
+			return
+		}
 		server.startBlockedAutomaticRetry(writer, request, run, attempt, meta)
 		return
 	}
@@ -2859,7 +2863,7 @@ func (server *Server) retryRun(writer http.ResponseWriter, request *http.Request
 			_, verificationErr = reader.GetLocalReviewResultForAgentAttempt(request.Context(), attempt.ID())
 		}
 		if verificationErr == nil {
-			server.retryVerifiedAgent(writer, request, run, *input.ExpectedVersion, input.Instructions, meta)
+			server.retryVerifiedAgent(writer, request, run, *input.ExpectedVersion, input.Instructions, modelBinding, meta)
 			return
 		} else if !errors.Is(verificationErr, storecontract.ErrNotFound) {
 			writeStoreError(writer, verificationErr)
@@ -3027,7 +3031,7 @@ func (server *Server) retryRun(writer http.ResponseWriter, request *http.Request
 	// Failed or incompatible Pi sessions start fresh. An interrupted local
 	// session is resumed only by this explicit action, through the existing
 	// recorded-session identity and workspace checks.
-	if charter.AdapterID() == agentpi.AdapterID && ((recoveryRetry && attempt.State() != domain.AttemptStateInterrupted) || attempt.AgentExecutionProfileBinding().ExecutionProvider() != domain.TrustedHostExecutionProvider) {
+	if charter.AdapterID() == agentpi.AdapterID && (prepared.Attempt.ExternalSession() == "" || (recoveryRetry && attempt.State() != domain.AttemptStateInterrupted) || attempt.AgentExecutionProfileBinding().ExecutionProvider() != domain.TrustedHostExecutionProvider) {
 		startMode = app.StartFresh
 	}
 	started, err := server.startManagedAttempt(request.Context(), prepared.Attempt, app.StartAttemptRequest{
@@ -3096,7 +3100,7 @@ func (server *Server) startBlockedAutomaticRetry(writer http.ResponseWriter, req
 	writeJSON(writer, http.StatusOK, view)
 }
 
-func (server *Server) retryVerifiedAgent(writer http.ResponseWriter, request *http.Request, run domain.AgentRun, expectedVersion uint64, instructions string, meta app.CommandMeta) {
+func (server *Server) retryVerifiedAgent(writer http.ResponseWriter, request *http.Request, run domain.AgentRun, expectedVersion uint64, instructions string, modelBinding domain.ModelBinding, meta app.CommandMeta) {
 	reader := server.store.Reader()
 	task, err := reader.GetTask(request.Context(), run.TaskID())
 	if err != nil {
@@ -3150,7 +3154,8 @@ func (server *Server) retryVerifiedAgent(writer http.ResponseWriter, request *ht
 	}
 	prepared, err := server.prepareAndBindManagedAttempt(request.Context(), func(prepareCtx context.Context) (app.PrepareRunResult, error) {
 		return server.service.PrepareVerifiedAgentRetry(prepareCtx, app.PrepareVerifiedAgentRetryRequest{
-			CommandMeta: childCommandMeta(meta, "prepare-verified-agent-retry"), RunID: run.ID(), ExpectedVersion: expectedVersion, Instructions: instructions,
+			ModelBinding: modelBinding,
+			CommandMeta:  childCommandMeta(meta, "prepare-verified-agent-retry"), RunID: run.ID(), ExpectedVersion: expectedVersion, Instructions: instructions,
 		})
 	})
 	if err != nil {

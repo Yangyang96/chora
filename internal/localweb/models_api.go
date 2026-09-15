@@ -1,44 +1,67 @@
 package localweb
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
-	agentpi "github.com/Yangyang96/chora/internal/agent/pi"
-	"github.com/Yangyang96/chora/internal/pidiscovery"
 	"net/http"
+	"time"
+
+	agentpi "github.com/Yangyang96/chora/internal/agent/pi"
+	"github.com/Yangyang96/chora/internal/domain"
+	"github.com/Yangyang96/chora/internal/pidiscovery"
 )
 
-// getSupportedModels exposes the immutable managed model catalog. Execution
-// profiles are intentionally absent: selecting a profile cannot select or
-// mutate a model.
+// Model catalogs belong to the Runtime selected by the execution profile.
 func (server *Server) getSupportedModels(writer http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodGet {
 		writeError(writer, http.StatusMethodNotAllowed, nil)
 		return
 	}
-	writer.Header().Set("Content-Type", "application/json")
-	if server.isolatedLocal != nil {
-		server.isolatedLocal.mu.Lock()
-		isolatedModels := append([]pidiscovery.ModelOption(nil), server.isolatedLocal.models...)
-		state := server.isolatedLocal.view.State
-		server.isolatedLocal.mu.Unlock()
-		if state == "ready" && len(isolatedModels) > 0 {
-			models := make([]agentpi.SupportedModel, 0, len(isolatedModels))
-			for _, option := range isolatedModels {
-				models = append(models, agentpi.SupportedModel{Provider: option.Provider, ModelID: option.ModelID})
-			}
-			_ = json.NewEncoder(writer).Encode(agentpi.NewSupportedModelCatalog("pi-isolated", server.isolatedLocal.source.ImageID(), agentpi.IsolatedPiVersion, models))
-			return
-		}
+	profile := request.URL.Query().Get("agentExecutionProfile")
+	var catalog domain.ModelCatalog
+	var err error
+	switch profile {
+	case "isolated_local":
+		catalog, err = server.isolatedLocal.modelCatalog(request.Context())
+	case "", "local_connected", "trusted_local":
+		catalog, err = pathModelCatalog(request.Context(), server.piDiscoveryOptions)
+	default:
+		writeError(writer, http.StatusBadRequest, fmt.Errorf("unknown model execution profile"))
+		return
 	}
-	options, err := pidiscovery.DiscoverModels(server.piDiscoveryOptions.PiHome)
-	if err != nil || len(options) == 0 {
+	if err != nil {
 		writeError(writer, http.StatusServiceUnavailable, fmt.Errorf("Runtime model capabilities unavailable"))
 		return
 	}
-	models := make([]agentpi.SupportedModel, 0, len(options))
-	for _, option := range options {
-		models = append(models, agentpi.SupportedModel{Provider: option.Provider, ModelID: option.ModelID})
+	writeJSON(writer, http.StatusOK, catalog)
+}
+
+func pathModelCatalog(ctx context.Context, options pidiscovery.Options) (domain.ModelCatalog, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	result, err := pidiscovery.Discover(ctx, options)
+	if err != nil || result.State != pidiscovery.StateReady {
+		return domain.ModelCatalog{}, fmt.Errorf("Pi Runtime is not ready")
 	}
-	_ = json.NewEncoder(writer).Encode(agentpi.NewSupportedModelCatalog("pi", server.piDiscoveryOptions.PiHome, pidiscovery.MinimumVersion, models))
+	source, err := agentpi.NewPathPiSource(agentpi.PathPiSourceParams{ExecutablePath: result.ExecutablePath, Version: result.Version, ExecutableSHA256: result.ExecutableSHA256})
+	if err != nil {
+		return domain.ModelCatalog{}, err
+	}
+	models, err := pidiscovery.DiscoverModelsForRuntime(ctx, source.ExecutablePath(), options.PiHome)
+	if err != nil {
+		return domain.ModelCatalog{}, err
+	}
+	// Recheck executable bytes after discovery; never bind a mixed snapshot.
+	if verified, err := pidiscovery.Revalidate(ctx, result); err != nil || verified.State != pidiscovery.StateReady {
+		return domain.ModelCatalog{}, fmt.Errorf("Pi Runtime identity changed during discovery")
+	}
+	return runtimeModelCatalog("path-pi", fmt.Sprintf("%x", source.SourceIdentity()), source.Version(), models)
+}
+
+func runtimeModelCatalog(agent, identity, version string, options []pidiscovery.ModelOption) (domain.ModelCatalog, error) {
+	models := make([]domain.ModelIdentity, 0, len(options))
+	for _, m := range options {
+		models = append(models, domain.ModelIdentity{Provider: m.Provider, ModelID: m.ModelID})
+	}
+	return domain.NewModelCatalog(agent, identity, version, models)
 }

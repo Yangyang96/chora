@@ -40,9 +40,13 @@ func (s *Service) PrepareProfileSwitch(ctx context.Context, request PrepareProfi
 	defer unlock()
 	now := s.deps.Clock.Now()
 	semantic := struct {
-		Profile domain.AgentExecutionProfile
-		Reason  string
-	}{target, reason}
+		Profile      domain.AgentExecutionProfile
+		Reason       string
+		ModelBinding *domain.ModelBinding `json:",omitempty"`
+	}{Profile: target, Reason: reason}
+	if request.ModelBinding.Configured() {
+		semantic.ModelBinding = &request.ModelBinding
+	}
 	key, err := s.commandKey(request.CommandMeta, "switch_agent_execution_profile", request.RunID.String(), request.ExpectedVersion, semantic, now)
 	if err != nil {
 		return PrepareRunResult{}, err
@@ -78,6 +82,13 @@ func (s *Service) PrepareProfileSwitch(ctx context.Context, request PrepareProfi
 		oldAttempt, err := tx.GetCurrentAttempt(ctx, run.ID())
 		if err != nil {
 			return err
+		}
+		modelBinding := oldAttempt.ModelBinding()
+		if request.ModelBinding.Configured() {
+			if request.ModelBinding.Record().ModelIdentity != modelBinding.Record().ModelIdentity {
+				return fmt.Errorf("%w: execution profile switch cannot change the model identity", ErrInvalidCommand)
+			}
+			modelBinding = request.ModelBinding
 		}
 		if oldAttempt.ContextSnapshotID() != planBinding.SnapshotID() || oldAttempt.ContextDigest() != planBinding.SnapshotDigest() {
 			return fmt.Errorf("%w: predecessor Attempt drifted from immutable planning binding", ErrInvalidCommand)
@@ -131,7 +142,7 @@ func (s *Service) PrepareProfileSwitch(ctx context.Context, request PrepareProfi
 			ID: s.deps.IDs.AttemptID(), RunID: run.ID(), Sequence: nextRun.CurrentAttemptNumber(), Predecessor: &predecessor,
 			ContextSnapshotID: snapshot.ID(), ContextDigest: snapshot.Digest(), AdapterID: charter.AdapterID(),
 			AgentExecutionProfileBinding: nextBinding, RetryReason: "Agent execution profile switch: " + reason,
-			ModelBinding: oldAttempt.ModelBinding(),
+			ModelBinding: modelBinding,
 			ContextDelta: string(delta), ExternalSession: "", CreatedAt: now,
 		})
 		if err != nil {

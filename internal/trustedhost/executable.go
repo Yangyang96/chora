@@ -64,6 +64,15 @@ func validateAllowedArguments(actual, expected []string, trailingRoot string, ob
 		copyArgs := append([]string{}, actual[:2]...)
 		actual = append(copyArgs, actual[4:]...)
 	}
+	// PATH Pi may append one explicit provider/model pair after the session.
+	if trailingRoot != "" && len(actual) >= 4 && actual[len(actual)-4] == "--provider" && actual[len(actual)-2] == "--model" {
+		for _, value := range []string{actual[len(actual)-3], actual[len(actual)-1]} {
+			if value == "" || strings.HasPrefix(value, "-") || strings.ContainsAny(value, "\x00\r\n") {
+				return errors.New("invalid explicit Pi model")
+			}
+		}
+		actual = actual[:len(actual)-4]
+	}
 	if err := validateArguments(actual); err != nil {
 		return err
 	}

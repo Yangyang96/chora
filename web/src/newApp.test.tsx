@@ -367,6 +367,44 @@ describe('NewApp', () => {
     expect(screen.getByRole('radio', { name: 'Isolated Local' })).toBeChecked()
   })
 
+  test.each([false, true])('manual retry sends an optional selected model binding (%s)', async (selectModel) => {
+    window.history.replaceState({}, '', '/rooms/room-1/tasks/task-1/runs/run-model')
+    const catalog = { agentId: 'pi', runtimeIdentity: 'pi', runtimeVersion: '1', models: [{ provider: 'openai', modelId: 'gpt-5' }], digest: 'd' }
+    const run = {
+      id: 'run-model', status: 'revision_required', version: 11, attempt: 2, adapter: 'pi',
+      agentExecution: { profile: 'trusted_local', runtimeSource: 'local_pi', executionProvider: 'trusted_host', capabilityPolicy: 'pi.native', trustDisclosurePolicy: '', sandboxed: false, disclosureLabel: 'Trusted Local · No Sandbox' },
+      room: { id: 'room-1', name: 'Lane Room', description: '' },
+      task: { id: 'task-1', title: 'Retry model', goal: 'Retry with an optional model' },
+      context: [], timeline: [], artifacts: [], unknowns: [], criteria: [], trajectory: [],
+      controls: { canCancel: false, canRetry: true, canReview: false },
+    }
+    const posts: Array<{ path: string; body: Record<string, unknown> }> = []
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input)
+      const method = (init?.method ?? 'GET').toUpperCase()
+      if (path === '/api/pi/installation') return jsonResponse(piInstallationMissing)
+      if (path === '/api/pi/discovery') return jsonResponse(piDiscoveryReady)
+      if (path.includes('/continuity')) return jsonResponse({ available: false })
+      if (path === '/api/rooms') return jsonResponse({ activeRooms: [roomSummary], archivedRooms: [] })
+      if (path === '/api/models?agentExecutionProfile=local_connected') return jsonResponse(catalog)
+      if (path === '/api/rooms/room-1/tasks/task-1/runs/run-model') return jsonResponse(run)
+      if (method === 'POST' && path === '/api/runs/run-model/retry') {
+        posts.push({ path, body: JSON.parse(String(init?.body)) })
+        return jsonResponse({ ...run, attempt: 3, version: 12, status: 'running', controls: { canCancel: true, canRetry: false, canReview: false } })
+      }
+      throw new Error(`Unexpected fetch: ${method} ${path}`)
+    }))
+    render(<NewApp />)
+    const selector = await screen.findByRole('combobox', { name: 'Model' })
+    if (selectModel) await userEvent.selectOptions(selector, 'openai:gpt-5')
+    await userEvent.click(screen.getByRole('button', { name: 'Retry Pi' }))
+    await waitFor(() => expect(posts).toHaveLength(1))
+    expect(posts[0].body).toEqual({
+      expectedVersion: 11, instructions: 'Resolve the rejected acceptance gap and return an updated result.',
+      ...(selectModel ? { modelBinding: { catalog, provider: 'openai', modelId: 'gpt-5', source: 'coding_agent', selectedAt: expect.any(String) } } : {}),
+    })
+  })
+
   test('profile-switch conflict preserves the current Run and never turns into Retry', async () => {
     window.history.replaceState({}, '', '/rooms/room-1/tasks/task-1/runs/run-profile')
     const run = {

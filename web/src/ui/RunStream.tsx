@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useI18n } from '../i18n'
 import { agentFailureStatus, automaticRetryActive } from '../taskStatus'
 import { hasIndependentVerificationEvidence } from '../runProvenance'
-import type { AgentExecutionProfile, RunStatus, RunView } from '../types'
+import type { AgentExecutionProfile, ModelBinding, RunStatus, RunView } from '../types'
 import { AgentExecutionDisclosure, AgentExecutionProfileSelector } from './AgentExecutionProfile'
 import { AuditDrawer } from './AuditDrawer'
 import { ChangedFiles } from './ChangedFiles'
@@ -17,6 +17,7 @@ import { TaskDelivery } from './TaskDelivery'
 import { ResultClosure } from './ResultClosure'
 import { TaskProgress } from './TaskProgress'
 import { ModelProvenance } from './ModelProvenance'
+import { ModelSelector } from './ModelSelector'
 import { deliveryDisplayStatus } from '../deliveryProgress'
 import type { DeliverySummary, TaskDeliveryView } from '../taskDeliveryTypes'
 
@@ -32,7 +33,7 @@ type RunStreamProps = {
   onCancel: () => void
   onReview: (kind: 'accept' | 'reject', comment: string, rejectionClass?: RejectionClass) => void
   onApply: () => void
-  onRetry: (instructions: string) => void
+  onRetry: (instructions: string, modelBinding?: ModelBinding) => void
   onSwitchProfile: (profile: AgentExecutionProfile, reason: string) => Promise<boolean>
   onAcknowledgeTrustedLocal: () => Promise<boolean>
   onResolveDecision: (gateID: string, optionID: string) => void
@@ -97,6 +98,9 @@ export function RunStream({ run, busy, onResultClosed, trustedLocalSelectionRead
   const hasClosedResult = Boolean(run.resultClosed || closedKey === run.id)
   const [comment, setComment] = useState('')
   const [retryInstructions, setRetryInstructions] = useState('Resolve the rejected acceptance gap and return an updated result.')
+  const retryKey = `${run.id}:${run.attempt}:${run.agentExecution?.profile ?? ''}`
+  const [retryModel, setRetryModel] = useState<{ key: string; binding?: ModelBinding }>()
+  const retryModelBinding = retryModel?.key === retryKey ? retryModel.binding : undefined
   const [switchProfile, setSwitchProfile] = useState<AgentExecutionProfile>(run.agentExecution?.profile ?? 'standard')
   const [switchReason, setSwitchReason] = useState('Use this profile for a fresh successor Attempt.')
   const [switchDisclosurePending, setSwitchDisclosurePending] = useState(false)
@@ -161,7 +165,7 @@ export function RunStream({ run, busy, onResultClosed, trustedLocalSelectionRead
 
       <TaskProgress run={run} delivery={status === 'accepted' && branchDelivery ? delivery : undefined} />
 
-      <ModelProvenance current={run.attemptDetail?.modelProvenance} history={run.attemptHistory} />
+      <ModelProvenance current={run.attemptDetail?.modelProvenance} currentBinding={run.attemptDetail?.modelBinding} history={run.attemptHistory} />
 
       {implementationFinishedWithoutVerification ? (
         <p className="stream-current">{t('Implementation finished — {reason}', { reason: t(run.verificationDisposition?.reason ?? '') })}</p>
@@ -343,11 +347,12 @@ export function RunStream({ run, busy, onResultClosed, trustedLocalSelectionRead
                   {busy ? t('Retrying…') : t('Continue prepared retry')}
                 </ActionButton>
               </> : <>
+                <ModelSelector key={retryKey} agentExecutionProfile={run.agentExecution?.profile} value={retryModelBinding} onChange={(binding) => setRetryModel({ key: retryKey, binding })} defaultLabel="Keep previous attempt model" disabled={busy} />
                 <label>
                   {t('Retry instructions')}
                   <textarea value={retryInstructions} onChange={(event) => setRetryInstructions(event.target.value)} />
                 </label>
-                <ActionButton type="button" className="btn-primary" disabled={busy || !retryInstructions.trim()} disabledReason={busy ? 'Wait for the current operation to finish.' : 'Enter instructions for the next attempt.'} onClick={() => onRetry(retryInstructions.trim())}>
+                <ActionButton type="button" className="btn-primary" disabled={busy || !retryInstructions.trim()} disabledReason={busy ? 'Wait for the current operation to finish.' : 'Enter instructions for the next attempt.'} onClick={() => retryModelBinding ? onRetry(retryInstructions.trim(), retryModelBinding) : onRetry(retryInstructions.trim())}>
                   {busy ? t('Retrying…') : t('Retry {agent}', { agent: agentName })}
                 </ActionButton>
               </>}

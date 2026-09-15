@@ -226,6 +226,30 @@ test('Local Connected is selectable and its disclosure acknowledges when discove
   expect(acknowledgement.policyVersion).toBe('chora.trusted-local-disclosure.v1')
 })
 
+test('S5-2 explicit runtime model survives launch and restart', async ({ page, request }) => {
+  test.skip(process.env.CHORA_MODEL_ACCEPTANCE !== '1', 'Select real model acceptance explicitly')
+  test.setTimeout(600_000)
+  const catalog = await getJSON<{ models: Array<{ provider: string; modelId: string }> }>(request, '/api/models?agentExecutionProfile=local_connected')
+  const choices = catalog.models.filter(model => model.provider === 'deepseek').slice(0, 2)
+  expect(choices.length, 'Acceptance needs two Runtime-declared configured models').toBe(2)
+  for (const [index, selected] of choices.entries()) {
+    const repo = await createReviewFixture(`models-${index}-${runSuffix}`)
+    await startRealPiTask(page, request, repo, 'Change only README.md, keep Makefile unchanged and run make test.', true, undefined, false, selected)
+    const runURL = page.url()
+    const runPath = `/api/runs/${new URL(runURL).pathname.split('/').at(-1)}`
+    const before = await getJSON<any>(request, runPath)
+    expect(before.attemptDetail.modelBinding).toMatchObject(selected)
+    expect(before.attemptDetail.modelProvenance.identities).toContainEqual(selected)
+    expect(before.attemptHistory[0].modelBinding).toEqual(before.attemptDetail.modelBinding)
+    await stopServer('SIGTERM')
+    await startServer()
+    await page.goto(runURL)
+    const after = await getJSON<any>(request, runPath)
+    expect(after.attemptDetail.modelBinding).toEqual(before.attemptDetail.modelBinding)
+    expect(after.attemptHistory).toEqual(before.attemptHistory)
+  }
+})
+
 test('real Pi works in the Task worktree, then human Accept & Apply updates only the original checkout', async ({ page, request }) => {
   test.setTimeout(360_000)
   const discovery = await getJSON<PiDiscoveryView>(request, '/api/pi/discovery')
@@ -591,7 +615,7 @@ async function getTaskBase(request: APIRequestContext, path: string): Promise<Ta
   return { repoId: task.repository?.id ?? 'legacy', baseRevision: task.worktree!.baseRevision, baseTree: task.worktree!.baseTree, baseRef: task.worktree!.baseRef, startPolicy: task.worktree!.startPolicy }
 }
 
-async function startRealPiTask(page: import('@playwright/test').Page, request: APIRequestContext, repo: string, requirement: string, awaitReview = true, existingRoomId?: string, exactRequirement = false): Promise<StartedRealPiTask> {
+async function startRealPiTask(page: import('@playwright/test').Page, request: APIRequestContext, repo: string, requirement: string, awaitReview = true, existingRoomId?: string, exactRequirement = false, model?: { provider: string; modelId: string }): Promise<StartedRealPiTask> {
   const originalReadme = await readFile(join(repo, 'README.md'), 'utf8')
   const roomId = existingRoomId ?? (await addProject(request, repo)).repositoryBinding.roomId
   const directory = await getJSON<{ projects: Array<{ id: string; rooms: Array<{ id: string }> }> }>(request, '/api/projects')
@@ -618,11 +642,17 @@ async function startRealPiTask(page: import('@playwright/test').Page, request: A
   // Seed a retained scalar Task through its real compatibility API. Modern
   // Task creation is qualified separately; no response or snapshot is rewritten.
   const goal = await page.getByLabel('What should Chora build?').inputValue()
+  let modelBinding: unknown
+  if (model) {
+    await page.getByRole('combobox', { name: 'Model', exact: true }).selectOption(`${model.provider}:${model.modelId}`, { timeout: 30_000 })
+    const catalog = await getJSON<object>(request, '/api/models?agentExecutionProfile=local_connected')
+    modelBinding = { catalog, ...model, selectedAt: new Date().toISOString(), source: 'coding_agent' }
+  }
   const created = await request.post(`${baseURL}/api/rooms/${roomId}/tasks`, {
     headers: { 'Idempotency-Key': `legacy-fixture-${Date.now()}-${Math.random()}` },
     data: { title: goal.slice(0, 96), goal, criteria: ['Requirement satisfied'],
       revisionIds: [brief!.id], agentExecutionProfile: 'trusted_local',
-      projectSettingsVersion: settings.version },
+      projectSettingsVersion: settings.version, ...(modelBinding ? { modelBinding } : {}) },
   })
   expect(created.status(), await created.text()).toBe(201)
   const taskFixture = await created.json()

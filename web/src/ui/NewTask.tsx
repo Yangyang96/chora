@@ -86,11 +86,14 @@ export function NewTask({ projectId, roomId, roomName, busy, preparationPending 
         trustedLocalSelectable={trustedLocalSelectionReady}
         piDiscovery={piDiscovery}
         acknowledgedPolicyVersion={trustedLocalAcknowledgementPolicy}
-        onChange={setSelectedProfile}
+        onChange={(profile) => {
+          if (profile !== agentExecutionProfile) setModelBinding(undefined)
+          setSelectedProfile(profile)
+        }}
         onAcknowledgeTrustedLocal={onAcknowledgeTrustedLocal}
         onDisclosurePendingChange={setDisclosurePending}
       />
-      <ModelSelector value={modelBinding} onChange={setModelBinding} />
+      <ModelSelector key={agentExecutionProfile} agentExecutionProfile={agentExecutionProfile} value={modelBinding} onChange={setModelBinding} />
       {agentExecutionProfile === 'isolated_local' && isolatedLocal && <IsolatedLocal value={isolatedLocal} onPrepare={onPrepareIsolatedLocal ?? (() => {})} />}
       <p className="agent-profile-summary">
         {agentExecutionProfile ? <>{t('Selected profile:')} <AgentExecutionDisclosure profile={agentExecutionProfile} /></> : t('Choose Local Connected and acknowledge its host access before starting.')}

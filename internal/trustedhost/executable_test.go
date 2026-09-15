@@ -1,6 +1,9 @@
 package trustedhost
 
-import "testing"
+import (
+	"path/filepath"
+	"testing"
+)
 
 func TestValidateAllowedArgumentsTrailingRoot(t *testing.T) {
 	expected := []string{"--mode", "rpc", "--session-dir"}
@@ -60,6 +63,26 @@ func TestValidateAllowedArgumentsOnlyAddsPinnedReadOnlyObserver(t *testing.T) {
 	} {
 		if err := validateAllowedArguments(args, base, "/sessions", observer); err == nil {
 			t.Fatalf("unapproved native args accepted: %v", args)
+		}
+	}
+}
+
+func TestExplicitModelArgumentsPreserveSessionBoundary(t *testing.T) {
+	root := t.TempDir()
+	expected := []string{"--mode", "rpc", "--session-dir"}
+	base := append(append([]string{}, expected...), filepath.Join(root, "attempt"))
+	valid := append(append([]string{}, base...), "--provider", "runtime-provider", "--model", "runtime-model")
+	if err := validateAllowedArguments(valid, expected, root); err != nil {
+		t.Fatal(err)
+	}
+	for _, suffix := range [][]string{
+		{"--provider", "p", "--model", "--extension"},
+		{"--provider", "p", "--model", ""},
+		{"--provider", "p", "--model", "m", "--extension", "/outside"},
+		{"--provider", "p", "--model", "m", "--provider", "p", "--model", "m"},
+	} {
+		if err := validateAllowedArguments(append(append([]string{}, base...), suffix...), expected, root); err == nil {
+			t.Fatalf("accepted invalid suffix: %v", suffix)
 		}
 	}
 }

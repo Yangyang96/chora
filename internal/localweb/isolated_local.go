@@ -185,6 +185,20 @@ func composeIsolatedLocal(ctx context.Context, composition piComposition, runtim
 	if err != nil {
 		return composition, err
 	}
+	hostAdapter, _ := composition.adapter.(*agentpi.Adapter)
+	adapter, err = adapter.WithModelCatalog(func(ctx context.Context, profile domain.AgentExecutionProfile) (domain.ModelCatalog, error) {
+		if profile == domain.AgentExecutionProfileIsolatedLocal {
+			return e.modelCatalog(ctx)
+		}
+		// The existing host adapter retains its own discovery binding.
+		if hostAdapter == nil {
+			return domain.ModelCatalog{}, errors.New("host Runtime is unavailable")
+		}
+		return hostAdapter.DiscoverModelCatalog(ctx, profile)
+	})
+	if err != nil {
+		return composition, err
+	}
 	if authHome == "" {
 		home, homeErr := os.UserHomeDir()
 		if homeErr != nil {
@@ -327,4 +341,22 @@ func isolatedInvocationContract(inv execution.Invocation) ([]byte, error) {
 }
 func isolatedExecutionIdentity(source agentpi.IsolatedSource) speccoding.IsolatedExecutionIdentity {
 	return speccoding.IsolatedExecutionIdentity{ImageSHA256: strings.TrimPrefix(source.ImageID(), "sha256:"), SourceSHA256: fmt.Sprintf("%x", source.SourceIdentity()), PolicySHA256: source.PolicySHA256()}
+}
+
+func (e *isolatedLocalEnvironment) modelCatalog(ctx context.Context) (domain.ModelCatalog, error) {
+	if e == nil {
+		return domain.ModelCatalog{}, errors.New("Isolated Local is unavailable")
+	}
+	if err := e.available(ctx); err != nil {
+		return domain.ModelCatalog{}, err
+	}
+	record, err := isolatedenv.Load(ctx, e.dataRoot)
+	if err != nil {
+		return domain.ModelCatalog{}, err
+	}
+	models, err := isolatedenv.DiscoverModels(ctx, record.Runner, record.Source.ImageID())
+	if err != nil {
+		return domain.ModelCatalog{}, err
+	}
+	return runtimeModelCatalog("pi-isolated", record.Source.ImageID(), agentpi.IsolatedPiVersion, models)
 }

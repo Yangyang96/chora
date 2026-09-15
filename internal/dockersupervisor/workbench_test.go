@@ -89,6 +89,93 @@ func TestWorkbenchRejectsCapabilityBundleIdentityDrift(t *testing.T) {
 	}
 }
 
+func TestWorkbenchExecUsesInvocationModelBinding(t *testing.T) {
+	process := newFakeProcess()
+	runner := &fakeRunner{processes: []*fakeProcess{process}, boundaryStopped: true}
+	supervisor := newWorkbenchTestSupervisor(t, runner, func(context.Context, execution.Invocation, string) error { return nil })
+	invocation := testWorkbenchInvocation(t, testSource(t), "selected-model", supervisor.config)
+	arguments := invocation.Arguments()
+	arguments[slices.Index(arguments, "--model")+1] = "deepseek-v4-flash"
+	invocation = remakeInvocationArguments(t, invocation, arguments)
+	outcome := supervisor.Start(context.Background(), invocation, &testSink{binding: invocation.LaunchToken()})
+	if outcome.Kind != execution.Started {
+		t.Fatalf("Start() = %#v", outcome)
+	}
+	process.exit(0)
+	waitDone(t, supervisor.record(outcome.Handle).done)
+	var executed bool
+	for _, command := range runner.allCommands() {
+		index := slices.Index(command.Args, allowedExecutable)
+		if index >= 0 && len(command.Args) > 0 && command.Args[0] == "exec" {
+			executed = true
+			if !slices.Equal(command.Args[index+1:], arguments) {
+				t.Fatalf("executed argv = %q, want %q", command.Args[index+1:], arguments)
+			}
+		}
+	}
+	if !executed {
+		t.Fatal("missing Pi exec command")
+	}
+}
+
+func TestWorkbenchRejectsArgumentDriftBeforeSideEffects(t *testing.T) {
+	runner := &fakeRunner{}
+	supervisor := newWorkbenchTestSupervisor(t, runner, func(context.Context, execution.Invocation, string) error { return nil })
+	invocation := testWorkbenchInvocation(t, testSource(t), "argument-drift", supervisor.config)
+	base := invocation.Arguments()
+	providerIndex, modelIndex := slices.Index(base, "--provider")+1, slices.Index(base, "--model")+1
+	cases := map[string][]string{
+		"extra flag":       append(slices.Clone(base), "--session"),
+		"missing argument": slices.Clone(base[:len(base)-1]),
+	}
+	for index, arg := range base {
+		if index == providerIndex || index == modelIndex {
+			continue
+		}
+		mutated := slices.Clone(base)
+		mutated[index] = "changed"
+		cases["changed "+arg] = mutated
+	}
+	for _, index := range []int{providerIndex, modelIndex} {
+		for _, value := range []string{"", " ", "--extension", "-m", "model\nnext", "model\x00next", "model\u0085next", "model next"} {
+			mutated := slices.Clone(base)
+			mutated[index] = value
+			cases[base[index-1]+"="+value] = mutated
+		}
+	}
+	for name, arguments := range cases {
+		t.Run(name, func(t *testing.T) {
+			changed := remakeInvocationArguments(t, invocation, arguments)
+			outcome := supervisor.Start(context.Background(), changed, &testSink{binding: changed.LaunchToken()})
+			if outcome.Kind != execution.StartProvenNoChild || len(runner.allCommands()) != 0 {
+				t.Fatalf("Start() = %#v, commands = %#v", outcome, runner.allCommands())
+			}
+		})
+	}
+}
+
+func TestWorkbenchProviderBindingDoesNotRelaxLegacyArguments(t *testing.T) {
+	runner := &fakeRunner{}
+	supervisor := newWorkbenchTestSupervisor(t, runner, func(context.Context, execution.Invocation, string) error { return nil })
+	invocation := testWorkbenchInvocation(t, testSource(t), "provider-binding", supervisor.config)
+	arguments := invocation.Arguments()
+	arguments[slices.Index(arguments, "--provider")+1] = "catalog-provider"
+	arguments[slices.Index(arguments, "--model")+1] = "catalog/model-v2"
+	invocation = remakeInvocationArguments(t, invocation, arguments)
+	if _, err := supervisor.validateInvocation(invocation, &testSink{binding: invocation.LaunchToken()}); err != nil {
+		t.Fatalf("Workbench model binding rejected: %v", err)
+	}
+	legacy := newTestSupervisor(t, runner)
+	legacyInvocation := testInvocation(t, testSource(t), "legacy-model-drift")
+	legacyArguments := legacyInvocation.Arguments()
+	legacyArguments[slices.Index(legacyArguments, "--model")+1] = "other-model"
+	legacyInvocation = remakeInvocationArguments(t, legacyInvocation, legacyArguments)
+	outcome := legacy.Start(context.Background(), legacyInvocation, &testSink{binding: legacyInvocation.LaunchToken()})
+	if outcome.Kind != execution.StartProvenNoChild || len(runner.allCommands()) != 0 {
+		t.Fatalf("legacy Start() = %#v, commands = %#v", outcome, runner.allCommands())
+	}
+}
+
 func TestWorkbenchDeepSeekProjectionRequiresLiteralAPIKeyAndProjectsOnlyDeepSeek(t *testing.T) {
 	valid := `{"deepseek":{"type":"api_key","key":"literal-secret"},"openai-codex":{"type":"oauth","access":"excluded-secret"}}`
 	path := writeWorkbenchCredential(t, valid)

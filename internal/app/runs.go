@@ -105,6 +105,7 @@ func (s *Service) prepare(ctx context.Context, meta CommandMeta, runID domain.Ru
 		var automaticStatus *AutomaticRetry
 		var externalSession string
 		profile := charter.AgentExecutionProfileBinding()
+		modelBinding := charter.ModelBinding()
 		if retry == nil && charter.AdapterID() == "pi" && profile != currentProfileBinding {
 			return fmt.Errorf("%w: Charter drifted from current Agent execution profile preference", ErrInvalidCommand)
 		}
@@ -114,6 +115,7 @@ func (s *Service) prepare(ctx context.Context, meta CommandMeta, runID domain.Ru
 			if err != nil {
 				return err
 			}
+			modelBinding = old.ModelBinding()
 			if run.State() == domain.RunStateCancelled {
 				events, err := tx.ListRunEvents(ctx, runID)
 				if err != nil {
@@ -132,7 +134,7 @@ func (s *Service) prepare(ctx context.Context, meta CommandMeta, runID domain.Ru
 			}
 			// Fresh recovery must not inherit the failed Pi session identity.
 			// Retain the predecessor link for provenance and explicit resume paths.
-			freshRetry := retry.Automatic || old.AdapterID() == "pi" && ((run.State() == domain.RunStateRecoveryRequired && old.State() != domain.AttemptStateInterrupted) || old.AgentExecutionProfileBinding().ExecutionProvider() != domain.TrustedHostExecutionProvider)
+			freshRetry := retry.ModelBinding.Configured() && retry.ModelBinding.Record().ModelIdentity != old.ModelBinding().Record().ModelIdentity || retry.Automatic || old.AdapterID() == "pi" && ((run.State() == domain.RunStateRecoveryRequired && old.State() != domain.AttemptStateInterrupted) || old.AgentExecutionProfileBinding().ExecutionProvider() != domain.TrustedHostExecutionProvider)
 			if sessionErr == nil && !freshRetry {
 				externalSession = session.ExternalReference
 			}
@@ -159,7 +161,6 @@ func (s *Service) prepare(ctx context.Context, meta CommandMeta, runID domain.Ru
 		if err != nil {
 			return err
 		}
-		modelBinding := charter.ModelBinding()
 		if retry != nil && retry.ModelBinding.Configured() {
 			modelBinding = retry.ModelBinding
 		}

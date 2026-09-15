@@ -28,6 +28,7 @@ type attemptWire struct {
 	State                                                                     domain.AttemptState
 	CreatedAt                                                                 time.Time
 	AgentExecutionProfileBinding                                              domain.AgentExecutionProfileBindingRecord
+	ModelBinding                                                              domain.ModelBinding
 }
 type prepareWire struct {
 	Run        runWire
@@ -93,7 +94,7 @@ func wireAttempt(a domain.Attempt) attemptWire {
 	if id, ok := a.Predecessor(); ok {
 		pred = id.String()
 	}
-	return attemptWire{ID: a.ID().String(), RunID: a.RunID().String(), Sequence: a.Sequence(), Predecessor: pred, SnapshotID: a.ContextSnapshotID().String(), Digest: a.ContextDigest(), AdapterID: a.AdapterID(), ExternalSession: a.ExternalSession(), RetryReason: a.RetryReason(), InterventionReason: a.InterventionReason(), ContextDelta: a.ContextDelta(), State: a.State(), CreatedAt: a.CreatedAt(), AgentExecutionProfileBinding: a.AgentExecutionProfileBinding().Record()}
+	return attemptWire{ID: a.ID().String(), RunID: a.RunID().String(), Sequence: a.Sequence(), Predecessor: pred, SnapshotID: a.ContextSnapshotID().String(), Digest: a.ContextDigest(), AdapterID: a.AdapterID(), ExternalSession: a.ExternalSession(), RetryReason: a.RetryReason(), InterventionReason: a.InterventionReason(), ContextDelta: a.ContextDelta(), State: a.State(), CreatedAt: a.CreatedAt(), AgentExecutionProfileBinding: a.AgentExecutionProfileBinding().Record(), ModelBinding: a.ModelBinding()}
 }
 func restoreAttempt(w attemptWire) (domain.Attempt, error) {
 	id, e := domain.ParseAttemptID(w.ID)
@@ -120,7 +121,7 @@ func restoreAttempt(w attemptWire) (domain.Attempt, error) {
 	if e != nil {
 		return domain.Attempt{}, e
 	}
-	return domain.RestoreAttempt(domain.AttemptRecord{ID: id, RunID: run, Sequence: w.Sequence, Predecessor: pred, ContextSnapshotID: snapshot, ContextDigest: w.Digest, AdapterID: w.AdapterID, AgentExecutionProfileBinding: profile, ExternalSession: w.ExternalSession, RetryReason: w.RetryReason, InterventionReason: w.InterventionReason, ContextDelta: w.ContextDelta, State: w.State, CreatedAt: w.CreatedAt})
+	return domain.RestoreAttempt(domain.AttemptRecord{ID: id, RunID: run, Sequence: w.Sequence, Predecessor: pred, ContextSnapshotID: snapshot, ContextDigest: w.Digest, AdapterID: w.AdapterID, AgentExecutionProfileBinding: profile, ExternalSession: w.ExternalSession, RetryReason: w.RetryReason, InterventionReason: w.InterventionReason, ContextDelta: w.ContextDelta, State: w.State, CreatedAt: w.CreatedAt, ModelBinding: w.ModelBinding})
 }
 func wireExecutionDecision(gate domain.ExecutionDecisionGate) executionDecisionWire {
 	return executionDecisionWire{

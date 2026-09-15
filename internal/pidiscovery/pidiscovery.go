@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // DiscoveryState is the user-visible readiness of an installed Pi.
@@ -53,49 +54,125 @@ type ModelOption struct {
 	ModelID  string `json:"modelId"`
 }
 
-// DiscoverModels reads the declared default model without contacting a provider.
+// DiscoverModels resolves Pi on PATH for callers without a discovered runtime.
+// Callers that already proved a runtime identity should use DiscoverModelsForRuntime.
 func DiscoverModels(piHome string) ([]ModelOption, error) {
+	executable, err := exec.LookPath("pi")
+	if err != nil {
+		return nil, fmt.Errorf("locate Pi model catalog: %w", err)
+	}
+	return DiscoverModelsForRuntime(context.Background(), executable, piHome)
+}
+
+// ResolvePiHome freezes the configuration directory shared by discovery and launch.
+// Explicit configuration takes priority over Pi's environment override and default.
+func ResolvePiHome(piHome string) (string, error) {
 	if piHome == "" {
+		piHome = os.Getenv("PI_CODING_AGENT_DIR")
+	}
+	if piHome == "" || piHome == "~" || strings.HasPrefix(piHome, "~/") {
 		home, err := os.UserHomeDir()
 		if err != nil {
-			return nil, err
+			return "", err
 		}
-		piHome = filepath.Join(home, ".pi", "agent")
-	}
-	// Ask the installed Runtime for its current catalog. This keeps provider
-	// and model availability owned by Pi rather than a Chora-maintained list.
-	if executable, err := exec.LookPath("pi"); err == nil {
-		if output, runErr := exec.Command(executable, "--list-models").Output(); runErr == nil {
-			if models := parseModelTable(string(output)); len(models) > 0 {
-				return models, nil
-			}
+		if piHome == "" {
+			piHome = filepath.Join(home, ".pi", "agent")
+		} else {
+			piHome = filepath.Join(home, strings.TrimPrefix(strings.TrimPrefix(piHome, "~"), "/"))
 		}
 	}
-	data, err := os.ReadFile(filepath.Join(piHome, "settings.json"))
+	if strings.ContainsRune(piHome, 0) {
+		return "", errors.New("Pi configuration directory contains a null character")
+	}
+	return filepath.Abs(piHome)
+}
+
+func piHomeEnvironment(piHome string) []string {
+	env := make([]string, 0, len(os.Environ())+1)
+	for _, entry := range os.Environ() {
+		if !strings.HasPrefix(entry, "PI_CODING_AGENT_DIR=") {
+			env = append(env, entry)
+		}
+	}
+	return append(env, "PI_CODING_AGENT_DIR="+piHome)
+}
+
+const modelDiscoveryTimeout = 5 * time.Second
+
+// DiscoverModelsForRuntime asks the selected Pi runtime for its current catalog.
+// Settings are never a substitute for an available model reported by that runtime.
+func DiscoverModelsForRuntime(ctx context.Context, executable, piHome string) ([]ModelOption, error) {
+	if !filepath.IsAbs(executable) {
+		return nil, errors.New("Pi model catalog requires an absolute executable path")
+	}
+	piHome, err := ResolvePiHome(piHome)
 	if err != nil {
 		return nil, err
 	}
-	var settings struct {
-		DefaultProvider string `json:"defaultProvider"`
-		DefaultModel    string `json:"defaultModel"`
+	if ctx == nil {
+		ctx = context.Background()
 	}
-	if err := json.Unmarshal(data, &settings); err != nil || strings.TrimSpace(settings.DefaultProvider) == "" || strings.TrimSpace(settings.DefaultModel) == "" {
+	ctx, cancel := context.WithTimeout(ctx, modelDiscoveryTimeout)
+	defer cancel()
+	command := exec.CommandContext(ctx, executable, "--list-models")
+	// Bound waiting even if a subprocess inherits stdout after Pi exits.
+	command.WaitDelay = 100 * time.Millisecond
+	for _, entry := range os.Environ() {
+		if !strings.HasPrefix(entry, "PI_CODING_AGENT_DIR=") && !strings.HasPrefix(entry, "NO_COLOR=") && !strings.HasPrefix(entry, "FORCE_COLOR=") {
+			command.Env = append(command.Env, entry)
+		}
+	}
+	command.Env = append(command.Env, "PI_CODING_AGENT_DIR="+piHome, "NO_COLOR=1", "FORCE_COLOR=0")
+	output, err := command.Output()
+	if ctx.Err() != nil {
+		return nil, fmt.Errorf("Pi model catalog: %w", ctx.Err())
+	}
+	if err != nil {
+		return nil, fmt.Errorf("Pi model catalog command failed: %w", err)
+	}
+	models := parseModelTable(string(output))
+	if len(models) == 0 {
 		return nil, errors.New("Pi has no verifiable model catalog")
 	}
-	return []ModelOption{{Provider: strings.TrimSpace(settings.DefaultProvider), ModelID: strings.TrimSpace(settings.DefaultModel)}}, nil
+	return models, nil
 }
+
+var tokenCountPattern = regexp.MustCompile(`^[0-9]+(?:\.[0-9]+)?[KM]?$`)
 
 func parseModelTable(output string) []ModelOption {
 	var models []ModelOption
+	seen := make(map[ModelOption]bool)
+	header := false
 	for _, line := range strings.Split(output, "\n") {
 		fields := strings.Fields(line)
-		if len(fields) >= 2 && fields[0] != "provider" && fields[0] != "─" {
-			provider, model := strings.TrimSpace(fields[0]), strings.TrimSpace(fields[1])
-			if provider != "" && model != "" && provider != "provider" && model != "model" {
-				models = append(models, ModelOption{Provider: provider, ModelID: model})
+		if len(fields) == 0 {
+			continue
+		}
+		if !header {
+			if strings.Join(fields, " ") != "provider model context max-out thinking images" {
+				return nil
 			}
+			header = true
+			continue
+		}
+		// Pi emits six columns. Validate their shape so diagnostics and partial
+		// output cannot be mistaken for model identities.
+		if len(fields) != 6 || !tokenCountPattern.MatchString(fields[2]) || !tokenCountPattern.MatchString(fields[3]) ||
+			(fields[4] != "yes" && fields[4] != "no") || (fields[5] != "yes" && fields[5] != "no") {
+			return nil
+		}
+		model := ModelOption{Provider: fields[0], ModelID: fields[1]}
+		if !seen[model] {
+			seen[model] = true
+			models = append(models, model)
 		}
 	}
+	sort.Slice(models, func(i, j int) bool {
+		if models[i].Provider != models[j].Provider {
+			return models[i].Provider < models[j].Provider
+		}
+		return models[i].ModelID < models[j].ModelID
+	})
 	return models
 }
 
@@ -227,13 +304,17 @@ func versionError(err error) string {
 // probeReadiness probes each configured provider with the deterministic,
 // non-mutating `pi auth check --provider <p> --no-refresh` form.
 func probeReadiness(ctx context.Context, executable, piHome string) ([]string, []string, error) {
+	piHome, err := ResolvePiHome(piHome)
+	if err != nil {
+		return nil, nil, err
+	}
 	providers, err := configuredProviders(piHome)
 	if err != nil {
 		return nil, nil, err
 	}
 	var ready, notReady []string
 	for _, provider := range providers {
-		output, err := runPi(ctx, executable, "auth", "check", "--provider", provider, "--no-refresh")
+		output, err := runPiWithEnvironment(ctx, executable, piHomeEnvironment(piHome), "auth", "check", "--provider", provider, "--no-refresh")
 		if err != nil {
 			notReady = append(notReady, provider)
 			continue
@@ -250,12 +331,9 @@ func probeReadiness(ctx context.Context, executable, piHome string) ([]string, [
 }
 
 func configuredProviders(piHome string) ([]string, error) {
-	if piHome == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return nil, err
-		}
-		piHome = filepath.Join(home, ".pi", "agent")
+	piHome, err := ResolvePiHome(piHome)
+	if err != nil {
+		return nil, err
 	}
 	providers := map[string]struct{}{}
 	if data, err := os.ReadFile(filepath.Join(piHome, "settings.json")); err == nil {
@@ -283,7 +361,12 @@ func configuredProviders(piHome string) ([]string, error) {
 }
 
 func runPi(ctx context.Context, executable string, args ...string) ([]byte, error) {
+	return runPiWithEnvironment(ctx, executable, nil, args...)
+}
+
+func runPiWithEnvironment(ctx context.Context, executable string, env []string, args ...string) ([]byte, error) {
 	command := exec.CommandContext(ctx, executable, args...)
+	command.Env = env
 	var stderr strings.Builder
 	command.Stderr = &stderr
 	output, err := command.Output()

@@ -22,6 +22,7 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	"unicode"
 
 	"github.com/Yangyang96/chora/internal/acceptanceauthority"
 	agentpi "github.com/Yangyang96/chora/internal/agent/pi"
@@ -535,11 +536,11 @@ type invocationMetadata struct {
 }
 
 func (supervisor *Supervisor) validateInvocation(invocation execution.Invocation, sink execution.RuntimeSink) (invocationMetadata, error) {
-	wantedArguments := frozenArguments
+	argumentsValid := slices.Equal(invocation.Arguments(), frozenArguments)
 	if supervisor.config.Workbench != nil {
-		wantedArguments = supervisor.config.Workbench.Arguments
+		argumentsValid = workbenchInvocationArgumentsMatch(invocation.Arguments(), supervisor.config.Workbench.Arguments)
 	}
-	if invocation.AdapterID() != allowedAdapter || invocation.Executable() != allowedExecutable || !slices.Equal(invocation.Arguments(), wantedArguments) {
+	if invocation.AdapterID() != allowedAdapter || invocation.Executable() != allowedExecutable || !argumentsValid {
 		return invocationMetadata{}, errors.New("invocation identity or arguments are not frozen Pi RPC")
 	}
 	if sink == nil || !invocation.LaunchToken().Valid() || sink.Binding() != invocation.LaunchToken() {
@@ -614,6 +615,27 @@ func (supervisor *Supervisor) validateInvocation(invocation execution.Invocation
 		}
 	}
 	return invocationMetadata{runID: environment[EnvRunID], attemptID: environment[EnvAttemptID], taskID: taskID, snapshotID: snapshotID, environment: environment, prompt: prompt}, nil
+}
+
+// The adapter validates model availability against its Runtime catalog. Here only
+// the two model-binding values may vary; the executable policy remains frozen.
+func workbenchInvocationArgumentsMatch(arguments, template []string) bool {
+	if len(arguments) != len(template) {
+		return false
+	}
+	for index := 0; index < len(template); index++ {
+		if arguments[index] != template[index] {
+			return false
+		}
+		if template[index] == "--provider" || template[index] == "--model" {
+			index++
+			if index >= len(arguments) || arguments[index] == "" || strings.HasPrefix(arguments[index], "-") ||
+				strings.ContainsFunc(arguments[index], func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func validateWorkbenchPrompt(stdin []byte, contextDigest, contractDigest string) (string, string, error) {
@@ -947,7 +969,7 @@ func (supervisor *Supervisor) writeAttemptRootMarker(root, attemptID string) err
 
 func (supervisor *Supervisor) setup(ctx context.Context, record *attemptRecord, invocation execution.Invocation, metadata invocationMetadata, projection taskProjection) error {
 	if supervisor.config.Workbench != nil {
-		return supervisor.setupWorkbench(ctx, record, metadata, projection)
+		return supervisor.setupWorkbench(ctx, record, invocation, metadata, projection)
 	}
 	profile := domain.AgentExecutionProfile(metadata.environment[EnvExecutionProfile])
 	bundle, err := agentpi.ManagedCapabilityBundleForProfile(profile)
@@ -1038,7 +1060,7 @@ func (supervisor *Supervisor) setup(ctx context.Context, record *attemptRecord, 
 	return nil
 }
 
-func (supervisor *Supervisor) setupWorkbench(ctx context.Context, record *attemptRecord, metadata invocationMetadata, projection taskProjection) error {
+func (supervisor *Supervisor) setupWorkbench(ctx context.Context, record *attemptRecord, invocation execution.Invocation, metadata invocationMetadata, projection taskProjection) error {
 	observerPath := filepath.Join(record.contextDir, "observer.json")
 	info, statErr := os.Lstat(observerPath)
 	configBytes, err := os.ReadFile(observerPath)
@@ -1137,7 +1159,7 @@ func (supervisor *Supervisor) setupWorkbench(ctx context.Context, record *attemp
 		return err
 	}
 	execArgs := []string{"exec", "-i", "--user", "1000:1000", "--workdir", "/workspace/repository", record.container, allowedExecutable}
-	execArgs = append(execArgs, supervisor.config.Workbench.Arguments...)
+	execArgs = append(execArgs, invocation.Arguments()...)
 	process, err := supervisor.config.Runner.Start(context.Background(), Command{Args: execArgs, Stdout: stdout, Stderr: stderr})
 	if process != nil {
 		record.process = process

@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, test, vi } from 'vitest'
-import type { RunView } from '../types'
+import type { ModelBinding, RunView } from '../types'
 import { LanguageProvider } from '../i18n'
 import { RunStream } from './RunStream'
 
@@ -9,7 +9,7 @@ type RunStreamHandlers = {
   onCancel?: () => void
   onReview?: (kind: 'accept' | 'reject', note: string, rejectionClass?: 'implementation_gap' | 'planning_gap' | 'contract_change_required') => void
   onApply?: () => void
-  onRetry?: (instructions: string) => void
+  onRetry?: (instructions: string, modelBinding?: ModelBinding) => void
   onSwitchProfile?: (profile: 'minimal' | 'standard' | 'isolated_local' | 'trusted_local', reason: string) => Promise<boolean>
   onChangeRequirement?: () => void
 }
@@ -354,6 +354,31 @@ describe('RunStream review actions', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Retry Pi' }))
     expect(onRetry).toHaveBeenCalledWith('Resolve the rejected acceptance gap and return an updated result.')
+  })
+
+  test('selects a retry model without changing history and resets selection for the successor', async () => {
+    const catalog = { agentId: 'pi', runtimeIdentity: 'pi', runtimeVersion: '1', models: [{ provider: 'openai', modelId: 'gpt-5' }], digest: 'd' }
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => catalog } as Response))
+    vi.stubGlobal('fetch', fetchMock)
+    const onRetry = vi.fn()
+    const run = makeRun({
+      status: 'revision_required',
+      agentExecution: { profile: 'trusted_local', runtimeSource: 'local_pi', executionProvider: 'trusted_host', capabilityPolicy: 'pi.native', trustDisclosurePolicy: '', sandboxed: false, disclosureLabel: 'Trusted Local · No Sandbox' },
+      controls: { canCancel: false, canRetry: true, canReview: false },
+      attemptHistory: [{ id: 'attempt-1', sequence: 1, state: 'failed', snapshotId: 's1', snapshotDigest: 'd1', artifacts: [], unknowns: [], modelProvenance: { status: 'observed', identities: [{ provider: 'old-provider', modelId: 'old-model' }] } }],
+    })
+    const view = renderWorkbench(run, { onRetry })
+    const selector = await screen.findByRole('combobox', { name: 'Model' })
+    expect(selector).toHaveDisplayValue('Keep previous attempt model')
+    expect(fetchMock).toHaveBeenCalledWith('/api/models?agentExecutionProfile=local_connected', expect.anything())
+    await userEvent.selectOptions(selector, 'openai:gpt-5')
+    await userEvent.click(screen.getByRole('button', { name: 'Retry Pi' }))
+    expect(onRetry).toHaveBeenLastCalledWith(expect.any(String), expect.objectContaining({ catalog, provider: 'openai', modelId: 'gpt-5' }))
+    expect(screen.getByText('old-model')).toBeInTheDocument()
+    view.rerender(<RunStream run={{ ...run, attempt: 2 }} busy={false} onRetry={onRetry} onCancel={vi.fn()} onReview={vi.fn()} onApply={vi.fn()} onSwitchProfile={vi.fn()} onAcknowledgeTrustedLocal={vi.fn()} onResolveDecision={vi.fn()} onRetryVerification={vi.fn()} onChangeRequirement={vi.fn()} />)
+    expect(await screen.findByRole('combobox', { name: 'Model' })).toHaveDisplayValue('Keep previous attempt model')
+    await userEvent.click(screen.getByRole('button', { name: 'Retry Pi' }))
+    expect(onRetry).toHaveBeenLastCalledWith('Resolve the rejected acceptance gap and return an updated result.')
   })
 
   test('renders pending Apply, conflict recovery, and loading controls', async () => {

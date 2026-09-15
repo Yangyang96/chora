@@ -125,3 +125,10 @@ M2-S5-1 需两个子切片通过。区分 Agent 提案、系统观测和用户�
 ### Runtime 自主管理模型能力发现
 
 M2-S5-2 不要求 Chora 维护手工模型白名单。每个 Runtime 自己负责能力发现与校验。Chora 可以缓存仅含身份信息的目录用于展示，但启动时必须再次向 Runtime 校验选择。模型变更只影响新的 Attempt；旧 Attempt 的请求和实际 Provider/模型来源保持不可变。Runtime 移除模型或认证失败时必须 fail-closed，不能静默替换。
+
+Local Connected 从选定的 Pi 可执行文件及配置发现模型。Isolated Local 在无凭据、
+无网络条件下读取已准备镜像内 Pi 的内置目录；目录不代表所有 Provider 都已认证，
+当前隔离凭据投影仍仅支持 DeepSeek。新任务可使用 Runtime 默认值或显式选择模型。
+重试默认继承上一次 Attempt 的选择，也可改选；界面分别展示请求模型与观测模型。
+切换执行模式保留模型身份，并要求目标 Runtime 支持该模型。Pi CLI 无法精确表达的
+歧义模型引用会被拒绝，不会解析成另一个别名模型。

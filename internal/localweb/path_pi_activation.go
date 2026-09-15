@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Yangyang96/chora/internal/domain"
 	"os"
 	"path/filepath"
+	"strings"
 
 	agentpi "github.com/Yangyang96/chora/internal/agent/pi"
 	"github.com/Yangyang96/chora/internal/pidiscovery"
@@ -29,6 +31,11 @@ var pathPiArgumentsPrefix = []string{"--mode", "rpc", "--session-dir"}
 // empty (no adapter or supervisor), so the server still boots, GET
 // /api/pi/discovery reports the state, and a Task start fails closed.
 func composePathPiRuntime(ctx context.Context, runtimeRoot, sessionRoot string, discovery pidiscovery.Options, timeoutPolicy acceptanceTimeoutPolicy, installGuards ...piInstallationGuard) (piComposition, pidiscovery.Result, error) {
+	resolvedHome, err := pidiscovery.ResolvePiHome(discovery.PiHome)
+	if err != nil {
+		return piComposition{}, pidiscovery.Result{}, err
+	}
+	discovery.PiHome = resolvedHome
 	result, err := pidiscovery.Discover(ctx, discovery)
 	if err != nil {
 		return piComposition{}, result, fmt.Errorf("discover PATH Pi: %w", err)
@@ -58,7 +65,12 @@ func composePathPiRuntime(ctx context.Context, runtimeRoot, sessionRoot string, 
 	if err != nil {
 		return piComposition{}, result, fmt.Errorf("prepare read-only resource observer: %w", err)
 	}
-	adapter, err := agentpi.New(agentpi.Config{PathPiSource: source, SessionRoot: sessionRoot, ResourceObserver: &observer})
+	adapter, err := agentpi.New(agentpi.Config{PathPiSource: source, SessionRoot: sessionRoot, ResourceObserver: &observer, ModelCatalog: func(ctx context.Context, profile domain.AgentExecutionProfile) (domain.ModelCatalog, error) {
+		if profile != domain.AgentExecutionProfileTrustedLocal {
+			return domain.ModelCatalog{}, errors.New("Runtime model discovery is unavailable for this profile")
+		}
+		return pathModelCatalog(ctx, discovery)
+	}})
 	if err != nil {
 		return piComposition{}, result, fmt.Errorf("construct PATH Pi adapter: %w", err)
 	}
@@ -71,6 +83,15 @@ func composePathPiRuntime(ctx context.Context, runtimeRoot, sessionRoot string, 
 		AllowedTrailingPathRoot: sessionRoot,
 		DirectWorkingRoot:       true,
 		MaxRuntime:              timeoutPolicy.AttemptTimeout,
+	}
+	if discovery.PiHome != "" {
+		ambient := []string{}
+		for _, entry := range os.Environ() {
+			if !strings.HasPrefix(entry, "PI_CODING_AGENT_DIR=") {
+				ambient = append(ambient, entry)
+			}
+		}
+		supervisorConfig.AmbientEnvironment = append(ambient, "PI_CODING_AGENT_DIR="+discovery.PiHome)
 	}
 	if len(installGuards) > 0 && installGuards[0].installer != nil {
 		guard := installGuards[0]

@@ -1,17 +1,18 @@
 import { useI18n } from '../i18n'
-import type { ModelProvenance as ModelProvenanceValue, RunView } from '../types'
+import type { ModelBinding, ModelProvenance as ModelProvenanceValue, RunView } from '../types'
 
 type Props = {
   current?: ModelProvenanceValue
+  currentBinding?: ModelBinding | null
   history?: NonNullable<RunView['attemptHistory']>
 }
 
-export function ModelProvenance({ current, history = [] }: Props) {
+export function ModelProvenance({ current, currentBinding, history = [] }: Props) {
   const { locale } = useI18n()
   const copy = locale === 'zh-CN'
-    ? { title: '模型来源', current: '当前尝试', attempt: '尝试', unknown: '未知', provider: '提供方未知', reason: '此尝试未观察到模型身份。' }
-    : { title: 'Model provenance', current: 'Current Attempt', attempt: 'Attempt', unknown: 'Unknown', provider: 'Unknown provider', reason: 'No model identity was observed for this Attempt.' }
-  const entries = history.length > 0 ? history : current ? [{ id: 'current', sequence: 0, modelProvenance: current }] : []
+    ? { title: '模型来源', current: '当前尝试', attempt: '尝试', requested: '请求模型', observed: '观测模型', unknown: '未知', provider: '提供方未知', reason: '此尝试未观察到模型身份。' }
+    : { title: 'Model provenance', current: 'Current Attempt', attempt: 'Attempt', requested: 'Requested model', observed: 'Observed model', unknown: 'Unknown', provider: 'Unknown provider', reason: 'No model identity was observed for this Attempt.' }
+  const entries = history.length > 0 ? history : current || currentBinding ? [{ id: 'current', sequence: 0, modelProvenance: current, modelBinding: currentBinding }] : []
   if (entries.length === 0) return null
   return (
     <section className="workbench-section" aria-labelledby="model-provenance-title">
@@ -22,6 +23,8 @@ export function ModelProvenance({ current, history = [] }: Props) {
             const provenance = entry.modelProvenance ?? { status: 'unknown' as const, identities: [], reason: copy.reason }
             return <li key={entry.id}>
               <strong>{entry.sequence > 0 ? `${copy.attempt} ${entry.sequence}` : copy.current}</strong>
+              {entry.modelBinding && <p>{copy.requested} · <span>{entry.modelBinding.provider}</span> · <code>{entry.modelBinding.modelId}</code></p>}
+              <p>{copy.observed}</p>
               {provenance.status === 'observed' && provenance.identities.length > 0
                 ? <ul>{provenance.identities.map((identity) => <li key={`${identity.provider}:${identity.modelId}`}><span>{identity.provider === 'unknown' ? copy.provider : identity.provider}</span> · <code>{identity.modelId}</code></li>)}</ul>
                 : <p>{copy.unknown} · {locale === 'zh-CN' ? copy.reason : (provenance.reason ?? copy.reason)}</p>}

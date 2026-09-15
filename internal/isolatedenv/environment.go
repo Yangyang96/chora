@@ -121,13 +121,9 @@ func Prepare(ctx context.Context, sourceRoot, dataRoot string) (Record, error) {
 	}
 	// Capability discovery belongs to the Runtime image. Probe the installed Pi
 	// inside the image during preparation so the host never invents a catalog.
-	modelResult, modelErr := runner.Run(ctx, dockersupervisor.Command{Args: []string{"run", "--rm", "--pull=never", "--network", "none", imageID, "--list-models"}})
-	if modelErr != nil || modelResult.ExitCode != 0 || len(strings.TrimSpace(string(modelResult.Stdout))) == 0 {
-		return Record{}, fmt.Errorf("discover isolated Pi model capabilities: %w: %s", modelErr, boundedDiagnostic(modelResult.Stderr))
-	}
-	models := pidiscovery.ParseModelTable(string(modelResult.Stdout))
-	if len(models) == 0 {
-		return Record{}, errors.New("isolated Pi model capability output is invalid")
+	models, err := DiscoverModels(ctx, runner, imageID)
+	if err != nil {
+		return Record{}, err
 	}
 	source, err := agentpi.NewIsolatedSource(agentpi.IsolatedSourceParams{ImageID: imageID, HelperSHA256: helperHash, PolicySHA256: dockersupervisor.WorkbenchPolicyDigest})
 	if err != nil {
@@ -202,10 +198,11 @@ func Load(ctx context.Context, dataRoot string) (Record, error) {
 	if err != nil || result.ExitCode != 0 || strings.TrimSpace(string(result.Stdout)) != source.ImageID() {
 		return Record{}, errors.New("public isolated image is unavailable or drifted")
 	}
-	if len(d.Models) == 0 {
-		return Record{}, errors.New("public isolated Runtime model capabilities are unavailable")
+	models, err := validateModels(d.Models)
+	if err != nil {
+		return Record{}, errors.New("public isolated Runtime model capabilities are unavailable or invalid")
 	}
-	return Record{source, runner, observed, contract, qualification, d.GitVersion, d.Models}, nil
+	return Record{source, runner, observed, contract, qualification, d.GitVersion, models}, nil
 }
 
 func writeBuildContext(source, stage, helper, tarball string) error {
