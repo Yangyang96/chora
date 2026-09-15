@@ -21,6 +21,7 @@ import (
 
 	agentpi "github.com/Yangyang96/chora/internal/agent/pi"
 	"github.com/Yangyang96/chora/internal/dockersupervisor"
+	"github.com/Yangyang96/chora/internal/pidiscovery"
 	"github.com/Yangyang96/chora/internal/piinstall"
 )
 
@@ -39,6 +40,7 @@ type Record struct {
 	Capability     dockersupervisor.CapabilityProbeContract `json:"-"`
 	Qualification  dockersupervisor.EngineQualification     `json:"-"`
 	GitVersion     string                                   `json:"-"`
+	Models         []pidiscovery.ModelOption                `json:"-"`
 }
 
 type diskRecord struct {
@@ -52,6 +54,7 @@ type diskRecord struct {
 	ObserverSHA256       string                                         `json:"observerSHA256"`
 	GitVersion           string                                         `json:"gitVersion"`
 	WorkspaceProbe       string                                         `json:"workspaceProbe"`
+	Models               []pidiscovery.ModelOption                      `json:"models"`
 }
 
 func Prepare(ctx context.Context, sourceRoot, dataRoot string) (Record, error) {
@@ -122,6 +125,10 @@ func Prepare(ctx context.Context, sourceRoot, dataRoot string) (Record, error) {
 	if modelErr != nil || modelResult.ExitCode != 0 || len(strings.TrimSpace(string(modelResult.Stdout))) == 0 {
 		return Record{}, fmt.Errorf("discover isolated Pi model capabilities: %w: %s", modelErr, boundedDiagnostic(modelResult.Stderr))
 	}
+	models := pidiscovery.ParseModelTable(string(modelResult.Stdout))
+	if len(models) == 0 {
+		return Record{}, errors.New("isolated Pi model capability output is invalid")
+	}
 	source, err := agentpi.NewIsolatedSource(agentpi.IsolatedSourceParams{ImageID: imageID, HelperSHA256: helperHash, PolicySHA256: dockersupervisor.WorkbenchPolicyDigest})
 	if err != nil {
 		return Record{}, err
@@ -149,11 +156,11 @@ func Prepare(ctx context.Context, sourceRoot, dataRoot string) (Record, error) {
 	if err := dockersupervisor.VerifyWorkbenchWorkspaceVolume(ctx, runner, imageID, probeRoot); err != nil {
 		return Record{}, fmt.Errorf("qualify public workspace volume: %w", err)
 	}
-	disk := diskRecord{recordSchema, source.Record(), contextName, endpoint, identity.Record(), contract.Record(), qualification.Record(), observerDigest(), gitVersion, workspaceProbeVersion}
+	disk := diskRecord{recordSchema, source.Record(), contextName, endpoint, identity.Record(), contract.Record(), qualification.Record(), observerDigest(), gitVersion, workspaceProbeVersion, models}
 	if err := writeMetadata(dataRoot, disk); err != nil {
 		return Record{}, err
 	}
-	return Record{source, runner, identity, contract, qualification, gitVersion}, nil
+	return Record{source, runner, identity, contract, qualification, gitVersion, models}, nil
 }
 
 func Load(ctx context.Context, dataRoot string) (Record, error) {
@@ -195,7 +202,10 @@ func Load(ctx context.Context, dataRoot string) (Record, error) {
 	if err != nil || result.ExitCode != 0 || strings.TrimSpace(string(result.Stdout)) != source.ImageID() {
 		return Record{}, errors.New("public isolated image is unavailable or drifted")
 	}
-	return Record{source, runner, observed, contract, qualification, d.GitVersion}, nil
+	if len(d.Models) == 0 {
+		return Record{}, errors.New("public isolated Runtime model capabilities are unavailable")
+	}
+	return Record{source, runner, observed, contract, qualification, d.GitVersion, d.Models}, nil
 }
 
 func writeBuildContext(source, stage, helper, tarball string) error {

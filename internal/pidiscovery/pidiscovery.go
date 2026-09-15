@@ -99,6 +99,9 @@ func parseModelTable(output string) []ModelOption {
 	return models
 }
 
+// ParseModelTable parses the identity-only table emitted by Pi --list-models.
+func ParseModelTable(output string) []ModelOption { return parseModelTable(output) }
+
 // Options lets tests and embedding callers override the ambient environment.
 type Options struct {
 	LookPath func(string) (string, error)

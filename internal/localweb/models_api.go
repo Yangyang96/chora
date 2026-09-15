@@ -17,6 +17,20 @@ func (server *Server) getSupportedModels(writer http.ResponseWriter, request *ht
 		return
 	}
 	writer.Header().Set("Content-Type", "application/json")
+	if server.isolatedLocal != nil {
+		server.isolatedLocal.mu.Lock()
+		isolatedModels := append([]pidiscovery.ModelOption(nil), server.isolatedLocal.models...)
+		state := server.isolatedLocal.view.State
+		server.isolatedLocal.mu.Unlock()
+		if state == "ready" && len(isolatedModels) > 0 {
+			models := make([]agentpi.SupportedModel, 0, len(isolatedModels))
+			for _, option := range isolatedModels {
+				models = append(models, agentpi.SupportedModel{Provider: option.Provider, ModelID: option.ModelID})
+			}
+			_ = json.NewEncoder(writer).Encode(agentpi.NewSupportedModelCatalog("pi-isolated", server.isolatedLocal.source.ImageID(), agentpi.IsolatedPiVersion, models))
+			return
+		}
+	}
 	options, err := pidiscovery.DiscoverModels(server.piDiscoveryOptions.PiHome)
 	if err != nil || len(options) == 0 {
 		writeError(writer, http.StatusServiceUnavailable, fmt.Errorf("Runtime model capabilities unavailable"))

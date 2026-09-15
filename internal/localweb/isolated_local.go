@@ -22,6 +22,7 @@ import (
 	"github.com/Yangyang96/chora/internal/isolatedenv"
 	"github.com/Yangyang96/chora/internal/isolatedproxy"
 	"github.com/Yangyang96/chora/internal/isolatedworkspace"
+	"github.com/Yangyang96/chora/internal/pidiscovery"
 	"github.com/Yangyang96/chora/internal/speccoding"
 	storecontract "github.com/Yangyang96/chora/internal/store"
 )
@@ -59,6 +60,7 @@ type isolatedLocalEnvironment struct {
 	sourceRoot, dataRoot string
 	source               agentpi.IsolatedSource
 	proxy                isolatedproxy.Config
+	models               []pidiscovery.ModelOption
 }
 
 func newIsolatedLocalEnvironment(sourceRoot, dataRoot string) *isolatedLocalEnvironment {
@@ -161,6 +163,7 @@ func composeIsolatedLocal(ctx context.Context, composition piComposition, runtim
 		return composition, err
 	}
 	e.proxy = proxy
+	e.models = append([]pidiscovery.ModelOption(nil), record.Models...)
 	params := record.Source.Record()
 	if proxy.Enabled() {
 		params.ProxySHA256 = proxy.Digest()
