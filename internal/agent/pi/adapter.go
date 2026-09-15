@@ -748,13 +748,8 @@ func projectLine(line []byte, strictModel bool, workingRoots ...string) (executi
 			modelID, _ = firstString(objectField(raw, "model"), "id")
 		}
 		if modelID != "" {
-			if strictModel && modelID != frozenModelID {
-				return execution.NormalizedEvent{}, false, errors.New("Pi model identity mismatch")
-			}
 			projected["model_id"] = modelID
-			if strictModel {
-				projected["model_digest"] = frozenModelDigest
-			} else if provider, ok := firstString(raw, "provider"); ok {
+			if provider, ok := firstString(raw, "provider"); ok {
 				projected["provider"] = provider
 			}
 		}
