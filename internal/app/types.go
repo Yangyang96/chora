@@ -239,6 +239,7 @@ type PrepareRetryRequest struct {
 	ExpectedVersion      uint64
 	Reason, Instructions string
 	Automatic            bool
+	ModelBinding         domain.ModelBinding
 }
 type PrepareProfileSwitchRequest struct {
 	CommandMeta

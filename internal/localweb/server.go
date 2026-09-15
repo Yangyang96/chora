@@ -2789,8 +2789,9 @@ func (server *Server) retryRun(writer http.ResponseWriter, request *http.Request
 		return
 	}
 	var input struct {
-		ExpectedVersion *uint64 `json:"expectedVersion"`
-		Instructions    string  `json:"instructions"`
+		ExpectedVersion *uint64         `json:"expectedVersion"`
+		Instructions    string          `json:"instructions"`
+		ModelBinding    json.RawMessage `json:"modelBinding"`
 	}
 	if err := decodeJSON(request, &input); err != nil {
 		writeError(writer, http.StatusBadRequest, err)
@@ -2808,6 +2809,13 @@ func (server *Server) retryRun(writer http.ResponseWriter, request *http.Request
 	meta, ok := requestCommandMetaForProduct(writer, request, "retry-run", server.product)
 	if !ok {
 		return
+	}
+	var modelBinding domain.ModelBinding
+	if len(input.ModelBinding) > 0 {
+		if err := json.Unmarshal(input.ModelBinding, &modelBinding); err != nil {
+			writeError(writer, http.StatusBadRequest, errors.New("invalid modelBinding"))
+			return
+		}
 	}
 
 	reader := server.store.Reader()
@@ -3008,7 +3016,7 @@ func (server *Server) retryRun(writer http.ResponseWriter, request *http.Request
 	prepared, err := server.prepareAndBindManagedAttempt(request.Context(), func(prepareCtx context.Context) (app.PrepareRunResult, error) {
 		return server.service.PrepareRetry(prepareCtx, app.PrepareRetryRequest{
 			CommandMeta: childCommandMeta(meta, "prepare-retry"), RunID: runID, ExpectedVersion: *input.ExpectedVersion,
-			Reason: rejectionNote, Instructions: string(envelope),
+			Reason: rejectionNote, Instructions: string(envelope), ModelBinding: modelBinding,
 		})
 	})
 	if err != nil {

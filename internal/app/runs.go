@@ -17,12 +17,13 @@ func (s *Service) PrepareRun(ctx context.Context, request PrepareRunRequest) (Pr
 	return s.prepare(ctx, request.CommandMeta, request.RunID, request.ExpectedVersion, nil)
 }
 func (s *Service) PrepareRetry(ctx context.Context, request PrepareRetryRequest) (PrepareRunResult, error) {
-	return s.prepare(ctx, request.CommandMeta, request.RunID, request.ExpectedVersion, &retrySpec{Reason: request.Reason, Instructions: request.Instructions, Automatic: request.Automatic})
+	return s.prepare(ctx, request.CommandMeta, request.RunID, request.ExpectedVersion, &retrySpec{Reason: request.Reason, Instructions: request.Instructions, Automatic: request.Automatic, ModelBinding: request.ModelBinding})
 }
 
 type retrySpec struct {
 	Reason, Instructions string
 	Automatic            bool
+	ModelBinding         domain.ModelBinding
 }
 
 func (s *Service) prepare(ctx context.Context, meta CommandMeta, runID domain.RunID, expected uint64, retry *retrySpec) (PrepareRunResult, error) {
@@ -158,12 +159,16 @@ func (s *Service) prepare(ctx context.Context, meta CommandMeta, runID domain.Ru
 		if err != nil {
 			return err
 		}
+		modelBinding := charter.ModelBinding()
+		if retry != nil && retry.ModelBinding.Configured() {
+			modelBinding = retry.ModelBinding
+		}
 		attempt, err := domain.NewAttempt(domain.AttemptParams{ID: s.deps.IDs.AttemptID(), RunID: runID, Sequence: next.CurrentAttemptNumber(), Predecessor: predecessor, ContextSnapshotID: snapshot.ID(), ContextDigest: snapshot.Digest(), AdapterID: charter.AdapterID(), AgentExecutionProfileBinding: profile, RetryReason: func() string {
 			if retry != nil {
 				return retry.Reason
 			}
 			return ""
-		}(), ModelBinding: charter.ModelBinding(), ContextDelta: func() string {
+		}(), ModelBinding: modelBinding, ContextDelta: func() string {
 			if retry != nil {
 				return retry.Instructions
 			}
