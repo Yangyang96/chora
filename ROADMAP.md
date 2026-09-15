@@ -2,12 +2,13 @@
 
 [简体中文](ROADMAP.zh-CN.md) · [README](README.md)
 
-Status, 2026-09-13: Developer Alpha with public source. Real multi-repository delivery
+Status, 2026-09-15: Developer Alpha with public source. Real multi-repository delivery
 qualification, `M2_S3_PASS` and local DA-1/O5 preparation are complete. Source was
 published on 2026-09-10; versioned prereleases are recorded on the
 [Releases page](https://github.com/Yangyang96/chora/releases). M2 as a whole is
 still active. M2-S4-1 passed technical acceptance on 2026-09-13; M2-S4-2 is deferred.
-M2-S5-1 passed technical acceptance on 2026-09-14; M2-S5-2 is next.
+M2-S5-1 passed technical acceptance on 2026-09-14. M2-S5-2 passed Pi model
+selection technical acceptance on 2026-09-15; M2-S5-3 remains planned.
 
 Project is the long-lived owner of repository resources and topic Rooms. A Task
 belongs to one Room and selects its repository scope. Empty Projects, multiple
@@ -122,7 +123,7 @@ Default delivery priority; successors remain PLANNED_NOT_STARTED without calenda
 1. M2-S4: S4-1 complete with one usable isolated mode; S4-2 Minimal/Standard deferred.
 2. M2-S5-1: S5-1a native in-flight instructions; S5-1b evidence-linked decisions,
    risks and unknowns, necessary human gates, resolution and reopening.
-3. M2-S5-2: explicit supported model controls, separate from execution mode.
+3. M2-S5-2: complete for Pi; explicit supported model controls, separate from execution mode.
 4. M2-S5-3: local app start/preview, logs, stop and cleanup.
 5. M2-S6: one supported macOS package, compatible updates, recovery and uninstall.
 6. M2-S7: deliberate Provider-native Skills/MCP setup and capability inspection.
@@ -171,3 +172,9 @@ Attempt's selection unless a new model is chosen; requested and observed models
 are shown separately. Changing execution mode preserves the model identity and
 requires that the target Runtime support it. Ambiguous Pi CLI model references
 are rejected rather than resolved to an alias.
+
+Model selection acceptance covers two real DeepSeek models in Local Connected
+and Flash/Pro in Isolated Local, Workbench restart, a new isolated Attempt with
+a different model, and immutable requested/observed model history. This qualifies
+the current Pi integration on Apple Silicon macOS, not another Runtime or all
+providers in the discovered catalog.

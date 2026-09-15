@@ -3,8 +3,8 @@
 package localweb
 
 import (
+	"bytes"
 	"context"
-	"io"
 	"log"
 	"net/http"
 	"os"
@@ -43,8 +43,14 @@ func TestIsolatedLocalRealModelSelectionAndRetry(t *testing.T) {
 		}
 		_ = os.RemoveAll(acceptanceRoot)
 	})
+	var diagnostics bytes.Buffer
+	t.Cleanup(func() {
+		if t.Failed() {
+			t.Logf("workbench diagnostics:\n%s", diagnostics.String())
+		}
+	})
 	open := func() *Server {
-		s, err := NewWorkbench(ctx, filepath.Join(acceptanceRoot, "acceptance.db"), filepath.Join(sourceRoot, "web", "dist"), log.New(io.Discard, "", 0), WorkbenchOptions{SourceRoot: sourceRoot, DataRoot: dataRoot})
+		s, err := NewWorkbench(ctx, filepath.Join(acceptanceRoot, "acceptance.db"), filepath.Join(sourceRoot, "web", "dist"), log.New(&diagnostics, "", 0), WorkbenchOptions{SourceRoot: sourceRoot, DataRoot: dataRoot})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -81,7 +87,16 @@ func TestIsolatedLocalRealModelSelectionAndRetry(t *testing.T) {
 		Repository repositoryResourceView `json:"repository"`
 	}
 	requestJSON(t, handler, http.MethodPost, "/api/v2/projects/"+project.ID+"/repositories", map[string]any{"locator": checkout}, http.StatusOK, &added)
-	selection := taskResourceSelection{RepoID: added.Repository.RepoID, AssociationVersion: added.Repository.Version, Role: "write", TargetRef: isolatedAcceptanceGit(t, checkout, "symbolic-ref", "HEAD"), Scope: domain.TaskRepositoryScope{Mode: "repository", MigrationChoice: "not_needed"}, Checks: domain.TaskCheckPolicy{Mode: "named", SelectionSource: "user", Commands: []domain.TaskCheckCommand{{ID: "readme", Name: "README marker", Command: "grep -q -- '-verified' README.md", Argv: []string{"grep", "-q", "--", "-verified", "README.md"}, Source: "user"}}}}
+	var definitions struct {
+		Checks []domain.TaskCheckCommand `json:"checks"`
+	}
+	requestJSON(t, handler, http.MethodPut, "/api/v2/projects/"+project.ID+"/repositories/"+added.Repository.RepoID+"/checks", map[string]any{
+		"checks": []map[string]any{{"id": "readme", "name": "README marker", "version": 0, "command": "grep -q -- '-verified' README.md", "workingDirectory": "."}},
+	}, http.StatusOK, &definitions)
+	if len(definitions.Checks) != 1 || definitions.Checks[0].Version != 1 {
+		t.Fatal("named check definition was not persisted")
+	}
+	selection := taskResourceSelection{RepoID: added.Repository.RepoID, AssociationVersion: added.Repository.Version, Role: "write", TargetRef: isolatedAcceptanceGit(t, checkout, "symbolic-ref", "HEAD"), Scope: domain.TaskRepositoryScope{Mode: "repository", MigrationChoice: "not_needed"}, Checks: domain.TaskCheckPolicy{Mode: "named", SelectionSource: "user", Commands: definitions.Checks}}
 	roomID, err := domain.ParseRoomID(project.DefaultRoomID)
 	if err != nil {
 		t.Fatal(err)

@@ -2,7 +2,7 @@
 
 [English](ROADMAP.md) · [README](README.zh-CN.md)
 
-状态（2026-09-13）：源码已公开的 Developer Alpha。真实多仓库交付技术验收、
+状态（2026-09-15）：源码已公开的 Developer Alpha。真实多仓库交付技术验收、
 `M2_S3_PASS` 和本地 DA-1/O5 准备已完成。源码于 2026-09-10 公开，版本化预发布见
 [Releases 页面](https://github.com/Yangyang96/chora/releases)。整个 M2 继续进行；M2-S4-1 已于 2026-09-13 通过技术验收，M2-S4-2 暂缓。
 
@@ -11,7 +11,8 @@ Project 长期拥有仓库资源和多个主题 Room；Task 属于一个 Room，
 工作界面、持久 Task/Run/Review 状态和执行集成，成熟 Provider 提供模型/工具循环
 及基础设施。Spec Coding 是第一个场景。首版仍限定源码启动、Apple Silicon macOS、
 已有本地 Git 仓库、用户控制的 Pi、显式 Local Connected / No Sandbox，不是稳定版
-或安装包版本。M2-S5-1 已于 2026-09-14 通过技术验收，下一项为 M2-S5-2。
+或安装包版本。M2-S5-1 已于 2026-09-14 通过技术验收；M2-S5-2 的 Pi 模型选择
+已于 2026-09-15 通过技术验收，M2-S5-3 仍处于规划阶段。
 
 | 阶段 | 结果 | 状态 |
 | --- | --- | --- |
@@ -94,7 +95,7 @@ Runtime 或 Sandbox。本次实施不创建 Tag、Release 或安装包。M2 整�
 1. M2-S4：S4-1 已完成一种可用隔离模式；S4-2 Minimal/Standard 暂缓。
 2. M2-S5-1：S5-1a 原生执行中补充指令；S5-1b 关联证据的决策、风险、未知项，
    必要人工 Gate、解决和重新打开。
-3. M2-S5-2：显式选择受支持模型配置，与执行模式区分。
+3. M2-S5-2：Pi 范围已完成；显式选择受支持模型配置，与执行模式区分。
 4. M2-S5-3：本地应用启动/预览、日志、停止和清理。
 5. M2-S6：一种受支持 macOS 安装包、兼容升级、恢复和卸载。
 6. M2-S7：显式配置 Provider 原生 Skills/MCP，查看实际能力。
@@ -132,3 +133,9 @@ Local Connected 从选定的 Pi 可执行文件及配置发现模型。Isolated 
 重试默认继承上一次 Attempt 的选择，也可改选；界面分别展示请求模型与观测模型。
 切换执行模式保留模型身份，并要求目标 Runtime 支持该模型。Pi CLI 无法精确表达的
 歧义模型引用会被拒绝，不会解析成另一个别名模型。
+
+模型选择验收覆盖 Local Connected 中两个真实 DeepSeek 模型、Isolated Local 中
+Flash/Pro 执行、Workbench 重启、新隔离 Attempt 改选模型，以及不可变的请求与
+观测模型历史。
+该结论限定 Apple Silicon macOS 上当前 Pi 集成，不代表其他 Runtime 或目录中
+所有 Provider 均已验收。
