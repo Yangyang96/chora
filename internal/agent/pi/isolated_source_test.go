@@ -37,23 +37,21 @@ func TestPublicIsolatedSourceCannotSelectHostOrLoseImageBinding(t *testing.T) {
 	}
 }
 
-func TestIsolatedDecoderRejectsModelDriftWithoutRestrictingConnected(t *testing.T) {
+func TestIsolatedDecoderRequiresRuntimeModelIdentityWithoutRestrictingConnected(t *testing.T) {
 	source, _ := NewIsolatedSource(IsolatedSourceParams{ImageID: "sha256:" + strings.Repeat("a", 64), HelperSHA256: strings.Repeat("b", 64), PolicySHA256: strings.Repeat("c", 64)})
 	adapter, err := New(Config{IsolatedSource: source})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, line := range []string{
-		`{"type":"message_end","message":{"role":"assistant","provider":"other","model":"deepseek-v4-pro","stopReason":"stop","content":[{"type":"text","text":"done"}]}}`,
-		`{"type":"message_end","message":{"role":"assistant","provider":"deepseek","model":"other","stopReason":"stop","content":[{"type":"text","text":"done"}]}}`,
-		`{"type":"message_end","message":{"role":"assistant","stopReason":"stop","content":[{"type":"text","text":"done"}]}}`,
-		`{"type":"agent_start","provider":"other"}`,
-		`{"type":"model_identity","model_id":"other"}`,
-		`{"type":"response","command":"get_state","success":true,"data":{"model":{"id":"other","provider":"deepseek"}}}`,
-	} {
+	for _, line := range []string{`{"type":"message_end","message":{"role":"assistant","stopReason":"stop","content":[{"type":"text","text":"done"}]}}`} {
 		_, err := adapter.DecodeEvent(execution.EventChunk{Profile: domain.AgentExecutionProfileIsolatedLocal, Stream: execution.StreamStdout, Data: []byte(line + "\n"), EOF: true})
 		if err == nil {
 			t.Fatalf("accepted isolated model drift: %s", line)
+		}
+	}
+	for _, line := range []string{`{"type":"message_end","message":{"role":"assistant","provider":"other","model":"new-runtime-model","stopReason":"stop","content":[{"type":"text","text":"done"}]}}`, `{"type":"agent_start","provider":"other"}`, `{"type":"model_identity","model_id":"other"}`} {
+		if _, err := adapter.DecodeEvent(execution.EventChunk{Profile: domain.AgentExecutionProfileIsolatedLocal, Stream: execution.StreamStdout, Data: []byte(line + "\n"), EOF: true}); err != nil {
+			t.Fatalf("runtime-declared model rejected: %s: %v", line, err)
 		}
 	}
 	line := `{"type":"message_end","message":{"role":"assistant","provider":"deepseek","model":"deepseek-v4-pro","stopReason":"stop","content":[{"type":"text","text":"done"}]}}` + "\n"
