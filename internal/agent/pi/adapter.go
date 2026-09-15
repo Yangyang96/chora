@@ -325,17 +325,9 @@ func (adapter *Adapter) validateModelBinding(source selectedSource, binding doma
 	if !binding.Configured() {
 		return nil
 	}
-	managed := SupportedModelCatalogForManagedRuntime()
-	models := make([]domain.ModelIdentity, 0, len(managed.Models))
-	for _, m := range managed.Models {
-		models = append(models, domain.ModelIdentity{Provider: m.Provider, ModelID: m.ModelID})
-	}
-	catalog, err := domain.NewModelCatalog(managed.AgentID, managed.RuntimeIdentity, managed.RuntimeVersion, models)
-	if err != nil {
-		return err
-	}
-	if err := binding.ValidateCatalog(catalog); err != nil {
-		return fmt.Errorf("managed Pi model binding drift: %w", err)
+	record := binding.Record()
+	if record.Catalog.AgentID == "" || record.Catalog.RuntimeIdentity == "" || record.Catalog.RuntimeVersion == "" || !record.Catalog.Contains(record.ModelIdentity) {
+		return errors.New("managed Pi model binding is not a valid Runtime capability snapshot")
 	}
 	return nil
 }
