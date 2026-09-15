@@ -49,8 +49,8 @@ type Result struct {
 
 // ModelOption is an identity-only model projection declared by Pi.
 type ModelOption struct {
-	Provider string
-	ModelID  string
+	Provider string `json:"provider"`
+	ModelID  string `json:"modelId"`
 }
 
 // DiscoverModels reads the declared default model without contacting a provider.
