@@ -157,3 +157,7 @@ embedded surfaces and Contexere require repeated user friction or a measured
 capability/context bottleneck before implementation; no generic platform is
 prebuilt for them. Security, durability and compatibility advance in every slice.
 Initial usage feedback can be manual and does not require a telemetry platform.
+
+### Runtime-owned model capability discovery
+
+M2-S5-2 does not require Chora to maintain a hand-authored model allowlist. Each Runtime owns capability discovery and validation. Chora may cache an identity-only catalog for display, but revalidates the selection with the Runtime at launch. A model change applies only to a new Attempt; prior requested and observed provider/model provenance remains immutable. Runtime removal or authentication failure fails closed without substitution.

@@ -62,6 +62,15 @@ func DiscoverModels(piHome string) ([]ModelOption, error) {
 		}
 		piHome = filepath.Join(home, ".pi", "agent")
 	}
+	// Ask the installed Runtime for its current catalog. This keeps provider
+	// and model availability owned by Pi rather than a Chora-maintained list.
+	if executable, err := exec.LookPath("pi"); err == nil {
+		if output, runErr := exec.Command(executable, "--list-models").Output(); runErr == nil {
+			if models := parseModelTable(string(output)); len(models) > 0 {
+				return models, nil
+			}
+		}
+	}
 	data, err := os.ReadFile(filepath.Join(piHome, "settings.json"))
 	if err != nil {
 		return nil, err
@@ -74,6 +83,20 @@ func DiscoverModels(piHome string) ([]ModelOption, error) {
 		return nil, errors.New("Pi has no verifiable model catalog")
 	}
 	return []ModelOption{{Provider: strings.TrimSpace(settings.DefaultProvider), ModelID: strings.TrimSpace(settings.DefaultModel)}}, nil
+}
+
+func parseModelTable(output string) []ModelOption {
+	var models []ModelOption
+	for _, line := range strings.Split(output, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) >= 2 && fields[0] != "provider" && fields[0] != "─" {
+			provider, model := strings.TrimSpace(fields[0]), strings.TrimSpace(fields[1])
+			if provider != "" && model != "" && provider != "provider" && model != "model" {
+				models = append(models, ModelOption{Provider: provider, ModelID: model})
+			}
+		}
+	}
+	return models
 }
 
 // Options lets tests and embedding callers override the ambient environment.

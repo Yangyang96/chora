@@ -9,6 +9,13 @@ import (
 	"testing"
 )
 
+func TestParseModelTableUsesRuntimeCatalog(t *testing.T) {
+	models := parseModelTable("provider      model context\ndeepseek      deepseek-v4-flash 1M\nopenai-codex  gpt-5.6-sol 272K\n")
+	if len(models) != 2 || models[0].Provider != "deepseek" || models[1].ModelID != "gpt-5.6-sol" {
+		t.Fatalf("models = %#v", models)
+	}
+}
+
 func TestDiscoverReady(t *testing.T) {
 	root := t.TempDir()
 	piPath := writeFakePi(t, root, "0.84.2", map[string]string{"ollama": "ready", "openai-codex": "ready", "google": "not_ready"})
