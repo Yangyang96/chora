@@ -116,6 +116,12 @@ func Prepare(ctx context.Context, sourceRoot, dataRoot string) (Record, error) {
 	if !validGitVersion(gitVersion) {
 		return Record{}, errors.New("public image Git version is invalid")
 	}
+	// Capability discovery belongs to the Runtime image. Probe the installed Pi
+	// inside the image during preparation so the host never invents a catalog.
+	modelResult, modelErr := runner.Run(ctx, dockersupervisor.Command{Args: []string{"run", "--rm", "--pull=never", "--network", "none", imageID, "--list-models"}})
+	if modelErr != nil || modelResult.ExitCode != 0 || len(strings.TrimSpace(string(modelResult.Stdout))) == 0 {
+		return Record{}, fmt.Errorf("discover isolated Pi model capabilities: %w: %s", modelErr, boundedDiagnostic(modelResult.Stderr))
+	}
 	source, err := agentpi.NewIsolatedSource(agentpi.IsolatedSourceParams{ImageID: imageID, HelperSHA256: helperHash, PolicySHA256: dockersupervisor.WorkbenchPolicyDigest})
 	if err != nil {
 		return Record{}, err
