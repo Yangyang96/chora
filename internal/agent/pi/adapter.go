@@ -442,7 +442,7 @@ func (adapter *Adapter) prepareStartForSource(request execution.StartRequest, so
 		return execution.Invocation{}, errors.New("Pi execution target binding is invalid")
 	}
 	arguments := append([]string(nil), source.arguments...)
-	if source.managed && request.Attempt.ModelBinding().Configured() {
+	if (source.managed || source.isolated) && request.Attempt.ModelBinding().Configured() {
 		model := request.Attempt.ModelBinding().Record().ModelIdentity
 		arguments = replaceModelArguments(arguments, model.Provider, model.ModelID)
 	}

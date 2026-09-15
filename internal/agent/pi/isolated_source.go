@@ -166,8 +166,8 @@ func validateIsolatedEventModel(line []byte) error {
 			provider = nestedProvider
 		}
 	}
-	if (provider != "" || required) && provider != IsolatedModelProvider || (model != "" || required) && model != IsolatedModelID {
-		return errors.New("isolated Pi model identity mismatch")
+	if required && (provider == "" || model == "") {
+		return errors.New("isolated Pi model identity is missing")
 	}
 	return nil
 }
