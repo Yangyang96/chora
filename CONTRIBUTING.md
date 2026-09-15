@@ -30,6 +30,18 @@ The [Roadmap](ROADMAP.md) distinguishes the current public target and
 pending gates. Local Connected uses user-installed/configured Pi, does not
 require private M1 images, and makes no Sandbox-isolation claim.
 
+## Documentation language
+
+English is the primary, authoritative language for Chora's public documentation.
+Files without a language suffix, such as `README.md` and `ROADMAP.md`, are the
+canonical versions; `.zh-CN.md` files are Simplified Chinese translations.
+
+Update the English version and its existing translations in the same change.
+Keep milestone status, dates, commands, links and support limits consistent.
+Resolve language differences against the English version and correct the
+translations. When reporting documentation changes, link the English version
+first; a translated link may be added for convenience.
+
 ## Development workflow
 
 Use Node.js 22.12 or newer, npm 11 or newer, and Go 1.26 or newer. Install the
