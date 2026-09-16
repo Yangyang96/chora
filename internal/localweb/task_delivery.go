@@ -92,6 +92,8 @@ func (server *Server) getTaskDelivery(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, v)
 }
 func (server *Server) taskDeliveryCommand(w http.ResponseWriter, r *http.Request) {
+	server.appPreviewMu.Lock()
+	defer server.appPreviewMu.Unlock()
 
 	id, e := domain.ParseRunID(r.PathValue("runID"))
 	if e != nil {

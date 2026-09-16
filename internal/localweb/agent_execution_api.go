@@ -70,6 +70,8 @@ func (server *Server) acknowledgeTrustedLocal(writer http.ResponseWriter, reques
 }
 
 func (server *Server) switchAgentExecutionProfile(writer http.ResponseWriter, request *http.Request) {
+	server.appPreviewMu.Lock()
+	defer server.appPreviewMu.Unlock()
 	runID, err := domain.ParseRunID(request.PathValue("runID"))
 	if err != nil {
 		writeError(writer, http.StatusBadRequest, err)
@@ -130,6 +132,19 @@ func (server *Server) switchAgentExecutionProfile(writer http.ResponseWriter, re
 		}
 		modelBinding, err = domain.NewModelBinding(catalog, selected, currentAttempt.ModelBinding().Record().SelectedAt)
 		if err != nil {
+			writeError(writer, http.StatusConflict, err)
+			return
+		}
+	}
+	run, err := server.store.Reader().GetRun(request.Context(), runID)
+	if err != nil {
+		writeStoreError(writer, err)
+		return
+	}
+	// The service owns idempotent replay. An old, already completed switch
+	// must not stop an app belonging to its successor or fail solely on version.
+	if run.Version() == *input.ExpectedVersion {
+		if err = server.stopTaskAppPreviews(request.Context(), run.TaskID()); err != nil {
 			writeError(writer, http.StatusConflict, err)
 			return
 		}

@@ -186,6 +186,11 @@ func (s *Service) ConfirmClosedResultCleanup(ctx context.Context, req DeliveryRe
 			return deliveryOperationView(op)
 		}
 	} else {
+		if s.deps.BeforeTaskWorkspaceCleanup != nil {
+			if err = s.deps.BeforeTaskWorkspaceCleanup(ctx, run.TaskID()); err != nil {
+				return DeliveryOperationView{}, err
+			}
+		}
 		if err = s.saveDeliveryState(ctx, &op, "writing", deliveryOutcome{}); err != nil {
 			return DeliveryOperationView{}, err
 		}

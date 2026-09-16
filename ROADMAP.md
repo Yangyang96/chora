@@ -2,13 +2,14 @@
 
 [简体中文](ROADMAP.zh-CN.md) · [README](README.md)
 
-Status, 2026-09-15: Developer Alpha with public source. Real multi-repository delivery
+Status, 2026-09-16: Developer Alpha with public source. Real multi-repository delivery
 qualification, `M2_S3_PASS` and local DA-1/O5 preparation are complete. Source was
 published on 2026-09-10; versioned prereleases are recorded on the
 [Releases page](https://github.com/Yangyang96/chora/releases). M2 as a whole is
 still active. M2-S4-1 passed technical acceptance on 2026-09-13; M2-S4-2 is deferred.
 M2-S5-1 passed technical acceptance on 2026-09-14. M2-S5-2 passed Pi model
-selection technical acceptance on 2026-09-15; M2-S5-3 remains planned.
+selection technical acceptance on 2026-09-15. M2-S5-3 optional app preview passed
+technical acceptance on 2026-09-16.
 
 Project is the long-lived owner of repository resources and topic Rooms. A Task
 belongs to one Room and selects its repository scope. Empty Projects, multiple
@@ -28,6 +29,7 @@ Local Connected / No Sandbox. It is not a stable or installed release.
 | M2-S2 delivery | Task-branch Commit -> Push -> GitHub PR -> Merge -> safe cleanup, consistent task status/progress | Integrated real multi-repository qualification and repairs passed; legacy Apply retained. |
 | M2-S3-0..3 | Close unwanted results, Pi onboarding/model provenance, maintenance/recovery and public journey/CI | `M2_S3_PASS`: S3-0..3 technical acceptance and consolidated independent review complete. |
 | M2-S5-1 | Native in-flight instructions and evidence-linked decisions, risks, unknowns, human gates, resolution and reopening | Technical acceptance complete on 2026-09-14; internal evidence retained privately. |
+| M2-S5-3 | Optional Task app preview in Local Connected and Isolated Local, logs, stop and recovery cleanup | Technical acceptance complete on 2026-09-16 on Apple Silicon macOS. |
 | DA-1 / O5 v2 | Exact local candidate, public checks, licenses/SBOM, secret scans and release materials | Local candidate preparation passed; final user acceptance and publication actions are recorded separately. |
 
 Technical acceptance was frozen on 2026-09-09, followed by identity and publication
@@ -91,8 +93,8 @@ onboarding and actual model provenance/native configuration guidance. S3-2 cover
 source updates, compatibility, backup and recovery. S3-3 qualifies the integrated
 public journey and maintained CI. All four slices passed technical acceptance.
 
-Later M2 work includes full model controls, in-flight steering, local app
-run/preview, native Skills/MCP setup and packaged installation/lifecycle. M3 owns
+Remaining M2 work includes deferred S4-2 profiles, native Skills/MCP setup
+and packaged installation/lifecycle. M3 owns
 Agent delegation, aggregation and conflicts; M4 adds background/remote execution.
 These keep the priorities below and are not new first-Alpha requirements.
 
@@ -124,7 +126,7 @@ Default delivery priority; successors remain PLANNED_NOT_STARTED without calenda
 2. M2-S5-1: S5-1a native in-flight instructions; S5-1b evidence-linked decisions,
    risks and unknowns, necessary human gates, resolution and reopening.
 3. M2-S5-2: complete for Pi; explicit supported model controls, separate from execution mode.
-4. M2-S5-3: local app start/preview, logs, stop and cleanup.
+4. M2-S5-3: complete; optional local app preview, logs, stop and cleanup.
 5. M2-S6: one supported macOS package, compatible updates, recovery and uninstall.
 6. M2-S7: deliberate Provider-native Skills/MCP setup and capability inspection.
 7. M3: Agent delegation, aggregation and conflicts after basic team authority;
@@ -178,3 +180,26 @@ and Flash/Pro in Isolated Local, Workbench restart, a new isolated Attempt with
 a different model, and immutable requested/observed model history. This qualifies
 the current Pi integration on Apple Silicon macOS, not another Runtime or all
 providers in the discovered catalog.
+
+### Optional application previews
+
+M2-S5-3 adds [app preview](docs/app-preview.md) to the latest Task run as an
+optional, collapsed panel. Code, diffs, checks and Review remain the primary
+acceptance workflow; running an app is never required for acceptance or delivery.
+Users explicitly configure and start one Web app per writable Task repository,
+open its loopback URL, inspect bounded logs, stop it and clean up its resources.
+
+Local Connected runs in the proven Task worktree with No Sandbox. Isolated Local
+uses a separate app container from the prepared image, a private source snapshot
+and one loopback port; Agent container policy stays unchanged and there is no
+host fallback. Navigation preserves app lifetime. Successor execution, worktree
+cleanup and normal Workbench shutdown stop previews. Recovery checks durable
+ownership without automatically restarting apps. Dependencies are not installed
+automatically; isolated previews require a restart to reflect newer source.
+
+Preview acceptance covers real browser interaction and a credential-free app in
+the prepared isolated image, startup, navigation continuity, logs, stop,
+worktree cleanup, normal shutdown, durable recovery and unchanged code-review
+state. Full tests, race checks, vet and standard E2E passed on Apple Silicon
+macOS. This does not qualify another platform, arbitrary application images or
+multi-service orchestration.

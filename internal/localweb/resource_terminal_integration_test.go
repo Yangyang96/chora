@@ -309,6 +309,7 @@ func newResourceTerminalIntegrationServer(t *testing.T) (*Server, *taskResourceL
 		TaskResourceWorkspaces: workspaces, ResourcePatchMaterializer: patches,
 		ResourceReviewVerifier: newResourceReviewVerifier(workspaces),
 		TaskDeliveryWorkspaces: newTaskDeliveryWorkspaceResolver(workspaces), TaskDeliveryGit: taskdelivery.Git{},
+		BeforeTaskWorkspaceCleanup: server.stopTaskAppPreviews,
 		SpecCodingEnvelopeResolver: newBoundSpecCodingEnvelopeResolver(server.store.Reader(), nil, pidiscovery.Result{State: pidiscovery.StateReady, Version: "0.84.2"}),
 		RepositorySource:           source, DataRoot: dataRoot,
 	})

@@ -563,6 +563,11 @@ func (s *Service) ConfirmTaskDelivery(ctx context.Context, req DeliveryRequest) 
 			return DeliveryOperationView{}, taskdelivery.ErrConflict
 		}
 	}
+	if o.Kind == "cleanup" && s.deps.BeforeTaskWorkspaceCleanup != nil {
+		if e = s.deps.BeforeTaskWorkspaceCleanup(ctx, run.TaskID()); e != nil {
+			return DeliveryOperationView{}, e
+		}
+	}
 	if e = s.saveDeliveryState(ctx, &o, "writing", deliveryOutcome{}); e != nil {
 		return DeliveryOperationView{}, e
 	}

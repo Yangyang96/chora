@@ -14,6 +14,7 @@ import { PlanSection } from './Plan'
 import { ResourceApplyStatus, ResourceResult } from './ResourceResult'
 import { TrajectoryLedger } from './TrajectoryLedger'
 import { TaskDelivery } from './TaskDelivery'
+import { AppPreview } from './AppPreview'
 import { ResultClosure } from './ResultClosure'
 import { TaskProgress } from './TaskProgress'
 import { ModelProvenance } from './ModelProvenance'
@@ -239,6 +240,7 @@ export function RunStream({ run, busy, onResultClosed, trustedLocalSelectionRead
         </div>
       </section>
 
+      {run.resourceResult && <AppPreview key={run.id} runId={run.id} expectedVersion={run.version} />}
       {run.resourceResult ? <ResourceResult result={run.resourceResult} /> : <>
         <ChangedFiles patch={run.reviewablePatch} provenanceLabel={run.reviewablePatch ? patchProvenanceLabel : undefined} />
         <section className="workbench-section" aria-labelledby="diff-title">

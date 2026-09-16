@@ -60,6 +60,8 @@ func (server *Server) resultClosureCommand(w http.ResponseWriter, r *http.Reques
 }
 
 func (server *Server) closedResultCleanupCommand(w http.ResponseWriter, r *http.Request) {
+	server.appPreviewMu.Lock()
+	defer server.appPreviewMu.Unlock()
 	id, err := domain.ParseRunID(r.PathValue("runID"))
 	if err != nil {
 		writeProjectError(w, err)

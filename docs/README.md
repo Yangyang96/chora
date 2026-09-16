@@ -9,6 +9,8 @@ The references below cover current operation and public-source checks.
 
 [Isolated Local](isolated-local.md): public preparation, supported scope, boundaries and real acceptance entry.
 
+[Optional app preview](app-preview.md): inspect a Task Web app on demand without changing code acceptance.
+
 ## Current product and acceptance guidance
 
 - [Public roadmap](../ROADMAP.md) — accepted slice versus planned foundations,

@@ -21,6 +21,7 @@ import (
 	agentfake "github.com/Yangyang96/chora/internal/agent/fake"
 	agentpi "github.com/Yangyang96/chora/internal/agent/pi"
 	"github.com/Yangyang96/chora/internal/app"
+	"github.com/Yangyang96/chora/internal/apppreview"
 	"github.com/Yangyang96/chora/internal/devsupervisor"
 	"github.com/Yangyang96/chora/internal/dockersupervisor"
 	"github.com/Yangyang96/chora/internal/domain"
@@ -57,6 +58,9 @@ type retryDeltaEnvelope struct {
 }
 
 type Server struct {
+	appPreviewMu         sync.Mutex
+	appPreviews          *apppreview.Manager
+	appPreviewWorkspaces *taskResourceWorkspaceManager
 	// Only historical Apply fixtures bypass the new Task branch writeback gate.
 	// Delivery itself is active and still requires explicit preview/confirmation.
 	isolatedLocal           *isolatedLocalEnvironment
@@ -636,6 +640,7 @@ func newServer(ctx context.Context, databasePath, webRoot string, logger *log.Lo
 	if options.PathPiEnabled {
 		roomCreationMode = app.RoomCreationProjectOnly
 	}
+	var server *Server
 	service := app.NewService(app.Dependencies{
 		RoomCreationMode:            roomCreationMode,
 		Lifecycle:                   runtimeContext,
@@ -657,6 +662,7 @@ func newServer(ctx context.Context, databasePath, webRoot string, logger *log.Lo
 		TaskWorktrees:               worktreeResolver,
 		TaskResourceWorkspaces:      resourceWorkspaces,
 		TaskDeliveryWorkspaces:      newTaskDeliveryWorkspaceResolver(resourceWorkspaces),
+		BeforeTaskWorkspaceCleanup:  func(ctx context.Context, taskID domain.TaskID) error { return server.stopTaskAppPreviews(ctx, taskID) },
 		TaskDeliveryGit:             taskdelivery.Git{},
 		TaskDeliveryHosting:         taskdelivery.NewGitHub(),
 		InstalledSpecCodingEnvelope: installedSpecCodingEnvelope,
@@ -665,7 +671,7 @@ func newServer(ctx context.Context, databasePath, webRoot string, logger *log.Lo
 		DataRoot:                    options.DataRoot,
 		AutoStartVerification:       true,
 	})
-	server := &Server{
+	server = &Server{
 		isolatedLocal: isolatedLocal,
 		ctx:           runtimeContext, cancel: cancel, store: store, service: service, registry: registry, supervisor: supervisor,
 		fakeSupervisor: fakeSupervisor, runtimeRoot: runtimeRoot, repoRoot: repoRoot, installedEnvelope: installedSpecCodingEnvelope,
@@ -679,6 +685,7 @@ func newServer(ctx context.Context, databasePath, webRoot string, logger *log.Lo
 		piDiscoveryOptions: discoveryOptions,
 		piInstaller:        installer, piInstalledSelection: installedSelection, piInstallationBlocked: installationBlocked,
 	}
+	server.appPreviewWorkspaces, _ = resourceWorkspaces.(*taskResourceWorkspaceManager)
 	server.o4Evidence, err = newO4EvidenceBoundary(options.O4Evidence, composedPi.dockerSupervisor)
 	if err != nil {
 		cancel()
@@ -834,9 +841,22 @@ func (server *Server) Close() error {
 		if server.automaticRetryCancel != nil {
 			server.automaticRetryCancel()
 		}
+		server.appPreviewMu.Lock()
+		var previewErr error
+		if server.appPreviews == nil && server.runtimeRoot != "" {
+			if _, err := os.Stat(filepath.Join(server.runtimeRoot, "app-previews")); !errors.Is(err, os.ErrNotExist) {
+				_, previewErr = server.appPreviewManager()
+			}
+		}
+		if server.appPreviews != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			previewErr = errors.Join(previewErr, server.appPreviews.StopAll(ctx))
+			cancel()
+		}
 		server.cancel()
+		server.appPreviewMu.Unlock()
 		server.automaticRetryWG.Wait()
-		server.closeErr = errors.Join(server.store.Close(), closeIfPresent(server.dockerLedgerCloser))
+		server.closeErr = errors.Join(previewErr, server.store.Close(), closeIfPresent(server.dockerLedgerCloser))
 	})
 	return server.closeErr
 }
@@ -895,6 +915,8 @@ func (server *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v2/repositories/{repoID}/delivery-defaults", server.repositoryDeliveryDefaults)
 	mux.HandleFunc("PUT /api/v2/repositories/{repoID}/delivery-defaults", server.saveRepositoryDeliveryDefaults)
 	mux.HandleFunc("GET /api/v2/repositories/{repoID}/branches", server.taskBranches)
+	mux.HandleFunc("GET /api/v2/runs/{runID}/app-preview", server.getAppPreview)
+	mux.HandleFunc("POST /api/v2/runs/{runID}/app-preview/{action}", server.appPreviewCommand)
 	mux.HandleFunc("GET /api/v2/runs/{runID}/delivery", server.getTaskDelivery)
 	mux.HandleFunc("POST /api/v2/runs/{runID}/delivery/message", server.suggestCommitMessage)
 	mux.HandleFunc("POST /api/v2/runs/{runID}/delivery/draft-context", server.deliveryDraftContext)
@@ -2117,6 +2139,8 @@ func (server *Server) getRoomRevisions(writer http.ResponseWriter, request *http
 }
 
 func (server *Server) startRun(writer http.ResponseWriter, request *http.Request) {
+	server.appPreviewMu.Lock()
+	defer server.appPreviewMu.Unlock()
 	taskID, err := domain.ParseTaskID(request.PathValue("taskID"))
 	if err != nil {
 		writeError(writer, http.StatusBadRequest, err)
@@ -2210,6 +2234,10 @@ func (server *Server) startRun(writer http.ResponseWriter, request *http.Request
 	}
 	if server.product && adapterID == agentpi.AdapterID && (!server.verifierStatus.Enabled || server.verifier == nil) {
 		writeError(writer, http.StatusServiceUnavailable, fmt.Errorf("independent Verifier is disabled: %s", server.verifierStatus.Reason))
+		return
+	}
+	if err := server.stopTaskAppPreviews(request.Context(), task.ID()); err != nil {
+		writeError(writer, http.StatusConflict, err)
 		return
 	}
 	created, err := server.service.CreateRun(request.Context(), app.CreateRunRequest{CommandMeta: meta, TaskID: task.ID(), RevisionID: revisionID})
@@ -2783,6 +2811,8 @@ func (server *Server) applyRunPatch(writer http.ResponseWriter, request *http.Re
 }
 
 func (server *Server) retryRun(writer http.ResponseWriter, request *http.Request) {
+	server.appPreviewMu.Lock()
+	defer server.appPreviewMu.Unlock()
 	runID, err := domain.ParseRunID(request.PathValue("runID"))
 	if err != nil {
 		writeError(writer, http.StatusBadRequest, err)
@@ -2849,11 +2879,15 @@ func (server *Server) retryRun(writer http.ResponseWriter, request *http.Request
 		writeStoreError(writer, err)
 		return
 	}
+	if blockedPreparedRetry && modelBinding.Configured() {
+		writeError(writer, http.StatusConflict, errors.New("a prepared Attempt cannot change its model"))
+		return
+	}
+	if err := server.stopTaskAppPreviews(request.Context(), run.TaskID()); err != nil {
+		writeError(writer, http.StatusConflict, err)
+		return
+	}
 	if blockedPreparedRetry {
-		if modelBinding.Configured() {
-			writeError(writer, http.StatusConflict, errors.New("a prepared Attempt cannot change its model"))
-			return
-		}
 		server.startBlockedAutomaticRetry(writer, request, run, attempt, meta)
 		return
 	}

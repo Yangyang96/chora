@@ -36,6 +36,7 @@ type Dependencies struct {
 	TaskWorktrees               TaskWorktreeResolver
 	TaskResourceWorkspaces      TaskResourceWorkspaceResolver
 	TaskDeliveryWorkspaces      TaskDeliveryWorkspaces
+	BeforeTaskWorkspaceCleanup  func(context.Context, domain.TaskID) error
 	TaskDeliveryGit             TaskDeliveryGit
 	TaskDeliveryHosting         taskdelivery.Hosting
 	SCM                         SCMAdapter

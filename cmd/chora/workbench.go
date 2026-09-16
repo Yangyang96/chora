@@ -9,7 +9,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/Yangyang96/chora/internal/localweb"
@@ -72,11 +74,28 @@ func runWorkbenchWithListen(args []string, stdout, stderr io.Writer, listen func
 		fmt.Fprintln(stderr, "workbench Chora startup failed")
 		return 1
 	}
-	defer roomServer.Close()
+	defer func() {
+		if err := roomServer.Close(); err != nil {
+			fmt.Fprintln(stderr, "workbench shutdown cleanup requires attention:", err)
+		}
+	}()
 
 	address := "127.0.0.1:" + fmt.Sprint(*port)
 	httpServer := &http.Server{Addr: address, Handler: roomServer.Handler(), ReadHeaderTimeout: 5 * time.Second}
 	fmt.Fprintf(stdout, "Chora Workbench listening on http://%s\n", address)
+	shutdownContext, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopSignals()
+	listeningDone := make(chan struct{})
+	defer close(listeningDone)
+	go func() {
+		select {
+		case <-shutdownContext.Done():
+			ctx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
+			defer cancel()
+			_ = httpServer.Shutdown(ctx)
+		case <-listeningDone:
+		}
+	}()
 	err = listen(httpServer)
 	if err != nil && !errors.Is(err, http.ErrServerClosed) {
 		fmt.Fprintln(stderr, "workbench Chora server stopped unexpectedly")
