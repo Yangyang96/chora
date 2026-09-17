@@ -2,14 +2,16 @@
 
 [简体中文](ROADMAP.zh-CN.md) · [README](README.md)
 
-Status, 2026-09-16: Developer Alpha with public source. Real multi-repository delivery
+Status, 2026-09-17: Developer Alpha with public source. Real multi-repository delivery
 qualification, `M2_S3_PASS` and local DA-1/O5 preparation are complete. Source was
 published on 2026-09-10; versioned prereleases are recorded on the
 [Releases page](https://github.com/Yangyang96/chora/releases). M2 as a whole is
 still active. M2-S4-1 passed technical acceptance on 2026-09-13; M2-S4-2 is deferred.
 M2-S5-1 passed technical acceptance on 2026-09-14. M2-S5-2 passed Pi model
 selection technical acceptance on 2026-09-15. M2-S5-3 optional app preview passed
-technical acceptance on 2026-09-16.
+technical acceptance on 2026-09-16. M2-S6 local application implementation and
+native interaction acceptance are complete; formal distribution remains deferred.
+M2-S6A Native Task Board V0 is the next planned feature slice, before M2-S7.
 
 Project is the long-lived owner of repository resources and topic Rooms. A Task
 belongs to one Room and selects its repository scope. Empty Projects, multiple
@@ -30,6 +32,8 @@ Local Connected / No Sandbox. It is not a stable or installed release.
 | M2-S3-0..3 | Close unwanted results, Pi onboarding/model provenance, maintenance/recovery and public journey/CI | `M2_S3_PASS`: S3-0..3 technical acceptance and consolidated independent review complete. |
 | M2-S5-1 | Native in-flight instructions and evidence-linked decisions, risks, unknowns, human gates, resolution and reopening | Technical acceptance complete on 2026-09-14; internal evidence retained privately. |
 | M2-S5-3 | Optional Task app preview in Local Connected and Isolated Local, logs, stop and recovery cleanup | Technical acceptance complete on 2026-09-16 on Apple Silicon macOS. |
+| M2-S6 | macOS application, bundled runtime, owned service lifecycle and local native interactions | Local implementation/development-package validation complete; native interaction acceptance recorded on 2026-09-17. Formal distribution and signed-update qualification remain deferred. |
+| M2-S6A | Native Task Board V0: existing Tasks, Project/Room views, attention and evidence-based phase projection | PLANNED_NOT_STARTED; next after local S6, before S7. See the implementation plan below. |
 | DA-1 / O5 v2 | Exact local candidate, public checks, licenses/SBOM, secret scans and release materials | Local candidate preparation passed; final user acceptance and publication actions are recorded separately. |
 
 Technical acceptance was frozen on 2026-09-09, followed by identity and publication
@@ -93,8 +97,9 @@ onboarding and actual model provenance/native configuration guidance. S3-2 cover
 source updates, compatibility, backup and recovery. S3-3 qualifies the integrated
 public journey and maintained CI. All four slices passed technical acceptance.
 
-Remaining M2 work includes deferred S4-2 profiles, native Skills/MCP setup
-and packaged installation/lifecycle. M3 owns
+Remaining M2 feature work includes M2-S6A Task Board V0, deferred S4-2 profiles
+and native Skills/MCP setup. S6 local implementation is complete; formal macOS
+distribution qualification remains separate and does not block S6A. M3 owns
 Agent delegation, aggregation and conflicts; M4 adds background/remote execution.
 These keep the priorities below and are not new first-Alpha requirements.
 
@@ -120,16 +125,20 @@ Release or installer. M2 remains incomplete and S4-2 is not implemented.
 
 ## Prioritized post-Alpha schedule
 
-Default delivery priority; successors remain PLANNED_NOT_STARTED without calendar dates:
+Completed and planned delivery order; unimplemented slices remain
+PLANNED_NOT_STARTED without calendar dates:
 
 1. M2-S4: S4-1 complete with one usable isolated mode; S4-2 Minimal/Standard deferred.
-2. M2-S5-1: S5-1a native in-flight instructions; S5-1b evidence-linked decisions,
+2. M2-S5-1: complete; S5-1a native in-flight instructions; S5-1b evidence-linked decisions,
    risks and unknowns, necessary human gates, resolution and reopening.
 3. M2-S5-2: complete for Pi; explicit supported model controls, separate from execution mode.
 4. M2-S5-3: complete; optional local app preview, logs, stop and cleanup.
-5. M2-S6: one supported macOS package, compatible updates, recovery and uninstall.
-6. M2-S7: deliberate Provider-native Skills/MCP setup and capability inspection.
-7. M3: Agent delegation, aggregation and conflicts after basic team authority;
+5. M2-S6: local macOS application implementation and native interaction acceptance
+   complete; formal distribution and signed-update qualification remain deferred.
+6. M2-S6A: next, Native Task Board V0 over existing Tasks; shared Project/Room
+   views, accurate lifecycle projection and Needs attention.
+7. M2-S7: deliberate Provider-native Skills/MCP setup and capability inspection.
+8. M3: Agent delegation, aggregation and conflicts after basic team authority;
    background/remote continuation belongs to M4.
 
 This ranks the earlier candidates without adding first-Alpha gates or changing
@@ -137,12 +146,51 @@ P3/P4. S4-2 may be deferred without blocking S5; M3 does not wait for all M2.
 Scope and changes to priority use actual feedback at release checkpoints. A
 listed slice is not implemented or automatically authorized to run.
 
-M2-S5-1 completion requires both sub-slices. Agent proposals, system observations
+M2-S5-1 acceptance covers both completed sub-slices. Agent proposals, system observations
 and user entries have distinct provenance. Records persist source evidence,
 versions and resolution history; empty/unassessed results are honest states.
 Only necessary authorized gates block work, and answers cannot replay stale
-execution. No second model loop or Contexere dependency. This is post-Alpha
-planning, not current capability or a change to P3/P4/first-release acceptance.
+execution. No second model loop or Contexere dependency. These retained acceptance
+boundaries do not change P3/P4 or first-release acceptance.
+
+## Next after local M2-S6: Native Task Board V0 (M2-S6A)
+
+Status: **PLANNED_NOT_STARTED**. The [implementation plan](docs/task-board-plan.md)
+is the source for scope, lifecycle mapping, API/read-model design, implementation
+slices, B01-B27 acceptance cases and a ready-to-use implementation handoff.
+
+Keep Project -> Room -> Task ownership. A board card is the existing Task, not a
+new Issue or a copy per Run/repository. Add a Project Tasks view with Board/List
+modes, Room/repository filters, a shared Room-scoped view and Needs attention.
+Existing New Task remains direct; card actions navigate to the existing owning
+screen for fresh-state validation and current authorization/confirmation.
+
+Use **Preparing | Working | Review | Delivery | Finished** as derived phases,
+not a second editable state machine. Preserve precise substates and outcomes:
+accepted is not delivered; cancelled Run is not necessarily ended Task; no-change
+completion is not human acceptance; partial closure and cleanup are not merge.
+Unknown or contradictory evidence stays visible in a separate reconciliation
+group. Archiving remains an independent visibility/read-only concern.
+
+| Slice | Outcome | State |
+| --- | --- | --- |
+| M2-S6A-1 | Shared pure phase/attention/outcome projection, path-specific facts, bounded read API and mapping/API tests | PLANNED_NOT_STARTED |
+| M2-S6A-2 | Project/Room Board/List, filters, safe deep links, freshness, accessibility and navigation-continuity tests | PLANNED_NOT_STARTED |
+| M2-S6A-3 | Integrated regression, local macOS qualification, measured usability/performance observations and operating docs | PLANNED_NOT_STARTED |
+
+V0 excludes Backlog drafts, manual priority/order, drag-to-mutate, inline/bulk
+writes, assignment, dependency scheduling, external tracker sync and a new model
+loop. Board reads make no model calls and do not create or start work. Prove that
+Run-to-board navigation cannot strand already-authorized verification; any needed
+repair stays within existing execution/service ownership, not an M4 scheduler.
+Preserve S5 preview and S6 service/recovery behavior. Signed distribution is not
+required to start V0, and this slice does not authorize a Tag, Release or installer.
+
+V1 lightweight drafts/ordering is demand-gated before or around M3, with capture
+separate from execution authorization and explicit promotion into a Task. M3 adds
+claims, handoff and delegation only with team authority/concurrency; M4 adds
+queued/background/remote execution, budgets and notifications. These extensions
+are not implicit V0 work. The S6A suffix preserves existing S6/S7 milestone IDs.
 
 ## Later outcomes and demand gates
 
