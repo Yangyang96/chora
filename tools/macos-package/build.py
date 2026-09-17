@@ -137,7 +137,7 @@ def build(args):
     helper = workbench / 'isolated-helper'
     run('go', 'build', '-trimpath', '-ldflags', flags, '-o', helper, './cmd/chora', cwd=ROOT, env=linux)
     helper.with_suffix('.sha256').write_text(hashlib.sha256(helper.read_bytes()).hexdigest() + '\n')
-    run('xcrun', 'swiftc', '-target', 'arm64-apple-macosx13.0', '-O', '-module-cache-path', output / 'swift-cache', ROOT / 'desktop/macos/main.swift', ROOT / 'desktop/macos/Authentication.swift', ROOT / 'desktop/macos/RuntimeIntegrity.swift', '-o', app / 'Contents/MacOS/Chora')
+    run('xcrun', 'swiftc', '-target', 'arm64-apple-macosx13.0', '-O', '-module-cache-path', output / 'swift-cache', ROOT / 'desktop/macos/main.swift', ROOT / 'desktop/macos/Authentication.swift', ROOT / 'desktop/macos/AuthenticationChoices.swift', ROOT / 'desktop/macos/RuntimeIntegrity.swift', '-o', app / 'Contents/MacOS/Chora')
     with (ROOT / 'desktop/macos/Info.plist').open('rb') as stream:
         info = plistlib.load(stream)
     info.update(CFBundleShortVersionString=args.version.split('-')[0], CFBundleVersion=str(args.build_number), ChoraReleaseVersion=args.version)

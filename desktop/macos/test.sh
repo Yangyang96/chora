@@ -9,3 +9,5 @@ fixture="$(mktemp -d "${TMPDIR:-/tmp}/chora-native-tests.XXXXXX")"
 trap 'rm -rf "$fixture"' EXIT
 xcrun swiftc -module-cache-path "$fixture/cache" "$root/RuntimeIntegrity.swift" "$root/RuntimeIntegrityTests.swift" -o "$fixture/test"
 "$fixture/test"
+xcrun swiftc -module-cache-path "$fixture/cache" "$root/AuthenticationChoices.swift" "$root/AuthenticationChoicesTests.swift" -o "$fixture/auth-test"
+"$fixture/auth-test"

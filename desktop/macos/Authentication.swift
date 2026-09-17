@@ -98,7 +98,7 @@ final class Authentication: NSObject {
         field.placeholderString = event["placeholder"] as? String
         if type == "select" {
             guard !choices.isEmpty else { cancelLogin(); return }
-            select.addItems(withTitles: choices.map { $0["label"] as? String ?? "Unknown" })
+            AuthenticationChoices.populate(select, choices: choices)
             alert.accessoryView = select
         } else { alert.accessoryView = field }
         promptID = id; promptAlert = alert
@@ -109,7 +109,7 @@ final class Authentication: NSObject {
         alert.window.orderOut(nil)
         guard stillPending, !finished else { return }
         guard result == .alertFirstButtonReturn else { cancelLogin(); return }
-        let value = type == "select" ? choices[select.indexOfSelectedItem]["id"] as? String ?? "" : field.stringValue
+        let value = type == "select" ? AuthenticationChoices.value(select) : field.stringValue
         send(["id": id, "value": value])
         field.stringValue = ""
     }

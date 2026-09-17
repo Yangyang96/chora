@@ -160,7 +160,7 @@ final class ChoraApplication: NSObject, NSApplicationDelegate {
             self.url = candidate
             status { [weak self] result in
                 guard let self else { return }
-                if result != nil { try? self.files.removeItem(at: ready); NSWorkspace.shared.open(candidate) }
+                if result != nil { try? self.files.removeItem(at: ready); self.openBrowser(candidate) }
                 else { self.showError(self.failure("Chora started but its authenticated health check failed. Open Logs for details.")) }
             }
             return
@@ -180,8 +180,20 @@ final class ChoraApplication: NSObject, NSApplicationDelegate {
         }.resume()
     }
 
+    private func openBrowser(_ address: URL) {
+        guard let browser = NSWorkspace.shared.urlForApplication(toOpen: address) else {
+            showError(failure("No default browser is available. Open this address in your browser:\n" + address.absoluteString))
+            return
+        }
+        NSWorkspace.shared.open([address], withApplicationAt: browser, configuration: NSWorkspace.OpenConfiguration()) { [weak self] _, error in
+            if let error { DispatchQueue.main.async {
+                self?.showError(self?.failure("Could not open the browser: " + error.localizedDescription + "\nOpen this address manually:\n" + address.absoluteString) ?? error)
+            } }
+        }
+    }
+
     @objc private func openWorkbench() {
-        if let url { NSWorkspace.shared.open(url); return }
+        if let url { openBrowser(url); return }
         if runtime == nil { prepareRuntime(); return }
         do {
             if !files.fileExists(atPath: data.path) { try firstRun() }
