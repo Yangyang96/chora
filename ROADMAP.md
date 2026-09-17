@@ -215,3 +215,10 @@ Local implementation and development-package validation are separate from formal
 distribution. Developer ID signing, notarization, clean-machine first launch and
 signed update/recovery qualification remain release gates. No public installer
 or release publication is claimed by this implementation.
+
+Local native interaction acceptance completed on 2026-09-17: fresh setup,
+provider selection and credential saving through Pi, authentication cancellation,
+browser-tab closure without stopping the service, menu reopening of Workbench,
+cancelled quit and confirmed clean shutdown. Repeated authentication labels retain
+their provider identities. Formal distribution remains deferred; this does not
+qualify a signed installer or a successful signed-update cycle.
