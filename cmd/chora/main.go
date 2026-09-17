@@ -45,6 +45,9 @@ func runWithProductExecutor(args []string, stdout, stderr io.Writer, productExec
 		fmt.Fprintf(stdout, "chora %s\n", info.Version)
 		return 0
 	}
+	if len(args) > 0 && args[0] == "desktop" {
+		return runDesktop(args[1:], stdout, stderr)
+	}
 	if len(args) > 0 && args[0] == "serve" {
 		return runServe(args[1:], stdout, stderr)
 	}

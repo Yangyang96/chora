@@ -11,6 +11,8 @@
 
 > **目前：开发者 Alpha。** 通过源码运行，支持 Apple Silicon macOS 和 Pi；暂未提供桌面安装包。
 
+本地安装包实现与剩余分发门禁见 [macOS 应用指南](docs/macos-application.zh-CN.md)。
+
 ![Chora 项目首页：左侧切换话题，右侧管理仓库和 Room](docs/images/project-zh.png)
 
 *实际 Workbench 界面，使用虚构的 Orbit Notes 项目。这里展示刚创建、尚未添加仓库的状态。*

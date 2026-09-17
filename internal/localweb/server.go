@@ -58,6 +58,12 @@ type retryDeltaEnvelope struct {
 }
 
 type Server struct {
+	gracefulShutdown bool
+	monitorMu        sync.Mutex
+	monitorWG        sync.WaitGroup
+	monitorClosing   bool
+	monitorErr       error
+
 	appPreviewMu         sync.Mutex
 	appPreviews          *apppreview.Manager
 	appPreviewWorkspaces *taskResourceWorkspaceManager
@@ -139,7 +145,9 @@ type piRuntimeStatus struct {
 }
 
 type ProductOptions struct {
+	GracefulShutdown       bool
 	WorkbenchSourceRoot    string
+	PackagedIsolatedHelper string
 	RepoRoot               string
 	RepositoryRoot         string
 	PiAuthFile             string
@@ -294,8 +302,10 @@ func NewSourceCheckout(ctx context.Context, databasePath, webRoot string, logger
 // deliberately carries no repository root, Docker Engine identity, OAuth file,
 // or Preflight authority.
 type WorkbenchOptions struct {
-	SourceRoot string
-	DataRoot   string
+	GracefulShutdown       bool
+	PackagedIsolatedHelper string
+	SourceRoot             string
+	DataRoot               string
 }
 
 // NewWorkbench constructs the Workbench project-entry service from a source
@@ -314,11 +324,13 @@ func NewWorkbench(ctx context.Context, databasePath, webRoot string, logger *log
 		return nil, errors.New("workbench Web build must be inside the source checkout")
 	}
 	return newServer(ctx, databasePath, webRoot, logger, ProductOptions{
-		RepositorySource:    gitsource.Default{},
-		WorkbenchSourceRoot: options.SourceRoot,
-		DataRoot:            options.DataRoot,
-		PathPiEnabled:       true,
-		PathPiSessionRoot:   filepath.Join(options.DataRoot, "pi-sessions"),
+		RepositorySource:       gitsource.Default{},
+		GracefulShutdown:       options.GracefulShutdown,
+		WorkbenchSourceRoot:    options.SourceRoot,
+		PackagedIsolatedHelper: options.PackagedIsolatedHelper,
+		DataRoot:               options.DataRoot,
+		PathPiEnabled:          true,
+		PathPiSessionRoot:      filepath.Join(options.DataRoot, "pi-sessions"),
 	}, false)
 }
 
@@ -478,6 +490,7 @@ func newServer(ctx context.Context, databasePath, webRoot string, logger *log.Lo
 	var installedSelection piinstall.Selection
 	installationBlocked := false
 	isolatedLocal := newIsolatedLocalEnvironment(options.WorkbenchSourceRoot, options.DataRoot)
+	isolatedLocal.packagedHelper = options.PackagedIsolatedHelper
 	discoveryOptions := pidiscovery.Options{PiHome: options.PathPiHome, LookPath: options.PathPiLookPath}
 	if options.PathPiEnabled {
 		// M2-S1 Local Connected: PATH-discovered Pi supervised by trustedhost.
@@ -674,7 +687,8 @@ func newServer(ctx context.Context, databasePath, webRoot string, logger *log.Lo
 	server = &Server{
 		isolatedLocal: isolatedLocal,
 		ctx:           runtimeContext, cancel: cancel, store: store, service: service, registry: registry, supervisor: supervisor,
-		fakeSupervisor: fakeSupervisor, runtimeRoot: runtimeRoot, repoRoot: repoRoot, installedEnvelope: installedSpecCodingEnvelope,
+		gracefulShutdown: options.GracefulShutdown,
+		fakeSupervisor:   fakeSupervisor, runtimeRoot: runtimeRoot, repoRoot: repoRoot, installedEnvelope: installedSpecCodingEnvelope,
 		codexStatus: codexStatus, piStatus: piStatus, verifierStatus: verifierStatus, verifier: verificationExecutor, taskWorktreesReady: taskWorktrees != nil || options.PathPiEnabled,
 		webRoot: absoluteWebRoot, logger: logger, piPreflight: options.PiPreflight, product: product, sourceCheckout: options.SourceCheckout,
 		installationController: options.InstallationController,
@@ -853,10 +867,20 @@ func (server *Server) Close() error {
 			previewErr = errors.Join(previewErr, server.appPreviews.StopAll(ctx))
 			cancel()
 		}
+		server.monitorMu.Lock()
+		server.monitorClosing = true
 		server.cancel()
+		server.monitorMu.Unlock()
 		server.appPreviewMu.Unlock()
 		server.automaticRetryWG.Wait()
-		server.closeErr = errors.Join(previewErr, server.store.Close(), closeIfPresent(server.dockerLedgerCloser))
+		if server.gracefulShutdown {
+			server.monitorWG.Wait()
+			server.stopRemainingRuntimes()
+		}
+		server.monitorMu.Lock()
+		monitorErr := server.monitorErr
+		server.monitorMu.Unlock()
+		server.closeErr = errors.Join(previewErr, monitorErr, server.store.Close(), closeIfPresent(server.dockerLedgerCloser))
 	})
 	return server.closeErr
 }
@@ -2338,7 +2362,7 @@ func (server *Server) startRun(writer http.ResponseWriter, request *http.Request
 		}
 		go server.completeFakeRunOn(started.Run.ID(), started.Session.ID, productionFake, fakeRuntime)
 	} else if started.Session.Identity.Valid() {
-		go server.monitorRuntimeRun(adapterID, started.Run.ID(), started.Session.ID, started.Session.Identity)
+		server.startRuntimeMonitor(adapterID, started.Run.ID(), started.Session.ID, started.Session.Identity)
 	}
 	view, err := server.runView(request.Context(), started.Run.ID())
 	if err != nil {
@@ -3084,7 +3108,7 @@ func (server *Server) retryRun(writer http.ResponseWriter, request *http.Request
 	if charter.AdapterID() == "fake" {
 		go server.completeFakeRun(started.Run.ID(), started.Session.ID, productionFake)
 	} else if started.Session.Identity.Valid() {
-		go server.monitorRuntimeRun(charter.AdapterID(), started.Run.ID(), started.Session.ID, started.Session.Identity)
+		server.startRuntimeMonitor(charter.AdapterID(), started.Run.ID(), started.Session.ID, started.Session.Identity)
 	}
 	view, err := server.runView(request.Context(), runID)
 	if err != nil {
@@ -3124,7 +3148,7 @@ func (server *Server) startBlockedAutomaticRetry(writer http.ResponseWriter, req
 	if adapter, ok := server.automaticRetryFakeAdapter(); ok {
 		go server.completeFakeRunOn(started.Run.ID(), started.Session.ID, adapter.adapter, adapter.runtime)
 	} else {
-		go server.monitorRuntimeRun(attempt.AdapterID(), started.Run.ID(), started.Session.ID, started.Session.Identity)
+		server.startRuntimeMonitor(attempt.AdapterID(), started.Run.ID(), started.Session.ID, started.Session.Identity)
 	}
 	view, err := server.runView(request.Context(), run.ID())
 	if err != nil {
@@ -3223,7 +3247,7 @@ func (server *Server) retryVerifiedAgent(writer http.ResponseWriter, request *ht
 		}
 		go server.completeFakeRunOn(started.Run.ID(), started.Session.ID, productionFake, fakeRuntime)
 	} else if started.Session.Identity.Valid() {
-		go server.monitorRuntimeRun(charter.AdapterID(), started.Run.ID(), started.Session.ID, started.Session.Identity)
+		server.startRuntimeMonitor(charter.AdapterID(), started.Run.ID(), started.Session.ID, started.Session.Identity)
 	}
 	view, err := server.runView(request.Context(), run.ID())
 	if err != nil {
@@ -3424,7 +3448,87 @@ func (server *Server) completeFakeRunOn(runID domain.RunID, sessionID domain.Run
 	}
 }
 
+func (server *Server) startRuntimeMonitor(adapterID string, runID domain.RunID, sessionID domain.RuntimeSessionID, identity execution.ProcessIdentity) {
+	server.monitorMu.Lock()
+	if server.monitorClosing {
+		server.monitorMu.Unlock()
+		// HTTP is already drained before desktop shutdown; a late automatic retry
+		// must not leave a just-started process behind.
+		server.finishRuntimeOnShutdown(runID, sessionID, identity)
+		return
+	}
+	server.monitorWG.Add(1)
+	server.monitorMu.Unlock()
+	go func() { defer server.monitorWG.Done(); server.monitorRuntimeRun(adapterID, runID, sessionID, identity) }()
+}
+
+// Include durable sessions whose monitor exited early after an observation error.
+func (server *Server) stopRemainingRuntimes() {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	candidates, err := server.store.Reader().ListStartupCandidates(ctx)
+	if err != nil {
+		server.monitorMu.Lock()
+		server.monitorErr = errors.Join(server.monitorErr, err)
+		server.monitorMu.Unlock()
+		return
+	}
+	for _, candidate := range candidates {
+		if candidate.Attempt == nil {
+			server.monitorMu.Lock()
+			server.monitorErr = errors.Join(server.monitorErr, errors.New("active run has no runtime attempt"))
+			server.monitorMu.Unlock()
+			continue
+		}
+		session, e := server.store.Reader().GetRuntimeSessionForAttempt(ctx, candidate.Attempt.ID())
+		if e != nil {
+			server.monitorMu.Lock()
+			server.monitorErr = errors.Join(server.monitorErr, e)
+			server.monitorMu.Unlock()
+			continue
+		}
+		server.finishRuntimeOnShutdown(candidate.Run.ID(), session.ID, execution.ProcessIdentity{Value: session.ProcessIdentity})
+	}
+}
+
+func (server *Server) finishRuntimeOnShutdown(runID domain.RunID, sessionID domain.RuntimeSessionID, identity execution.ProcessIdentity) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	run, err := server.store.Reader().GetRun(ctx, runID)
+	if err == nil && (run.State() == domain.RunStateRunning || run.State() == domain.RunStateStopping || run.State() == domain.RunStateRecoveryRequired) {
+		var stopped app.StopResult
+		stopped, err = server.service.RequestCancel(ctx, app.StopRequest{CommandMeta: commandMeta("desktop-shutdown-" + sessionID.String()), RunID: runID, ExpectedVersion: run.Version(), Reason: "Chora application is quitting", AllowRetry: true})
+		if err == nil && stopped.Run.State() != domain.RunStateCancelled {
+			err = errors.New("runtime shutdown requires recovery")
+		}
+	}
+	if err != nil {
+		latest, loadErr := server.store.Reader().GetRun(ctx, runID)
+		session, sessionErr := server.store.Reader().GetRuntimeSession(ctx, sessionID)
+		if loadErr == nil && sessionErr == nil && latest.State() != domain.RunStateRunning && latest.State() != domain.RunStateStopping && latest.State() != domain.RunStateRecoveryRequired && !session.FinalizedAt.IsZero() {
+			return
+		}
+	}
+	if err != nil {
+		// Preserve the explicit failure even if a final owned-process stop succeeds.
+		reconciled, reconcileErr := server.supervisor.Reconcile(ctx, identity)
+		if reconcileErr == nil && reconciled.Kind == execution.ReconcileAlive && reconciled.Handle.Valid() {
+			_, _ = server.supervisor.Stop(ctx, reconciled.Handle, execution.StopIntent{Kind: execution.StopForCancel, Reason: "Chora shutdown cleanup"})
+		}
+		server.monitorMu.Lock()
+		server.monitorErr = errors.Join(server.monitorErr, fmt.Errorf("stop run %s: %w", runID, err))
+		server.monitorMu.Unlock()
+	}
+}
+
 func (server *Server) monitorRuntimeRun(adapterID string, runID domain.RunID, sessionID domain.RuntimeSessionID, identity execution.ProcessIdentity) {
+	if server.gracefulShutdown {
+		defer func() {
+			if server.ctx.Err() != nil {
+				server.finishRuntimeOnShutdown(runID, sessionID, identity)
+			}
+		}()
+	}
 	if adapterID == agentpi.AdapterID {
 		defer server.logGenerationReferenceRefresh("runtime monitor termination")
 	}
@@ -3437,6 +3541,9 @@ func (server *Server) monitorRuntimeRun(adapterID string, runID domain.RunID, se
 	for {
 		select {
 		case <-server.ctx.Done():
+			if server.gracefulShutdown {
+				return
+			}
 			stopContext, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 			defer cancel()
 			reconciled, err := server.supervisor.Reconcile(stopContext, identity)

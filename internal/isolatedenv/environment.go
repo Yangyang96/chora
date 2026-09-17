@@ -58,6 +58,19 @@ type diskRecord struct {
 }
 
 func Prepare(ctx context.Context, sourceRoot, dataRoot string) (Record, error) {
+	return prepare(ctx, sourceRoot, dataRoot, "")
+}
+
+// PreparePackaged uses the Linux helper distributed with the macOS application.
+// It never requires a Go toolchain on the user's machine.
+func PreparePackaged(ctx context.Context, sourceRoot, dataRoot, helper string) (Record, error) {
+	if helper == "" {
+		return Record{}, errors.New("packaged helper is required")
+	}
+	return prepare(ctx, sourceRoot, dataRoot, helper)
+}
+
+func prepare(ctx context.Context, sourceRoot, dataRoot, packagedHelper string) (Record, error) {
 	if err := validatePlatform(runtime.GOOS, runtime.GOARCH); err != nil {
 		return Record{}, err
 	}
@@ -73,18 +86,25 @@ func Prepare(ctx context.Context, sourceRoot, dataRoot string) (Record, error) {
 		return Record{}, err
 	}
 	defer os.RemoveAll(stage)
-	helper := filepath.Join(stage, "helper-build")
-	moduleCache, err := publicModuleCache(ctx, sourceRoot)
-	if err != nil {
-		return Record{}, err
-	}
-	build := exec.CommandContext(ctx, "/usr/bin/env", "GOOS=linux", "GOARCH=arm64", "CGO_ENABLED=0", "go", "build", "-trimpath", "-o", helper, "./cmd/chora")
-	build.Dir = sourceRoot
-	build.Env = sanitizedBuildEnv(stage, moduleCache)
-	var stderr limitedBuffer
-	build.Stderr = &stderr
-	if err := build.Run(); err != nil {
-		return Record{}, fmt.Errorf("cross-compile public helper: %w: %s", err, stderr.String())
+	helper := packagedHelper
+	if helper != "" {
+		if err := validatePackagedHelper(sourceRoot, helper); err != nil {
+			return Record{}, err
+		}
+	} else {
+		helper = filepath.Join(stage, "helper-build")
+		moduleCache, err := publicModuleCache(ctx, sourceRoot)
+		if err != nil {
+			return Record{}, err
+		}
+		build := exec.CommandContext(ctx, "/usr/bin/env", "GOOS=linux", "GOARCH=arm64", "CGO_ENABLED=0", "go", "build", "-trimpath", "-o", helper, "./cmd/chora")
+		build.Dir = sourceRoot
+		build.Env = sanitizedBuildEnv(stage, moduleCache)
+		var stderr limitedBuffer
+		build.Stderr = &stderr
+		if err := build.Run(); err != nil {
+			return Record{}, fmt.Errorf("cross-compile public helper: %w: %s", err, stderr.String())
+		}
 	}
 	helperHash, err := digestRegular(helper, 512<<20)
 	if err != nil {

@@ -58,6 +58,7 @@ type isolatedLocalEnvironment struct {
 	mu                   sync.Mutex
 	view                 isolatedLocalView
 	sourceRoot, dataRoot string
+	packagedHelper       string
 	source               agentpi.IsolatedSource
 	proxy                isolatedproxy.Config
 	models               []pidiscovery.ModelOption
@@ -114,7 +115,13 @@ func (s *Server) prepareIsolatedLocal(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		ctx, cancel := context.WithTimeout(s.ctx, 20*time.Minute)
 		defer cancel()
-		result, err := isolatedenv.Prepare(ctx, e.sourceRoot, e.dataRoot)
+		var result isolatedenv.Record
+		var err error
+		if e.packagedHelper != "" {
+			result, err = isolatedenv.PreparePackaged(ctx, e.sourceRoot, e.dataRoot, e.packagedHelper)
+		} else {
+			result, err = isolatedenv.Prepare(ctx, e.sourceRoot, e.dataRoot)
+		}
 		e.mu.Lock()
 		defer e.mu.Unlock()
 		if err != nil {

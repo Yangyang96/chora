@@ -172,7 +172,7 @@ func (server *Server) switchAgentExecutionProfile(writer http.ResponseWriter, re
 		return
 	}
 	if started.Session.Identity.Valid() {
-		go server.monitorRuntimeRun(agentpi.AdapterID, runID, started.Session.ID, started.Session.Identity)
+		server.startRuntimeMonitor(agentpi.AdapterID, runID, started.Session.ID, started.Session.Identity)
 	}
 	view, err := server.runView(request.Context(), runID)
 	if err != nil {

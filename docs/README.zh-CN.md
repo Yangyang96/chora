@@ -11,6 +11,8 @@
 
 [按需应用预览](app-preview.zh-CN.md)：按需查看 Task Web 应用，不改变代码验收流程。
 
+[macOS 应用](macos-application.zh-CN.md)：打包运行时、认证、迁移、更新与分发限制。
+
 ## 当前产品与验收指引
 
 - [公开路线图](../ROADMAP.zh-CN.md)：已验收切片、待实施基础/SCM/公开可用性与候选门禁。

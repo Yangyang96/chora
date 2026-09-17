@@ -203,3 +203,15 @@ worktree cleanup, normal shutdown, durable recovery and unchanged code-review
 state. Full tests, race checks, vet and standard E2E passed on Apple Silicon
 macOS. This does not qualify another platform, arbitrary application images or
 multi-service orchestration.
+
+### macOS application implementation
+
+M2-S6 provides a menu bar application and a reproducible Apple Silicon package
+builder, with bundled Node.js/Pi, native Pi authentication, owned service lifetime,
+idle-only backup/restore, source-data adoption and verified manual updates. See
+[macOS application](docs/macos-application.md) for the operating contract.
+
+Local implementation and development-package validation are separate from formal
+distribution. Developer ID signing, notarization, clean-machine first launch and
+signed update/recovery qualification remain release gates. No public installer
+or release publication is claimed by this implementation.

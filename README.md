@@ -12,6 +12,8 @@ vision is a self-hostable, model-neutral collaborative development workspace.
 
 > **Today: Developer Alpha.** Run from source on Apple Silicon macOS with Pi. A desktop installer is not available yet.
 
+See the [macOS application guide](docs/macos-application.md) for the local package implementation and remaining distribution gates.
+
 ![Chora project home: switch topics on the left and manage repositories and rooms on the right](docs/images/project-en.png)
 
 *Actual Workbench UI with a fictional Orbit Notes project, shown just after creation and before adding repositories.*

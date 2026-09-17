@@ -118,7 +118,7 @@ func (server *Server) dispatchAutomaticRetry(ctx context.Context, run domain.Age
 		go server.completeFakeRunOn(started.Run.ID(), started.Session.ID, adapter.adapter, adapter.runtime)
 		return
 	}
-	go server.monitorRuntimeRun(prepared.Attempt.AdapterID(), started.Run.ID(), started.Session.ID, started.Session.Identity)
+	server.startRuntimeMonitor(prepared.Attempt.AdapterID(), started.Run.ID(), started.Session.ID, started.Session.Identity)
 }
 
 type automaticRetryFakeRoute struct {

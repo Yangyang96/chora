@@ -65,7 +65,8 @@ test: check-toolchain
 	$(call RUN_WITH_PROGRESS,Go tests: internal/localweb,go test -p=1 -timeout=$(GO_TEST_TIMEOUT) ./internal/localweb)
 	$(call RUN_WITH_PROGRESS,Go tests: remaining product packages,packages="$$( $(GO_REMAINING_PRODUCT_PACKAGES) )"; test -n "$$packages"; go test -p=$(GO_TEST_PACKAGE_PARALLEL) -timeout=$(GO_TEST_TIMEOUT) $$packages)
 	$(call RUN_WITH_PROGRESS,Go tests: tagged localweb,go test -p=1 -timeout=$(GO_TEST_TIMEOUT) -tags chora_e2e -run='$(GO_TAGGED_LOCALWEB_TEST_PATTERN)' ./internal/localweb)
-	node --test internal/agent/pi/resource_check_observer.test.mjs
+	bash desktop/macos/test.sh
+	node --test internal/agent/pi/resource_check_observer.test.mjs desktop/macos/auth.test.mjs
 	npm run disclosure:test
 	npm run web:test
 
@@ -84,7 +85,8 @@ verify: check-toolchain
 	$(call RUN_WITH_PROGRESS,Go race tests: internal/localweb,$(MAKE) --no-print-directory GO_TEST_TIMEOUT=$(GO_LOCALWEB_RACE_TIMEOUT) localweb-race)
 	$(call RUN_WITH_PROGRESS,Go race tests: remaining product packages,packages="$$( $(GO_REMAINING_PRODUCT_PACKAGES) )"; test -n "$$packages"; go test -race -p=$(GO_RACE_PACKAGE_PARALLEL) -timeout=$(GO_TEST_TIMEOUT) $$packages)
 	$(call RUN_WITH_PROGRESS,Go race tests: tagged localweb,go test -race -p=1 -timeout=$(GO_TEST_TIMEOUT) -tags chora_e2e -run='$(GO_TAGGED_LOCALWEB_TEST_PATTERN)' ./internal/localweb)
-	node --test internal/agent/pi/resource_check_observer.test.mjs
+	bash desktop/macos/test.sh
+	node --test internal/agent/pi/resource_check_observer.test.mjs desktop/macos/auth.test.mjs
 	npm run disclosure:test
 	npm run web:typecheck
 	npm run web:test

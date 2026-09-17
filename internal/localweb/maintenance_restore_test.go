@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Yangyang96/chora/internal/app"
+	"github.com/Yangyang96/chora/internal/desktop"
 	"github.com/Yangyang96/chora/internal/domain"
 	"github.com/Yangyang96/chora/internal/gitsource"
 	"github.com/Yangyang96/chora/internal/pidiscovery"
@@ -146,6 +147,19 @@ func TestStoppedWholeDataRootBackupRestoresMultiRepositoryTaskAtSamePath(t *test
 	runMaintenanceCommand(t, "/usr/bin/tar", "-C", fixtureParent, "-xpf", archive)
 	if got := maintenanceTreeDigest(t, dataRoot); got != before {
 		t.Fatalf("restored whole data root digest=%x want=%x", got, before)
+	}
+
+	// Exercise the packaged backup/restore path against the same real multi-repo
+	// history and unchanged absolute worktree references, in addition to tar.
+	desktopBackup := filepath.Join(backupRoot, "desktop")
+	if _, err := desktop.Backup(dataRoot, desktopBackup); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := desktop.Restore(dataRoot, desktopBackup); err != nil {
+		t.Fatal(err)
+	}
+	if got := maintenanceTreeDigest(t, dataRoot); got != before {
+		t.Fatal("desktop restore changed retained data")
 	}
 
 	reopened := newMaintenanceRestoreServer(t, dataRoot)
