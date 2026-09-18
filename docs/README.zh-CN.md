@@ -29,6 +29,12 @@
 `make public-e2e`。真实 Pi 验证仍通过独立的
 `npm run test:e2e:pi-local-connected` 显式运行；真实用例被 skip 不构成验收。
 
+## 待实施方案
+
+- [原生任务看板 V0 — M2-S6A（英文权威版本）](task-board-plan.md)及其
+  [中文译文](task-board-plan.zh-CN.md)：**PLANNED_NOT_STARTED**，本地 S6 之后、S7 之前。
+  包含产品边界、生命周期投影、只读 API、实施切片、验收矩阵和交接入口，不是当前功能说明。
+
 ## 仅本地保留的验证证据
 
 `docs/validation/` 当前被版本控制排除，其中保存的是版本固定的本地证据，并非当前

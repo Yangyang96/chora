@@ -33,6 +33,13 @@ The maintained credential-free public browser journey is `npm run e2e:public`
 or `make public-e2e`. Real Pi validation remains a separate explicit
 `npm run test:e2e:pi-local-connected` run; a skipped real case is not acceptance.
 
+## Planned implementation specifications
+
+- [Native Task Board V0 — M2-S6A](task-board-plan.md) — **PLANNED_NOT_STARTED**,
+  next after local S6 and before S7. Product boundaries, lifecycle projection,
+  read API, implementation slices, acceptance matrix and implementation handoff.
+  This is not a current-feature guide; [Chinese translation](task-board-plan.zh-CN.md).
+
 ## Local-only validation evidence
 
 `docs/validation/` is currently excluded from version control. It contains
