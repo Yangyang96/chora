@@ -2,11 +2,11 @@
 
 [简体中文](ROADMAP.zh-CN.md) · [README](README.md)
 
-Status, 2026-09-19: Developer Alpha with public source. Real multi-repository delivery
+Status, 2026-09-20: Developer Alpha with public source. Real multi-repository delivery
 qualification, `M2_S3_PASS` and local DA-1/O5 preparation are complete. Source was
 published on 2026-09-10; versioned prereleases are recorded on the
 [Releases page](https://github.com/Yangyang96/chora/releases). M2 as a whole is
-still active. M2-S4-1 passed technical acceptance on 2026-09-13; M2-S4-2 is deferred.
+still active. M2-S4-1 passed technical acceptance on 2026-09-13; M2-S4-2 is withdrawn from required scope, not PASS.
 M2-S5-1 passed technical acceptance on 2026-09-14. M2-S5-2 passed Pi model
 selection technical acceptance on 2026-09-15. M2-S5-3 optional app preview passed
 technical acceptance on 2026-09-16. M2-S6 local application implementation and
@@ -14,6 +14,12 @@ native interaction acceptance are complete; formal distribution remains deferred
 M2-S6A Native Task Board V0 passed technical acceptance on 2026-09-19.
 M2-S7 Provider-native Skills/MCP setup passed technical acceptance on 2026-09-20
 for Local Connected.
+
+The accepted next direction is research, design and documentation within software
+Projects, with simpler execution settings. Unrelated general-purpose work is
+outside scope. M2-S8 and M2-S9 are PLANNED_NOT_STARTED; this update changes
+documentation and priorities, not runtime behavior. See the
+[product decision](docs/project-workflows.md).
 
 Project is the long-lived owner of repository resources and topic Rooms. A Task
 belongs to one Room and selects its repository scope. Empty Projects, multiple
@@ -36,6 +42,9 @@ Local Connected / No Sandbox. It is not a stable or installed release.
 | M2-S5-3 | Optional Task app preview in Local Connected and Isolated Local, logs, stop and recovery cleanup | Technical acceptance complete on 2026-09-16 on Apple Silicon macOS. |
 | M2-S6 | macOS application, bundled runtime, owned service lifecycle and local native interactions | Local implementation/development-package validation complete; native interaction acceptance recorded on 2026-09-17. Formal distribution and signed-update qualification remain deferred. |
 | M2-S6A | Native Task Board V0: existing Tasks, Project/Room views, attention and evidence-based phase projection | COMPLETE: S6A-1/2/3 passed technical acceptance on 2026-09-19. See the scope and verification summary below. |
+| M2-S7 | Project-scoped native Skills/MCP in Local Connected | Technical acceptance complete on 2026-09-20. |
+| M2-S8 | Two execution environments and reusable Project settings | PLANNED_NOT_STARTED; next implementation slice. |
+| M2-S9 | Research, design and documentation within software Projects | PLANNED_NOT_STARTED; follows S8. |
 | DA-1 / O5 v2 | Exact local candidate, public checks, licenses/SBOM, secret scans and release materials | Local candidate preparation passed; final user acceptance and publication actions are recorded separately. |
 
 Technical acceptance was frozen on 2026-09-09, followed by identity and publication
@@ -99,55 +108,95 @@ onboarding and actual model provenance/native configuration guidance. S3-2 cover
 source updates, compatibility, backup and recovery. S3-3 qualifies the integrated
 public journey and maintained CI. All four slices passed technical acceptance.
 
-Remaining M2 feature work includes deferred S4-2 profiles and native Skills/MCP
-setup. S6 local implementation and S6A Task Board V0 are complete; formal macOS
-distribution qualification remains separate. M3 owns
-Agent delegation, aggregation and conflicts; M4 adds background/remote execution.
-These keep the priorities below and are not new first-Alpha requirements.
+The next personal-workspace work is M2-S8 execution settings, then M2-S9 project
+collaboration. S7 native Skills/MCP and S6A Task Board V0 are complete. S6 local
+implementation is complete; formal macOS distribution remains a separate release
+track. These priorities add no new first-Alpha acceptance gate.
 
-## First feature milestone after public Alpha: M2-S4
+## Completed isolated execution and retired profile qualification
 
-M2-S4-1 implementation provides one [Isolated Local mode](docs/isolated-local.md)
-using public Pi 0.85.1, DeepSeek/deepseek-v4-pro and local arm64 Docker.
-Technical acceptance passed on 2026-09-13, including public preparation, credentials,
-execution, checks, Review → Commit → Push → PR → Merge → cleanup, cancellation,
-restart and Resume. Immutable multi-repository Task bases and legacy Apply remain.
-M2-S4-2 is scheduled after S4-1 is stable and qualifies Minimal/Standard only when
-their tools/dependencies, network and resource policies have clear, tested
-differences. At the current S4-1 pace, reserve one work unit (about 3–5 hours,
-including focused acceptance). It does not block S5, but remains part of the
-later M2 completion scope. One qualified mode can ship first. Isolation failure
-never falls back to host execution.
+M2-S4-1 provides one [Isolated Local environment](docs/isolated-local.md). Technical
+acceptance passed on 2026-09-13, covering public preparation, credentials,
+execution, checks, Review -> Commit -> Push -> PR -> Merge -> cleanup,
+cancellation, restart and Resume. Later model controls are recorded below.
+Immutable multi-repository Task bases, legacy Apply and fail-closed isolation remain.
 
-Default order: M2-S3 -> public-candidate gates -> first Alpha publication ->
-M2-S4. This adds no first-Alpha requirement and does not wait for M3/M4. Reuse
-existing isolation evidence and current Project/Room/Task contracts; do not
-rebuild the Runtime or Sandbox. This implementation does not create another Tag,
-Release or installer. M2 remains incomplete and S4-2 is not implemented.
+The 2026-09-20 [product decision](docs/project-workflows.md) withdraws M2-S4-2
+Minimal/Standard qualification as a scheduled deliverable and M2 completion
+requirement. It is not completed or PASS. Minimal may remain an internal comparison
+configuration when useful; Standard's useful tools belong to default Agent
+capabilities. Preserve historical IDs, policy bindings and evidence. Additional
+presets are demand-gated, not an obligation to recreate the old matrix.
 
-## Prioritized post-Alpha schedule
+## Next personal workspace slices
 
-Completed and planned delivery order; unimplemented slices remain
-PLANNED_NOT_STARTED without calendar dates:
+Accepted implementation order, without calendar-date commitments. Planning
+acceptance does not claim implementation or activate it in this documentation
+task. New slice IDs preserve earlier milestone IDs and evidence.
 
-1. M2-S4: S4-1 complete with one usable isolated mode; S4-2 Minimal/Standard deferred.
-2. M2-S5-1: complete; S5-1a native in-flight instructions; S5-1b evidence-linked decisions,
-   risks and unknowns, necessary human gates, resolution and reopening.
-3. M2-S5-2: complete for Pi; explicit supported model controls, separate from execution mode.
-4. M2-S5-3: complete; optional local app preview, logs, stop and cleanup.
-5. M2-S6: local macOS application implementation and native interaction acceptance
-   complete; formal distribution and signed-update qualification remain deferred.
-6. M2-S6A: complete, Native Task Board V0 over existing Tasks; shared Project/Room
-   views, accurate lifecycle projection and Needs attention.
-7. M2-S7: technical acceptance complete on 2026-09-20; Project-scoped Local Connected
-   [Skills/MCP setup](docs/native-capabilities.md), capability inspection and retry.
-8. M3: Agent delegation, aggregation and conflicts after basic team authority;
-   background/remote continuation belongs to M4.
+| Order | Slice | Start condition | Completion outcome |
+| --- | --- | --- | --- |
+| Next | M2-S8-1: execution terminology and compatibility | Start bounded S8 implementation from current Pi paths. | Local execution / Isolated execution describe new-Task choices; historical profiles remain readable with original semantics. |
+| Then | M2-S8-2: reusable Project execution settings | S8-1 terminology and compatibility rules are settled. | Project defaults, deliberate Task overrides and an accurate effective-settings summary work through execution and restart. |
+| After S8 | M2-S9-1: project research and proposal review | S8 execution settings are usable; select one concrete project question. | A repository-optional Task produces a sourced finding/proposal, supports feedback and review, and reopens without fabricated code delivery. |
+| Then | M2-S9-2: document revision and implementation handoff | S9-1 result, review and provenance contract is proved. | Revise and accept a project design/document, then explicitly bind that accepted revision to a later coding Task. |
+| Later | M3 team collaboration and delegation | Prioritize after the personal S9 journey; qualify identity, membership and concurrency before delegation. | Shared ownership, review, handoff, aggregation and conflict handling. |
+| On demonstrated need | M4 background/remote execution | A bounded scenario needs work away from the foreground. | Explicit placement, cancellation, recovery, budgets and notifications. |
 
-This ranks the earlier candidates without adding first-Alpha gates or changing
-P3/P4. S4-2 may be deferred without blocking S5; M3 does not wait for all M2.
-Scope and changes to priority use actual feedback at release checkpoints. A
-listed slice is not implemented or automatically authorized to run.
+S8/S9 do not wait for signed macOS distribution, a second Runtime, Contexere or
+generic Work Apps. S6 signing/notarization, clean-machine and signed-update
+qualification remain a separate release track. Broader isolated dependencies or
+Skills/MCP need their own demand and qualification; they are not included in
+Project defaults. Revisit priorities using feedback, without requiring every
+future M2 option to finish before any M3 work.
+
+### M2-S8 — Execution settings
+
+Reuse S5-2 model controls, S7 native capability configuration and existing Pi
+host/isolated routes. Task overrides take precedence over Project defaults;
+show the effective environment, model choice and relevant capability availability
+with optional details. Runtime defaults remain distinct from observed models.
+No new Provider platform, model router or policy matrix is needed. Operating
+documentation keeps current labels until the UI change ships.
+
+Freeze effective settings and their source/version for the Task and its execution
+records. Project edits do not rebind existing Tasks, retries or resumed sessions.
+Explicit switches retain the supported successor-execution rules; do not broaden
+them or mutate old Attempts. Host selection still requires disclosure
+acknowledgement. Unavailable isolation cannot choose host execution, another
+model or extra credentials automatically.
+
+Completion: focused configuration/compatibility tests, relevant browser E2E and
+affected real-Pi evidence for both existing execution environments. Prove
+inheritance/override, Project isolation, unavailable choices, restart, unchanged
+prior history and local acknowledgement/no-host-fallback. Old Minimal/Standard
+records reopen with original profile/policy without requiring retired environments
+to execute. Reuse unchanged evidence.
+
+### M2-S9 — Research, design and documentation
+
+Use existing Task/Run/Result mechanisms with workflow-appropriate resources,
+outcomes and checks. S9-1 accepts an explicitly supplied software-project question
+and material without requiring a Git repository or code change. Use authorized
+Provider capabilities; no connector catalog or mandatory task-type form. Show
+sources, uncertainties, feedback and reviewable findings. Agent completion is
+distinct from human acceptance; neither automatically launches another Task.
+
+S9-2 adds bounded revision/review of a project design or Markdown document, reusing
+Artifact, Decision and context mechanisms. Preserve source/revision identity and
+review history. Later coding Tasks explicitly select accepted revisions as frozen
+input; subsequent document edits cannot change that binding. Materials stay in
+their Room unless explicitly referenced or shared. Repository-backed document edits
+retain repository checks and delivery; accepting a Room artifact authorizes neither
+repository writes nor publication.
+
+Completion per sub-slice: useful end-to-end work, feedback/retry and restart/reopen
+with honest provenance and missing-evidence states. Include API/persistence tests,
+relevant browser E2E and a real Pi project journey. Extend Task Board projections
+for non-code results without inventing SCM delivery phases. Regress coding
+Diff/check/Review/SCM; resource scope, execution authority and accepted history
+cannot expand silently. General office work, real-time multi-user editors,
+a workflow engine and new context infrastructure remain outside S9.
 
 M2-S5-1 acceptance covers both completed sub-slices. Agent proposals, system observations
 and user entries have distinct provenance. Records persist source evidence,
@@ -202,7 +251,8 @@ are not implicit V0 work. The S6A suffix preserves existing S6/S7 milestone IDs.
   multi-repository Project/Room/Task foundations; do not defer them to M3.
 - M4: work away from the foreground, selected from local background or remote
   placement by actual need; cancellation, recovery, budgets and notifications.
-- M5: shared SCM/CI and delivery policy, observable rollout/rollback, proven apps.
+- M5: shared SCM/CI and delivery policy, observable rollout/rollback, and proven
+  software-project surfaces. Unrelated general-purpose applications are out of scope.
 - M6: enterprise-scale governance, reliability and extension ecosystem.
 
 These are priorities, not unconditional serial dependencies. Personal async or

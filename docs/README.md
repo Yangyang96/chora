@@ -13,6 +13,14 @@ The references below cover current operation and public-source checks.
 
 [macOS application](macos-application.md) — packaged runtime, authentication, migration, updates and distribution limits.
 
+## Accepted product direction
+
+- [Project workflows and execution settings](project-workflows.md) — two execution
+  environments, reusable settings, historical profile compatibility and planned
+  research/design/document collaboration within software projects.
+- [Next personal workspace slices](../ROADMAP.md#next-personal-workspace-slices)
+  — M2-S8 then M2-S9, start conditions and observable completion criteria.
+
 ## Current product and acceptance guidance
 
 - [Public roadmap](../ROADMAP.md) — accepted slice versus planned foundations,

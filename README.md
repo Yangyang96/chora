@@ -9,6 +9,10 @@
 Bring repositories and conversations into one project. Describe a change, follow
 the agent's work, then review the code and decide what to ship. The long-term
 vision is a self-hostable, model-neutral collaborative development workspace.
+The accepted next steps simplify execution settings, then add research, design
+and documentation within software projects. Repository-optional Tasks are planned,
+not available yet. See [project workflows](docs/project-workflows.md) and the
+[next roadmap slices](ROADMAP.md#next-personal-workspace-slices).
 
 > **Today: Developer Alpha.** Run from source on Apple Silicon macOS with Pi. A desktop installer is not available yet.
 
@@ -132,15 +136,17 @@ automatically.
 
 ## Project status
 
-As of **September 11, 2026**, source is public and Chora remains in Developer Alpha.
+As of **September 20, 2026**, source is public and Chora remains in Developer Alpha.
 
 | Status | Scope |
 | --- | --- |
 | Implemented | Multi-repository projects, rooms and tasks, visible execution, review/recovery, and per-repository delivery. |
 | Implemented | Pi setup guidance, model provenance, backup/restore, and local diagnostics. |
 | Current limits | Apple Silicon macOS + Pi; Local Connected has no sandbox. No desktop installer yet. |
-| Pending | Final user acceptance and a tagged release. Public source is not a stable-release claim. |
-| Planned | Public sandbox setup, more providers, team and multi-agent collaboration, background and remote tasks. |
+| Implemented | Public Isolated Local setup, Task Board V0, and Project Skills/MCP for Local Connected. |
+| Pending | Final product user acceptance and formal macOS distribution; published prereleases are not a stable-release claim. |
+| Next | Simpler execution settings, then software-project research, design and documentation. |
+| Later | Team and multi-agent collaboration; background/remote execution and additional providers when needed. |
 
 See the [roadmap](ROADMAP.md) for the longer-term direction.
 
@@ -175,9 +181,10 @@ For other failures, see [troubleshooting and diagnostics](docs/workbench-mainten
 
 The current real-agent setup is Pi on Apple Silicon macOS. Cross-platform CI
 checks do not establish support for the complete workflow on other systems.
-The retained isolated Docker path requires private maintainer inputs and is
-not a public setup option. More providers and deployment choices are future
-work; see the [roadmap](ROADMAP.md).
+[Isolated Local](docs/isolated-local.md) is publicly preparable on the supported
+host, with its documented project, dependency and credential limits. Historical
+private M1 environments are not needed for that path. More providers and deployment
+choices remain future work; see the [roadmap](ROADMAP.md).
 
 ### What changes are supported?
 
