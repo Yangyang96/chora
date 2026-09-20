@@ -2,9 +2,10 @@
 
 **English** | [简体中文](project-workflows.zh-CN.md)
 
-Accepted product direction, 2026-09-20. The changes described here are planned,
-not newly implemented capabilities. [The roadmap](../ROADMAP.md#next-personal-workspace-slices)
-owns their delivery order, scope and completion criteria.
+Accepted product direction, 2026-09-20. S8-1 execution terminology is implemented;
+reusable Project defaults and S9 remain planned.
+[The roadmap](../ROADMAP.md#next-personal-workspace-slices) owns their delivery
+order, scope and completion criteria.
 
 ## Software-project collaboration
 
@@ -40,11 +41,10 @@ defaults; the Task composer shows a short effective-configuration summary and
 offers adjustments when needed. Resource registration and configuration inheritance
 do not by themselves grant execution authority or additional resource access.
 
-The proposed user-facing labels are **Local execution · No Sandbox** and
-**Isolated execution**. Until M2-S8 is implemented, the UI still uses
-**Trusted Local · No Sandbox** and **Isolated Local**; operating documentation
-also uses **Local Connected** for the host path. These names refer to the same
-two current execution choices, not additional modes.
+The user-facing labels are **Local execution · No Sandbox** and
+**Isolated execution**. The persisted technical IDs remain `trusted_local` and
+`isolated_local`; commands, file paths and policy identifiers keep their current
+names. The labels describe the same two existing routes, not additional modes.
 
 ## Disposition of existing profiles
 
@@ -61,11 +61,11 @@ as a scheduled qualification milestone; it is not marked complete or PASS. A new
 environment or capability preset needs a demonstrated user need and its own
 bounded scope before entering the roadmap.
 
-Existing profile IDs, policy bindings, Attempt history and acceptance evidence
-remain interpretable. Do not rename persisted values, map historical managed
-profiles to today's isolated policy, or silently replay an old Task through a
-different route. Compatibility does not require exposing historical profiles for
-new Tasks or indefinitely qualifying every historical executable configuration.
+Minimal/Standard comparison fixtures may remain when they provide useful internal
+coverage. They are not a product compatibility promise, and S8-1 does not add
+migration, reopening or qualification requirements for old Minimal/Standard
+history. No compatibility adapter is introduced. Persisted execution IDs,
+commands, file paths and policy identifiers are unchanged.
 
 ## Reusable settings with explicit execution authority
 
@@ -84,9 +84,9 @@ contract; when no compatible switch exists, require a new Task. Do not widen the
 existing model/profile switch contracts as a side effect of adding defaults.
 
 Model, credentials and capabilities must be supported by the chosen environment.
-Today [Project Skills/MCP](native-capabilities.md) applies only to Local Connected;
+Today [Project Skills/MCP](native-capabilities.md) applies only to local execution;
 the isolated route has its own model and credential limitations described in the
-[Isolated Local guide](isolated-local.md). Inheriting settings must not project
+[isolated execution guide](isolated-local.md). Inheriting settings must not project
 host extensions, files or credentials into isolation. Unsupported selections
 stay unavailable and explain how to recover; they do not trigger model or host
 fallback. Cancellation, restart, immutable repository bases and reviewed results

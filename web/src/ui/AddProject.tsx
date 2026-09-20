@@ -104,7 +104,7 @@ export function AddProject({ onAdded, onCancel }: AddProjectProps) {
           <li><span>02</span><div><strong>{t('Review the changes')}</strong><p>{t('Inspect each repository’s code diff and checks before deciding what to keep.')}</p></div></li>
           <li><span>03</span><div><strong>{t('Apply to your local project')}</strong><p>{t('Apply writes the reviewed changes to the selected local repositories. Commit and push remain yours.')}</p></div></li>
         </ol>
-        <p className="local-boundary-note">{t('Local Connected runs Pi on this computer without a sandbox. You acknowledge this before starting a task.')}</p>
+        <p className="local-boundary-note">{t('Local execution runs Pi on this computer without a sandbox. You acknowledge this before starting a task.')}</p>
       </section>
     </div>
   )

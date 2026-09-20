@@ -103,7 +103,7 @@ export function RunStream({ run, busy, onResultClosed, trustedLocalSelectionRead
   const [retryModel, setRetryModel] = useState<{ key: string; binding?: ModelBinding }>()
   const retryModelBinding = retryModel?.key === retryKey ? retryModel.binding : undefined
   const [switchProfile, setSwitchProfile] = useState<AgentExecutionProfile>(run.agentExecution?.profile ?? 'standard')
-  const [switchReason, setSwitchReason] = useState('Use this profile for a fresh successor Attempt.')
+  const [switchReason, setSwitchReason] = useState('Use this execution environment for a fresh successor Attempt.')
   const [switchDisclosurePending, setSwitchDisclosurePending] = useState(false)
   const deliveryKey = `${run.id}:${run.resourceResult?.digest ?? ''}`
   const [deliveryState, setDeliveryState] = useState<{ key: string; value?: DeliverySummary }>()
@@ -158,7 +158,7 @@ export function RunStream({ run, busy, onResultClosed, trustedLocalSelectionRead
             {run.task.title}
             {run.activity && !implementationFinishedWithoutVerification ? ` · ${formatElapsed(run.activity.elapsedMs)}` : ''}
           </span>
-		  {run.agentExecution && <span className="run-profile-header">{t('Agent profile')} · <AgentExecutionDisclosure agentExecution={run.agentExecution} /></span>}
+		  {run.agentExecution && <span className="run-profile-header">{t('Execution environment')} · <AgentExecutionDisclosure agentExecution={run.agentExecution} /></span>}
           {run.agentExecution?.attemptTimeoutSeconds && <p className="section-note">{t('Attempt timeout: {seconds}s', { seconds: run.agentExecution.attemptTimeoutSeconds })} · {run.agentExecution.reportedCost === undefined ? t('Cost: unknown') : t('Pi-reported cost estimate: {cost} (not a bill or budget limit)', { cost: run.agentExecution.reportedCost })}{run.agentExecution.costStatus === 'partial_pi_reported_estimate' && ` · ${t('Partial data')}`}</p>}
 		  {run.task.worktree && <span>{t('Workspace · {locator} · {state}', { locator: run.task.worktree.locator, state: t(run.task.worktree.state) })}</span>}
         </div>
@@ -214,7 +214,7 @@ export function RunStream({ run, busy, onResultClosed, trustedLocalSelectionRead
 
       {run.agentExecution && (
         <div className="run-profile-activity">
-          <span>{t('Activity profile')}</span>
+          <span>{t('Activity environment')}</span>
           <AgentExecutionDisclosure agentExecution={run.agentExecution} />
         </div>
       )}
@@ -347,7 +347,7 @@ export function RunStream({ run, busy, onResultClosed, trustedLocalSelectionRead
 
           {(status === 'revision_required' || status === 'cancelled' || status === 'recovery_required' || run.automaticRetry?.state === 'blocked') && !retryActive && !hasClosedResult && run.controls?.canRetry && (
             <div className="stream-action">
-			  {run.agentExecution && <p className="surface-profile">{t('Retry profile')} · <AgentExecutionDisclosure agentExecution={run.agentExecution} /></p>}
+			  {run.agentExecution && <p className="surface-profile">{t('Retry environment')} · <AgentExecutionDisclosure agentExecution={run.agentExecution} /></p>}
               {resumePreparedRetry ? <>
                 <p>{t('Continue the prepared attempt with its saved instructions and remaining automatic retry budget.')}</p>
                 <ActionButton type="button" className="btn-primary" disabled={busy} disabledReason={'Wait for the current operation to finish.'} onClick={() => onRetry(run.retry?.instructions || 'Continue the prepared automatic retry.')}>
@@ -368,7 +368,7 @@ export function RunStream({ run, busy, onResultClosed, trustedLocalSelectionRead
 
           {!hasClosedResult && run.controls?.canSwitchAgentExecutionProfile && run.agentExecution && (
             <div className="stream-action profile-switch">
-              <strong>{t('Switch Agent profile for a successor Attempt')}</strong>
+              <strong>{t('Switch execution environment for a successor Attempt')}</strong>
               <p>{t('Switching creates a fresh successor Attempt and preserves the current Attempt and evidence. Ordinary Retry remains unchanged.')}</p>
               <AgentExecutionProfileSelector
                 value={switchProfile}
@@ -381,16 +381,16 @@ export function RunStream({ run, busy, onResultClosed, trustedLocalSelectionRead
                 onDisclosurePendingChange={setSwitchDisclosurePending}
               />
               <label>
-                {t('Reason for profile switch')}
+                {t('Reason for environment switch')}
                 <textarea value={switchReason} onChange={(event) => setSwitchReason(event.target.value)} />
               </label>
               <ActionButton
                 type="button"
                 className="btn-primary"
-                disabled={busy || switchDisclosurePending || switchProfile === run.agentExecution.profile || !switchReason.trim()} disabledReason={busy ? 'Wait for the current operation to finish.' : switchDisclosurePending ? 'Finish the Local Connected acknowledgement first.' : switchProfile === run.agentExecution.profile ? 'Choose a different Agent profile.' : 'Enter a reason for switching the Agent profile.'}
+                disabled={busy || switchDisclosurePending || switchProfile === run.agentExecution.profile || !switchReason.trim()} disabledReason={busy ? 'Wait for the current operation to finish.' : switchDisclosurePending ? 'Finish the Local execution acknowledgement first.' : switchProfile === run.agentExecution.profile ? 'Choose a different execution environment.' : 'Enter a reason for switching the execution environment.'}
                 onClick={switchExecutionProfile}
               >
-                {busy ? t('Switching…') : t('Create successor with selected profile')}
+                {busy ? t('Switching…') : t('Create successor with selected environment')}
               </ActionButton>
             </div>
           )}
@@ -406,7 +406,7 @@ export function RunStream({ run, busy, onResultClosed, trustedLocalSelectionRead
           {!run.resourceResult && !localPi && (status === 'awaiting_review' || status === 'accepted' || status === 'revision_required') && run.reviewablePatch && (
             <div className="review-summary">
               <strong>{t(independentlyVerified ? 'Review · planned versus actual' : run.agentExecution?.runtimeSource === 'local_pi' ? 'Human patch review' : 'Agent-reported review · planned versus actual')}</strong>
-              {run.agentExecution && <p className="surface-profile">{t('Review profile')} · <AgentExecutionDisclosure agentExecution={run.agentExecution} /></p>}
+              {run.agentExecution && <p className="surface-profile">{t('Review environment')} · <AgentExecutionDisclosure agentExecution={run.agentExecution} /></p>}
               <p>{run.agentExecution?.runtimeSource === 'local_pi' ? t('Review the diff and check results before deciding whether to apply. Applying a patch does not make failed checks pass.') : run.agentReport?.summary || t(independentlyVerified ? 'The Agent returned a Patch for independent review.' : 'The Agent returned a reviewable Patch with Agent-reported results.')}</p>
               {run.unknowns.length > 0 && <p>{t('Unknowns: {unknowns}', { unknowns: run.unknowns.join(' · ') })}</p>}
             </div>

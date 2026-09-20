@@ -62,10 +62,10 @@ export function AppShell({ roomName, sidebar, children, piDiscovery, onHome }: A
           {!showLegacy && <>
             <span className="local-mode-label">{t('On this computer')}</span>
             <details className="local-pi-status">
-              <summary><span className={`connection-dot ${piDiscovery?.phase === 'loaded' && piDiscovery.discovery.state === 'ready' ? 'ready' : ''}`} />{t(piDiscovery?.phase === 'loaded' ? piDiscoveryStateLabel(piDiscovery.discovery.state) ?? 'Local Connected check failed' : piDiscovery?.phase === 'error' ? 'Local Connected check failed' : 'Checking Local Connected…')}</summary>
+              <summary><span className={`connection-dot ${piDiscovery?.phase === 'loaded' && piDiscovery.discovery.state === 'ready' ? 'ready' : ''}`} />{t(piDiscovery?.phase === 'loaded' ? piDiscoveryStateLabel(piDiscovery.discovery.state) ?? 'Local execution check failed' : piDiscovery?.phase === 'error' ? 'Local execution check failed' : 'Checking Local execution…')}</summary>
               <div className="readiness-popover">
                 {piDiscovery?.phase === 'loaded' && <PiDiscoveryStatus discovery={piDiscovery.discovery} />}
-                <p>{t('Local Connected runs Pi on this computer without a sandbox. You acknowledge this before starting a task.')}</p>
+                <p>{t('Local execution runs Pi on this computer without a sandbox. You acknowledge this before starting a task.')}</p>
               </div>
             </details>
           </>}

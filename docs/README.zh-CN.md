@@ -7,7 +7,7 @@
 日常维护请看[备份、恢复与诊断](workbench-maintenance.zh-CN.md)。
 下方参考资料覆盖当前使用方式与公开源码检查。
 
-[本地隔离模式](isolated-local.zh-CN.md)：公开环境准备、支持范围、边界和真实验收入口。
+[隔离执行](isolated-local.zh-CN.md)：公开环境准备、支持范围、边界和真实验收入口。
 
 [按需应用预览](app-preview.zh-CN.md)：按需查看 Task Web 应用，不改变代码验收流程。
 
@@ -38,7 +38,7 @@
 
 ## Skills 和 MCP
 
-- [Local Connected 中的 Skills 和 MCP](native-capabilities.zh-CN.md)：项目配置、
+- [本机执行中的 Skills 和 MCP](native-capabilities.zh-CN.md)：项目配置、
   原生能力发现、失败状态和连接验证；[英文权威版本](native-capabilities.md)。
 
 ## 任务看板实施

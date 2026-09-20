@@ -348,7 +348,7 @@ func (server *Server) processServingGenerationRetired(ctx context.Context) (bool
 	return false, nil
 }
 
-// publishStartupGenerationReferences preserves Trusted Local availability when
+// publishStartupGenerationReferences preserves Local execution availability when
 // only managed-generation configuration is broken, while refusing to recover
 // any managed candidate until its exact durable references are published.
 func (server *Server) publishStartupGenerationReferences(ctx context.Context) error {

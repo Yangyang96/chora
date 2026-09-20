@@ -75,11 +75,11 @@ test('M2-S1-5 real public-UI Golden Path from ready Home through restart and App
   await page.getByRole('button', { name: '＋ New Task' }).first().click()
   const requirement = 'Implement collectHeadings(markdown) in src/headings.js for this Markdown outline library. Return ordered {level, text} objects for ATX headings (# through ###### followed by a space), trim the heading text, ignore ordinary lines and headings inside fenced code blocks (backticks or tildes). Preserve the existing exported API. Add meaningful node:test coverage including empty input, all six heading levels, non-headings, whitespace trimming, and both fence types. Run npm test. Change only src/headings.js and test/headings.test.js. Do not commit or change package.json or README.md.'
   await page.getByLabel('What should Chora build?').fill(requirement)
-  await page.getByRole('radio', { name: 'Trusted Local · No Sandbox' }).click()
-  const disclosure = page.getByRole('dialog', { name: 'Trusted Local · No Sandbox' })
+  await page.getByRole('radio', { name: 'Local execution · No Sandbox' }).click()
+  const disclosure = page.getByRole('dialog', { name: 'Local execution · No Sandbox' })
   await expect(disclosure).toBeVisible()
-  await disclosure.getByRole('button', { name: 'Acknowledge and use Trusted Local' }).click()
-  await expect(page.getByRole('radio', { name: 'Trusted Local · No Sandbox' })).toBeChecked()
+  await disclosure.getByRole('button', { name: 'Acknowledge and use local execution' }).click()
+  await expect(page.getByRole('radio', { name: 'Local execution · No Sandbox' })).toBeChecked()
   await page.getByRole('button', { name: 'Start', exact: true }).click()
   await expect(page).toHaveURL(/\/rooms\/[^/]+\/tasks\/[^/]+\/runs\/[^/]+$/)
   const runURL = page.url()
@@ -94,7 +94,7 @@ test('M2-S1-5 real public-UI Golden Path from ready Home through restart and App
   const firstTaskElapsedMs = Math.round(performance.now() - timerStart)
   expect(firstTaskElapsedMs).toBeLessThanOrEqual(300_000)
   expect(launched.adapter).toBe('pi')
-  await expect(page.getByText('Trusted Local · No Sandbox', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('Local execution · No Sandbox', { exact: true }).first()).toBeVisible()
   await page.screenshot({ path: testInfo.outputPath('started.png'), fullPage: true })
 
   const waitReview = async (attempt: number) => {
@@ -212,13 +212,13 @@ test('Local Connected is selectable and its disclosure acknowledges when discove
   await expect(page.getByText('This Room has no Tasks yet.')).toBeVisible()
   await page.getByRole('button', { name: '＋ New Task' }).first().click()
 
-  const trusted = page.getByRole('radio', { name: 'Trusted Local · No Sandbox' })
+  const trusted = page.getByRole('radio', { name: 'Local execution · No Sandbox' })
   await expect(trusted).toBeEnabled()
   await trusted.click()
 
-  const disclosure = page.getByRole('dialog', { name: 'Trusted Local · No Sandbox' })
+  const disclosure = page.getByRole('dialog', { name: 'Local execution · No Sandbox' })
   await expect(disclosure).toBeVisible()
-  await disclosure.getByRole('button', { name: 'Acknowledge and use Trusted Local' }).click()
+  await disclosure.getByRole('button', { name: 'Acknowledge and use local execution' }).click()
 
   await expect(trusted).toBeChecked()
   const acknowledgement = await getJSON<{ acknowledged: boolean; policyVersion: string }>(request, '/api/agent-execution/trusted-local-acknowledgements/current')
@@ -645,12 +645,12 @@ async function startRealPiTask(page: import('@playwright/test').Page, request: A
   await page.getByLabel('What should Chora build?').fill(
     exactRequirement ? requirement : `Update README.md so it contains the exact standalone line "${reviewMarker}". ${requirement} Execute each declared check in its own standalone shell invocation, without chaining other commands. This legacy check recorder requires the exact declared command.`,
   )
-  const trusted = page.getByRole('radio', { name: 'Trusted Local · No Sandbox' })
+  const trusted = page.getByRole('radio', { name: 'Local execution · No Sandbox' })
   await expect(trusted).toBeEnabled()
   await trusted.click()
-  const disclosure = page.getByRole('dialog', { name: 'Trusted Local · No Sandbox' })
+  const disclosure = page.getByRole('dialog', { name: 'Local execution · No Sandbox' })
   if (await disclosure.count()) {
-    await disclosure.getByRole('button', { name: 'Acknowledge and use Trusted Local' }).click()
+    await disclosure.getByRole('button', { name: 'Acknowledge and use local execution' }).click()
   }
   await expect(trusted).toBeChecked()
   // Seed a retained scalar Task through its real compatibility API. Modern

@@ -34,18 +34,18 @@ describe('PiDiscovery', () => {
 
     render(<LanguageProvider><PiDiscovery /></LanguageProvider>)
 
-    expect(screen.getByRole('status')).toHaveTextContent('Checking Local Connected…')
+    expect(screen.getByRole('status')).toHaveTextContent('Checking Local execution…')
     expect(await screen.findByText('Pi ready')).toBeInTheDocument()
     expect(screen.getByText('Version 0.84.2')).toBeInTheDocument()
     expect(screen.getByText(/ollama/)).toBeInTheDocument()
   })
 
   test('renders the fixed message for unavailable servers', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => response({ state: 'unavailable', reason: 'Local Connected Pi discovery is not configured', readyProviders: [], notReadyProviders: [] })))
+    vi.stubGlobal('fetch', vi.fn(async () => response({ state: 'unavailable', reason: 'Local execution Pi discovery is not configured', readyProviders: [], notReadyProviders: [] })))
 
     render(<LanguageProvider><PiDiscovery /></LanguageProvider>)
 
-    expect(await screen.findByText('Local Connected is not available on this server')).toBeInTheDocument()
+    expect(await screen.findByText('Local execution is not available on this server')).toBeInTheDocument()
   })
 
   test.each<[PiDiscoveryView['state'], string, string]>([
@@ -72,7 +72,7 @@ describe('PiDiscovery', () => {
 
     render(<LanguageProvider><PiDiscovery /></LanguageProvider>)
 
-    expect(await screen.findByText('Local Connected check failed')).toBeInTheDocument()
+    expect(await screen.findByText('Local execution check failed')).toBeInTheDocument()
     expect(screen.getByText('discovery unavailable')).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: 'Refresh' }))

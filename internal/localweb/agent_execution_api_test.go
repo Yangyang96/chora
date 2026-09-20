@@ -12,8 +12,10 @@ import (
 
 	agentfake "github.com/Yangyang96/chora/internal/agent/fake"
 	agentpi "github.com/Yangyang96/chora/internal/agent/pi"
+	"github.com/Yangyang96/chora/internal/app"
 	"github.com/Yangyang96/chora/internal/domain"
 	"github.com/Yangyang96/chora/internal/execution"
+	"github.com/Yangyang96/chora/internal/gitsource"
 	"github.com/Yangyang96/chora/internal/preflight"
 	storecontract "github.com/Yangyang96/chora/internal/store"
 )
@@ -79,15 +81,15 @@ func TestAgentExecutionProjectionFreezesAllThreeProfilesAndTrustedLocalDisclosur
 		}
 		sandbox := sandboxIdentityViewOf(binding, status)
 		if profile == domain.AgentExecutionProfileTrustedLocal {
-			if view.Sandboxed || view.DisclosureLabel != "Trusted Local · No Sandbox" || sandbox.Status != "not_applicable" || sandbox.Provider != domain.TrustedHostExecutionProvider || sandbox.Mode != "No Sandbox" || sandbox.Image != "not_applicable" || sandbox.PolicyFingerprint != "not_applicable" {
-				t.Fatalf("Trusted Local disclosure=%#v sandbox=%#v", view, sandbox)
+			if view.Sandboxed || view.DisclosureLabel != "Local execution · No Sandbox" || sandbox.Status != "not_applicable" || sandbox.Provider != domain.TrustedHostExecutionProvider || sandbox.Mode != "No Sandbox" || sandbox.Image != "not_applicable" || sandbox.PolicyFingerprint != "not_applicable" {
+				t.Fatalf("Local execution disclosure=%#v sandbox=%#v", view, sandbox)
 			}
 			encoded, _ := json.Marshal(struct {
 				AgentExecution *agentExecutionView `json:"agentExecution"`
 				Sandbox        sandboxIdentityView `json:"sandbox"`
 			}{view, sandbox})
 			if strings.Contains(string(encoded), "sha256:managed") || strings.Contains(string(encoded), "sha256:sandbox") || strings.Contains(string(encoded), "docker-colima") {
-				t.Fatalf("Trusted Local leaked managed claims: %s", encoded)
+				t.Fatalf("Local execution leaked managed claims: %s", encoded)
 			}
 		} else if !view.Sandboxed || sandbox.Status != "adopted" {
 			t.Fatalf("managed profile %q disclosure=%#v sandbox=%#v", profile, view, sandbox)
@@ -117,7 +119,7 @@ func TestExactProfileReadinessDoesNotUseGlobalPiStatusOrFallback(t *testing.T) {
 	trusted, _ := domain.NewAgentExecutionProfileBinding(domain.AgentExecutionProfileTrustedLocal)
 	trustedRecorder := httptest.NewRecorder()
 	if !server.requireAgentExecutionRoute(trustedRecorder, newLocalRequest(http.MethodPost, "/trusted", nil), trusted) || preflightCalls != 0 {
-		t.Fatalf("Trusted Local was blocked by Docker/global Pi status: code=%d body=%s calls=%d", trustedRecorder.Code, trustedRecorder.Body.String(), preflightCalls)
+		t.Fatalf("Local execution was blocked by Docker/global Pi status: code=%d body=%s calls=%d", trustedRecorder.Code, trustedRecorder.Body.String(), preflightCalls)
 	}
 	server.product = false
 	managed, _ := domain.NewAgentExecutionProfileBinding(domain.AgentExecutionProfileStandard)
@@ -126,7 +128,7 @@ func TestExactProfileReadinessDoesNotUseGlobalPiStatusOrFallback(t *testing.T) {
 		t.Fatalf("missing managed route did not fail closed: code=%d body=%s", managedRecorder.Code, managedRecorder.Body.String())
 	}
 	publicError := managedRecorder.Body.String()
-	for _, forbidden := range []string{"sk-super-secret-value", "trusted_local", "Trusted Local", "fallback"} {
+	for _, forbidden := range []string{"sk-super-secret-value", "trusted_local", "Local execution", "fallback"} {
 		if strings.Contains(publicError, forbidden) {
 			t.Fatalf("managed route error leaked or suggested fallback: %s", publicError)
 		}
@@ -141,5 +143,46 @@ func TestExactProfileReadinessDoesNotUseGlobalPiStatusOrFallback(t *testing.T) {
 	readyRecorder := httptest.NewRecorder()
 	if !server.requireAgentExecutionRoute(readyRecorder, newLocalRequest(http.MethodPost, "/managed", nil), managed) || preflightCalls != 1 {
 		t.Fatalf("exact managed route readiness failed: code=%d body=%s calls=%d", readyRecorder.Code, readyRecorder.Body.String(), preflightCalls)
+	}
+}
+
+func TestPublicEntryRejectsRetiredExecutionEnvironmentsBeforeRouting(t *testing.T) {
+	// No registry or supervisor is installed: rejected selections must not
+	// probe or start any runtime, including a host fallback.
+	server := &Server{pathPiEnabled: true}
+	for _, profile := range []domain.AgentExecutionProfile{domain.AgentExecutionProfileMinimal, domain.AgentExecutionProfileStandard} {
+		t.Run(string(profile), func(t *testing.T) {
+			binding, err := domain.NewAgentExecutionProfileBinding(profile)
+			if err != nil {
+				t.Fatal(err)
+			}
+			response := httptest.NewRecorder()
+			if server.requireAgentExecutionRoute(response, newLocalRequest(http.MethodPost, "/execution", nil), binding) || response.Code != http.StatusBadRequest {
+				t.Fatalf("retired environment was not rejected: %d %s", response.Code, response.Body.String())
+			}
+			if !strings.Contains(response.Body.String(), "create a new Task") {
+				t.Fatalf("missing recovery guidance: %s", response.Body.String())
+			}
+		})
+	}
+}
+
+func TestPublicTaskCreationRejectsRetiredExecutionEnvironments(t *testing.T) {
+	db := openTaskWorktreeResolverStore(t)
+	defer db.Close()
+	root, _, _ := newTaskWorktreeTestRepository(t)
+	service := app.NewService(app.Dependencies{Store: db, RepositorySource: gitsource.Default{}, Authorizer: localAuthorizer{}})
+	server := &Server{store: db, service: service, repositorySource: gitsource.Default{}, pathPiEnabled: true}
+	var project projectView
+	requestJSON(t, server.Handler(), http.MethodPost, "/api/projects", map[string]any{"locator": root, "name": "Execution environments"}, http.StatusOK, &project)
+	path := "/api/rooms/" + project.Room.ID + "/tasks"
+	for _, profile := range []string{"minimal", "standard"} {
+		var response map[string]string
+		requestJSONWithHeaders(t, server.Handler(), http.MethodPost, path, map[string]any{
+			"title": "Unsupported environment", "executionProfile": "real_spec_coding", "agentExecutionProfile": profile,
+		}, map[string]string{"Idempotency-Key": "retired-" + profile}, http.StatusBadRequest, &response)
+		if response["error"] != "select local execution or isolated execution" {
+			t.Fatalf("profile %s was not rejected at the environment boundary: %v", profile, response)
+		}
 	}
 }

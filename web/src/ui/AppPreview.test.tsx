@@ -72,13 +72,13 @@ describe('AppPreview', () => {
 
   test('keeps unavailable and request errors inside the optional panel', async () => {
     const fetcher = vi.fn()
-      .mockResolvedValueOnce(response(preview({ profile: 'local_connected', available: false, reason: 'Local Connected previews are unavailable.', preview: { state: 'idle' } })))
+      .mockResolvedValueOnce(response(preview({ profile: 'local_connected', available: false, reason: 'Local execution previews are unavailable.', preview: { state: 'idle' } })))
       .mockResolvedValueOnce(response({ error: 'preview service unavailable' }, false, 503))
     vi.stubGlobal('fetch', fetcher)
     const rendered = render(<LanguageProvider><AppPreview runId="run-1" expectedVersion={1} /></LanguageProvider>)
     await userEvent.click(screen.getByText('App preview (optional)'))
-    expect(await screen.findByText('Local Connected · No Sandbox')).toBeInTheDocument()
-    expect(screen.getByText('Local Connected previews are unavailable.')).toBeInTheDocument()
+    expect(await screen.findByText('Local execution · No Sandbox')).toBeInTheDocument()
+    expect(screen.getByText('Local execution previews are unavailable.')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Start preview' })).not.toBeInTheDocument()
     expect(screen.getByText(/does not block code review or delivery/)).toBeInTheDocument()
 

@@ -7,7 +7,7 @@ Start with [Quick start](../README.md#quick-start) to run Chora and
 For ongoing use, see [backup, recovery, and diagnostics](workbench-maintenance.md).
 The references below cover current operation and public-source checks.
 
-[Isolated Local](isolated-local.md): public preparation, supported scope, boundaries and real acceptance entry.
+[Isolated execution](isolated-local.md): public preparation, supported scope, boundaries and real acceptance entry.
 
 [Optional app preview](app-preview.md): inspect a Task Web app on demand without changing code acceptance.
 
@@ -43,7 +43,7 @@ or `make public-e2e`. Real Pi validation remains a separate explicit
 
 ## Skills and MCP
 
-- [Skills and MCP in Local Connected](native-capabilities.md) — Project configuration,
+- [Skills and MCP in local execution](native-capabilities.md) — Project configuration,
   native capability discovery, failure states and connection verification.
 
 ## Task board implementation

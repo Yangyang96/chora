@@ -1,9 +1,9 @@
-# Local Connected 中的 Skills 和 MCP
+# 本机执行中的 Skills 和 MCP
 
 [English](native-capabilities.md)
 
 项目的 **Skills 和 MCP** 管理已有本地 Pi 资源的引用，作用于该项目所有 Room 的新
-Local Connected 执行，不修改全局 Pi 文件或其他项目。Isolated Local 不加载这些
+本机执行，不修改全局 Pi 文件或其他项目。隔离执行不加载这些
 资源，本切片不支持为该模式配置 Skills/MCP。
 
 验证版本为 Pi 0.85.1，以及可选的
@@ -20,7 +20,7 @@ Local Connected 执行，不修改全局 Pi 文件或其他项目。Isolated Loc
 
 默认继承全局资源。项目禁用项仅作用于本项目，移除禁用项恢复继承。原生仓库级发现
 结果可能随任务工作区不同而变化。项目发现视图显示全局资源和显式项目引用，各执行
-的观察状态则描述自己的工作区。这些扩展使用 Local Connected 现有的 **No Sandbox**
+的观察状态则描述自己的工作区。这些扩展使用本机执行现有的**无沙箱**
 权限；外部指令或工具结果不会获得覆盖任务契约的权限。
 
 Chora 保存引用和禁用项，不保存引用文件的内容或凭据。认证通过已有 Provider／桥接

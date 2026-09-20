@@ -71,7 +71,7 @@ function NewAppContent() {
   const [trustedLocalSelectionReady, setTrustedLocalSelectionReady] = useState(false)
   const [trustedLocalAcknowledgementPolicy, setTrustedLocalAcknowledgementPolicy] = useState('')
   const [piDiscovery, setPiDiscovery] = useState<PiDiscoveryFetch>({ phase: 'loading' })
-  const [isolatedLocal, setIsolatedLocal] = useState<IsolatedLocalView>(() => unavailableIsolatedLocal('Checking Isolated Local readiness…'))
+  const [isolatedLocal, setIsolatedLocal] = useState<IsolatedLocalView>(() => unavailableIsolatedLocal('Checking Isolated execution readiness…'))
   const [resourcePreparation, setResourcePreparation] = useState<ResourcePreparation>()
   const taskWorkflow = useRef<AbortController | undefined>(undefined)
 
@@ -120,7 +120,7 @@ function NewAppContent() {
 
   async function prepareIsolatedLocal() {
     if (!isolatedLocal.preparationAvailable || isolatedLocal.state === 'preparing') return
-    setIsolatedLocal((current) => ({ ...current, state: 'preparing', reason: t('Preparing Isolated Local…') }))
+    setIsolatedLocal((current) => ({ ...current, state: 'preparing', reason: t('Preparing Isolated execution…') }))
     try {
       const next = await api<IsolatedLocalView>('/api/isolated-local/prepare', { method: 'POST', body: '{}' })
       setIsolatedLocal(next)
@@ -430,7 +430,7 @@ function NewAppContent() {
       })
       if (acknowledgement.policyVersion !== TRUSTED_LOCAL_DISCLOSURE_POLICY || !acknowledgement.actorId ||
         !acknowledgement.sessionId || !acknowledgement.acknowledgedAt || typeof acknowledgement.replayed !== 'boolean') {
-        throw new Error('Trusted Local acknowledgement did not prove the current disclosure policy.')
+        throw new Error('Local execution acknowledgement did not prove the current disclosure policy.')
       }
       setTrustedLocalAcknowledgementPolicy(acknowledgement.policyVersion)
       return true
@@ -773,11 +773,11 @@ function NewAppContent() {
         <p>{task ? task.title || t('Task') : t('Loading…')}</p>
         {taskPlan && <section aria-label={t('Plan')}><h2>{t('Plan')}</h2><ol>{taskPlan.technical_steps.map((step, index) => <li key={index}>{step}</li>)}</ol></section>}
         {unsupportedTaskProfile ? <>
-          <p role="status">{t('This task selected a Docker Sandbox profile, which this local workbench cannot start. Keep this task and reuse its requirement to explicitly choose Local Connected for a new task.')}</p>
+          <p role="status">{t('This task selected a retired execution environment, which this local workbench cannot start. Keep this task and reuse its requirement to explicitly choose an available environment for a new task.')}</p>
           <ActionButton type="button" className="btn-primary" disabled={busy} disabledReason={'Wait for the current operation to finish.'} onClick={recoverExecutionChoice}>{t('Reuse requirement and choose execution mode')}</ActionButton>
-        </> : task && <ActionButton type="button" className="btn-primary" disabled={busy || frozenTaskProfileUnavailable || workBlocked} disabledReason={busy ? 'Wait for the current operation to finish.' : frozenTaskProfileUnavailable ? 'The selected execution profile is not ready.' : 'Restore the Project and Room before starting new work.'} onClick={() => void startExistingTask(task)}>{t('Start Run')}</ActionButton>}
+        </> : task && <ActionButton type="button" className="btn-primary" disabled={busy || frozenTaskProfileUnavailable || workBlocked} disabledReason={busy ? 'Wait for the current operation to finish.' : frozenTaskProfileUnavailable ? 'The selected execution environment is not ready.' : 'Restore the Project and Room before starting new work.'} onClick={() => void startExistingTask(task)}>{t('Start Run')}</ActionButton>}
         {workBlocked && <p role="status">{t('New work is blocked by the current Project or Room state.')}</p>}
-        {task?.agentExecutionProfile && <p>Agent profile · <AgentExecutionDisclosure profile={task.agentExecutionProfile} /></p>}
+        {task?.agentExecutionProfile && <p>{t('Execution environment')} · <AgentExecutionDisclosure profile={task.agentExecutionProfile} /></p>}
       </div>
     )
   } else if (workspace) {

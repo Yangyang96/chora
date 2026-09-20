@@ -27,7 +27,7 @@ import (
 func TestIsolatedLocalRealWorkbenchTwoRepositoryClosure(t *testing.T) {
 	dataRoot := strings.TrimSpace(os.Getenv("CHORA_ISOLATED_ACCEPTANCE_DATA"))
 	if dataRoot == "" {
-		t.Fatal("CHORA_ISOLATED_ACCEPTANCE_DATA must name an already prepared Isolated Local data root")
+		t.Fatal("CHORA_ISOLATED_ACCEPTANCE_DATA must name an already prepared Isolated execution data root")
 	}
 	dataRoot, err := filepath.Abs(dataRoot)
 	if err != nil {
@@ -62,7 +62,7 @@ func TestIsolatedLocalRealWorkbenchTwoRepositoryClosure(t *testing.T) {
 		t.Fatal("explicit proxy acceptance requires active local proxy configuration")
 	}
 	if readiness.State != "ready" || readiness.ImageID == "" {
-		t.Fatalf("prepared Isolated Local is not ready: %#v", readiness)
+		t.Fatalf("prepared Isolated execution is not ready: %#v", readiness)
 	}
 
 	writeCheckout, writeHead, writeContent := isolatedAcceptanceRepository(t, "write", map[string]string{
@@ -222,7 +222,7 @@ func TestIsolatedLocalRealWorkbenchTwoRepositoryClosure(t *testing.T) {
 	if os.Getenv("CHORA_ISOLATED_ACCEPTANCE_GITHUB_REPO") != "" {
 		for _, kind := range []string{"pr", "merge", "cleanup"} {
 			var preview, confirmed app.DeliveryOperationView
-			body := map[string]any{"repoId": writeResource.RepoID, "expectedVersion": accepted.Version, "resultDigest": result.Digest, "kind": kind, "remote": "origin", "title": "test: verify isolated local delivery", "body": "Disposable Workbench Isolated Local acceptance fixture. Exercises real Pi/DeepSeek execution, human repair, and reviewed Git delivery."}
+			body := map[string]any{"repoId": writeResource.RepoID, "expectedVersion": accepted.Version, "resultDigest": result.Digest, "kind": kind, "remote": "origin", "title": "test: verify isolated local delivery", "body": "Disposable Workbench Isolated execution acceptance fixture. Exercises real Pi/DeepSeek execution, human repair, and reviewed Git delivery."}
 			requestJSONWithHeaders(t, handler, http.MethodPost, prefix+"/delivery/preview", body, map[string]string{"Idempotency-Key": "isolated-acceptance-" + kind + "-preview"}, http.StatusOK, &preview)
 			requestJSONWithHeaders(t, handler, http.MethodPost, prefix+"/delivery/confirm", map[string]any{"operationId": preview.ID, "expectedVersion": accepted.Version, "resultDigest": result.Digest}, map[string]string{"Idempotency-Key": "isolated-acceptance-" + kind + "-confirm"}, http.StatusOK, &confirmed)
 			if confirmed.Status != "succeeded" {

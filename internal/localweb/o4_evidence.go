@@ -515,7 +515,7 @@ func (boundary *o4EvidenceBoundary) productObservation(ctx context.Context, serv
 	if profile == string(domain.AgentExecutionProfileTrustedLocal) {
 		selection := boundary.localPiSelection
 		if !selection.Configured() || session.StartedAt.IsZero() || session.TerminalAt.IsZero() || session.FinalizedAt.IsZero() {
-			return dockersupervisor.O4ProductObservation{}, "", errors.New("O4 Trusted Local terminal identity is unavailable")
+			return dockersupervisor.O4ProductObservation{}, "", errors.New("O4 Local execution terminal identity is unavailable")
 		}
 		executableDigest := selection.ExecutableSHA256()
 		closureDigest := selection.ClosureSHA256()

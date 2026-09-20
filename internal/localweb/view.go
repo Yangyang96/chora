@@ -536,7 +536,7 @@ func agentExecutionViewOf(binding domain.AgentExecutionProfileBinding) *agentExe
 	}
 	switch binding.Profile() {
 	case domain.AgentExecutionProfileIsolatedLocal:
-		view.DisclosureLabel = "Isolated Local · Sandboxed"
+		view.DisclosureLabel = "Isolated execution · Sandboxed"
 		view.AttemptTimeoutSeconds = 1200
 		view.CostStatus = "unknown"
 	case domain.AgentExecutionProfileMinimal:
@@ -545,7 +545,7 @@ func agentExecutionViewOf(binding domain.AgentExecutionProfileBinding) *agentExe
 		view.DisclosureLabel = "Standard · Sandboxed"
 	case domain.AgentExecutionProfileTrustedLocal:
 		view.Sandboxed = false
-		view.DisclosureLabel = "Trusted Local · No Sandbox"
+		view.DisclosureLabel = "Local execution · No Sandbox"
 	}
 	return view
 }
@@ -1183,7 +1183,7 @@ func (server *Server) runView(ctx context.Context, runID domain.RunID) (runView,
 	}
 	if binding, bindingErr := reader.GetSpecCodingBinding(ctx, task.ID()); bindingErr == nil {
 		if binding.Status == storecontract.SpecCodingRegistered && localConnectedReview {
-			verificationDisposition = verificationDispositionView{State: "not_applicable", Reason: "Local Connected uses Agent-reported checks; no independent Verifier ran."}
+			verificationDisposition = verificationDispositionView{State: "not_applicable", Reason: "Local execution uses Agent-reported checks; no independent Verifier ran."}
 		} else if binding.Status == storecontract.SpecCodingRegistered {
 			verificationDisposition = verificationDispositionView{State: "available", Reason: "Registered Spec Coding inputs are ready for independent verification."}
 			if !server.verifierStatus.Enabled || server.verifier == nil {
@@ -1416,7 +1416,7 @@ func (server *Server) runView(ctx context.Context, runID domain.RunID) (runView,
 		if attempt.AdapterID() == agentpi.AdapterID {
 			sandbox = sandboxIdentityViewOf(attempt.AgentExecutionProfileBinding(), server.piStatus)
 			if attempt.AgentExecutionProfileBinding().Profile() == domain.AgentExecutionProfileIsolatedLocal {
-				sandbox = sandboxIdentityView{Status: "unavailable", Provider: domain.DockerExecutionProvider, Mode: "Isolated Local", Image: "not-reported", PolicyFingerprint: "not-reported"}
+				sandbox = sandboxIdentityView{Status: "unavailable", Provider: domain.DockerExecutionProvider, Mode: "Isolated execution", Image: "not-reported", PolicyFingerprint: "not-reported"}
 				if binding, err := reader.GetSpecCodingBinding(ctx, run.TaskID()); err == nil && sha256.Sum256(binding.ActiveContractJSON) == binding.ActiveContractDigest {
 					var frozen struct {
 						Candidate struct {
@@ -1670,7 +1670,7 @@ func (server *Server) runView(ctx context.Context, runID domain.RunID) (runView,
 	for _, criterion := range task.Criteria() {
 		pendingEvidence := "Waiting for independent verification."
 		if localConnectedReview {
-			pendingEvidence = "Waiting for an Agent-reported check; no independent Verifier is configured for Local Connected."
+			pendingEvidence = "Waiting for an Agent-reported check; no independent Verifier is configured for Local execution."
 		}
 		item := criterionView{ID: criterion.ID().String(), Title: criterion.Title(), Status: "pending", Evidence: pendingEvidence}
 		if check, ok := verifiedChecks[item.ID]; ok {

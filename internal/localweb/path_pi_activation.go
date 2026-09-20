@@ -26,7 +26,7 @@ import (
 // --session-dir suffix appended in prepareStartForSource.
 var pathPiArgumentsPrefix = []string{"--mode", "rpc", "--session-dir"}
 
-// composePathPiRuntime builds the M2-S1 Local Connected Pi composition from a
+// composePathPiRuntime builds the M2-S1 Local execution Pi composition from a
 // PATH-discovered, user-installed Pi. It deliberately carries no Docker,
 // pidistribution, --repository-derived manager, or private-auth authority.
 //
@@ -129,7 +129,7 @@ func composePathPiRuntime(ctx context.Context, runtimeRoot, sessionRoot string, 
 	}
 	trustedSupervisor, err := trustedhost.New(supervisorConfig)
 	if err != nil {
-		return piComposition{}, result, fmt.Errorf("activate Trusted Local PATH Pi execution: %w", err)
+		return piComposition{}, result, fmt.Errorf("activate Local execution PATH Pi execution: %w", err)
 	}
 	return piComposition{adapter: adapter, trustedSupervisor: trustedSupervisor}, result, nil
 }

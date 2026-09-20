@@ -1,9 +1,9 @@
-# Workbench 本地隔离模式
+# Workbench 隔离执行
 
 [English](isolated-local.md) | **简体中文**
 
-Isolated Local 在 Docker 中运行 Pi，将校验通过的结果写回任务工作树。创建任务时显式选择此模式。
-镜像、引擎、凭据或隔离边界不可用时停止执行，绝不自动切换到 Local Connected。
+隔离执行在 Docker 中运行 Pi，将校验通过的结果写回任务工作树。创建任务时显式选择此模式。
+镜像、引擎、凭据或隔离边界不可用时停止执行，绝不自动切换到本机执行。
 
 ## 支持范围
 
@@ -23,7 +23,7 @@ Isolated Local 在 Docker 中运行 Pi，将校验通过的结果写回任务工
 
 ## 准备和执行
 
-在新建任务面板选择 **本地隔离**，点击 **准备本地隔离环境**。
+在新建任务面板选择 **隔离执行**，点击 **准备隔离执行环境**。
 准备过程从公开 npm 获取输入，验证固定 Pi tarball 的 SHA-512 完整性，按已提交的
 consumer lock 安装并禁用 lifecycle scripts，再编译公开检查助手。使用的官方 Node 镜像为：
 
@@ -121,12 +121,12 @@ go test -tags isolated_acceptance ./internal/dockersupervisor \
 
 简短验收清单：
 
-- 从公开输入准备环境，显式选择 Isolated Local。
+- 从公开输入准备环境，显式选择隔离执行。
 - 取消、重启、Resume；使用参考仓库的信息修改可写仓库。
 - 核实最终内容检查，Review 拒绝后修订并接受新结果。
 - 在自有可丢弃 GitHub 目标完成 Commit、Push、PR、Merge、清理。
 - 核实写入拒绝及错误隔离边界 fail closed，绝不回退宿主。
-- 回归 Local Connected 与旧 Apply；skip 和历史排除项独立列示，不计为通过。
+- 回归本机执行与旧 Apply；skip 和历史排除项独立列示，不计为通过。
 
 本次不包含 Minimal/Standard 双配置、第二 Provider、远程执行、团队功能或安装包。
 
@@ -137,7 +137,7 @@ go test -tags isolated_acceptance ./internal/dockersupervisor \
 
 ## 为模型请求配置代理
 
-Isolated Local 支持显式配置 HTTP 或 HTTPS 代理。在 Workbench 的 `--data`
+隔离执行支持显式配置 HTTP 或 HTTPS 代理。在 Workbench 的 `--data`
 目录内创建 `isolated-proxy.json`，放在所有仓库之外，由当前用户拥有，权限为 `0600`：
 
 ```json
@@ -168,5 +168,5 @@ SOCKS 或自定义代理 CA；HTTPS 代理证书必须被运行环境信任。
 管理员和容器内进程仍可看到这些环境变量。Chora 对捕获的运行输出做端点脱敏；
 任务不应将环境配置打印或复制到仓库产物中。这只是出站路由配置，不是网络白名单，
 Docker bridge 网络及宿主服务可达性保持不变。
-镜像下载使用 Docker/Colima 自己的代理配置；Local Connected 仍继承启动
+镜像下载使用 Docker/Colima 自己的代理配置；本机执行仍继承启动
 Workbench 进程的环境变量。

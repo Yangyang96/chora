@@ -160,7 +160,7 @@ func composePiRuntime(ctx context.Context, runtimeRoot, artifactRoot, repoRoot s
 			},
 		})
 		if trustedErr != nil {
-			failures = append(failures, fmt.Errorf("activate Trusted Local Pi execution: %w", trustedErr))
+			failures = append(failures, fmt.Errorf("activate Local execution Pi execution: %w", trustedErr))
 		} else {
 			composition.trustedSupervisor = trustedSupervisor
 		}

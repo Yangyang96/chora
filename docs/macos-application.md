@@ -15,8 +15,8 @@ The menu bar application prepares its managed runtime, offers fresh data or
 migration, starts a loopback Workbench and opens the default browser. Go, Node.js,
 npm and a Chora checkout are not needed on the installed machine. Task repositories
 still need Git and any tools required by their own checks or applications.
-Docker is optional and used only for explicitly prepared Isolated Local execution.
-Local Connected retains its No Sandbox boundary.
+Docker is optional and used only for explicitly prepared isolated execution.
+Local execution retains its No Sandbox boundary.
 
 Choose **Set Up Model Authentication…** in the Chora menu. The native dialog uses
 Pi's own provider authentication methods, including API keys and browser/device

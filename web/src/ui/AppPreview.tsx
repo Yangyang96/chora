@@ -109,7 +109,7 @@ export function AppPreview({ runId, expectedVersion }: Props) {
       {busy && !view && <p role="status">{local('Loading app preview…', '正在加载应用预览…')}</p>}
       {error && <p role="alert" className="error-banner">{error}</p>}
       {view && <>
-        <p><strong>{view.profile === 'local_connected' ? local('Local Connected · No Sandbox', '本地连接 · 无沙箱') : view.profile === 'isolated_local' ? local('Isolated app preview', '隔离应用预览') : local('App preview', '应用预览')}</strong></p>
+        <p><strong>{view.profile === 'local_connected' ? local('Local execution · No Sandbox', '本机执行 · 无沙箱') : view.profile === 'isolated_local' ? local('Isolated app preview', '隔离应用预览') : local('App preview', '应用预览')}</strong></p>
         {view.reason && <p className="warning-banner">{view.reason}</p>}
         {view.repositories.length > 1 && <label>{local('Repository', '仓库')}<select value={repoId} disabled={busy} onChange={(event) => { const selected = event.target.value; setRepoId(selected); setView(undefined); void load(selected) }}>{view.repositories.map((repository) => <option key={repository.repoId} value={repository.repoId}>{repository.name}</option>)}</select></label>}
         {view.available && <div className="form-grid">

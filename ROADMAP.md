@@ -17,8 +17,8 @@ for Local Connected.
 
 The accepted next direction is research, design and documentation within software
 Projects, with simpler execution settings. Unrelated general-purpose work is
-outside scope. M2-S8 and M2-S9 are PLANNED_NOT_STARTED; this update changes
-documentation and priorities, not runtime behavior. See the
+outside scope. M2-S8-1 execution terminology is implemented;
+M2-S8-2 and M2-S9 are PLANNED_NOT_STARTED. See the
 [product decision](docs/project-workflows.md).
 
 Project is the long-lived owner of repository resources and topic Rooms. A Task
@@ -43,7 +43,7 @@ Local Connected / No Sandbox. It is not a stable or installed release.
 | M2-S6 | macOS application, bundled runtime, owned service lifecycle and local native interactions | Local implementation/development-package validation complete; native interaction acceptance recorded on 2026-09-17. Formal distribution and signed-update qualification remain deferred. |
 | M2-S6A | Native Task Board V0: existing Tasks, Project/Room views, attention and evidence-based phase projection | COMPLETE: S6A-1/2/3 passed technical acceptance on 2026-09-19. See the scope and verification summary below. |
 | M2-S7 | Project-scoped native Skills/MCP in Local Connected | Technical acceptance complete on 2026-09-20. |
-| M2-S8 | Two execution environments and reusable Project settings | PLANNED_NOT_STARTED; next implementation slice. |
+| M2-S8 | Two execution environments and reusable Project settings | S8-1 complete; S8-2 not started. |
 | M2-S9 | Research, design and documentation within software Projects | PLANNED_NOT_STARTED; follows S8. |
 | DA-1 / O5 v2 | Exact local candidate, public checks, licenses/SBOM, secret scans and release materials | Local candidate preparation passed; final user acceptance and publication actions are recorded separately. |
 
@@ -136,8 +136,8 @@ task. New slice IDs preserve earlier milestone IDs and evidence.
 
 | Order | Slice | Start condition | Completion outcome |
 | --- | --- | --- | --- |
-| Next | M2-S8-1: execution terminology and compatibility | Start bounded S8 implementation from current Pi paths. | Local execution / Isolated execution describe new-Task choices; historical profiles remain readable with original semantics. |
-| Then | M2-S8-2: reusable Project execution settings | S8-1 terminology and compatibility rules are settled. | Project defaults, deliberate Task overrides and an accurate effective-settings summary work through execution and restart. |
+| Complete | M2-S8-1: execution terminology | Existing local and isolated Pi paths. | **Local execution · No Sandbox** and **Isolated execution** consistently describe new-Task choices. Focused API/UI tests and browser E2E cover selection, acknowledgement and disclosure. Technical IDs, commands, paths and policy identifiers stay unchanged. |
+| Then | M2-S8-2: reusable Project execution settings | S8-1 terminology is validated. | Project defaults, deliberate Task overrides and an accurate effective-settings summary work through execution and restart. |
 | After S8 | M2-S9-1: project research and proposal review | S8 execution settings are usable; select one concrete project question. | A repository-optional Task produces a sourced finding/proposal, supports feedback and review, and reopens without fabricated code delivery. |
 | Then | M2-S9-2: document revision and implementation handoff | S9-1 result, review and provenance contract is proved. | Revise and accept a project design/document, then explicitly bind that accepted revision to a later coding Task. |
 | Later | M3 team collaboration and delegation | Prioritize after the personal S9 journey; qualify identity, membership and concurrency before delegation. | Shared ownership, review, handoff, aggregation and conflict handling. |
@@ -156,8 +156,7 @@ Reuse S5-2 model controls, S7 native capability configuration and existing Pi
 host/isolated routes. Task overrides take precedence over Project defaults;
 show the effective environment, model choice and relevant capability availability
 with optional details. Runtime defaults remain distinct from observed models.
-No new Provider platform, model router or policy matrix is needed. Operating
-documentation keeps current labels until the UI change ships.
+No new Provider platform, model router or policy matrix is needed. S8-1 uses the same environment labels in the UI and operating documentation.
 
 Freeze effective settings and their source/version for the Task and its execution
 records. Project edits do not rebind existing Tasks, retries or resumed sessions.
@@ -166,12 +165,12 @@ them or mutate old Attempts. Host selection still requires disclosure
 acknowledgement. Unavailable isolation cannot choose host execution, another
 model or extra credentials automatically.
 
-Completion: focused configuration/compatibility tests, relevant browser E2E and
+Completion: focused terminology/configuration tests, relevant browser E2E and
 affected real-Pi evidence for both existing execution environments. Prove
-inheritance/override, Project isolation, unavailable choices, restart, unchanged
-prior history and local acknowledgement/no-host-fallback. Old Minimal/Standard
-records reopen with original profile/policy without requiring retired environments
-to execute. Reuse unchanged evidence.
+inheritance/override, Project isolation, unavailable choices, restart and local
+acknowledgement/no-host-fallback. S8-1 does not require migration, reopening or
+qualification of old Minimal/Standard history and adds no compatibility adapter.
+Internal comparison fixtures may remain without becoming a product promise.
 
 ### M2-S9 — Research, design and documentation
 

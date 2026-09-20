@@ -11,23 +11,23 @@ function state(value: IsolatedLocalState, preparationAvailable = true): Isolated
 
 describe('IsolatedLocal', () => {
   test.each([
-    ['ready', 'Isolated Local is ready'],
-    ['preparing', 'Preparing Isolated Local…'],
-    ['failed', 'Isolated Local preparation failed'],
+    ['ready', 'Isolated execution is ready'],
+    ['preparing', 'Preparing Isolated execution…'],
+    ['failed', 'Isolated execution preparation failed'],
     ['restart_required', 'Restart Chora to finish preparation'],
   ] as const)('renders %s without offering a host fallback', (value, message) => {
     render(<IsolatedLocal value={state(value)} onPrepare={vi.fn()} />)
     expect(screen.getByText(message)).toBeInTheDocument()
     expect(screen.queryByText(/fallback/i)).not.toBeInTheDocument()
-    expect(screen.queryByText(/use Trusted Local/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/use Local execution/i)).not.toBeInTheDocument()
   })
 
   test('starts preparation only when the API allows it', async () => {
     const prepare = vi.fn(async () => {})
     const { rerender } = render(<IsolatedLocal value={state('not_prepared')} onPrepare={prepare} />)
-    await userEvent.click(screen.getByRole('button', { name: 'Prepare Isolated Local' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Prepare Isolated execution' }))
     expect(prepare).toHaveBeenCalledOnce()
     rerender(<IsolatedLocal value={state('not_prepared', false)} onPrepare={prepare} />)
-    expect(screen.queryByRole('button', { name: 'Prepare Isolated Local' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Prepare Isolated execution' })).not.toBeInTheDocument()
   })
 })

@@ -7,7 +7,7 @@ import (
 	"github.com/Yangyang96/chora/internal/pidiscovery"
 )
 
-const piDiscoveryUnavailableReason = "Local Connected Pi discovery is not configured"
+const piDiscoveryUnavailableReason = "Local execution Pi discovery is not configured"
 
 type piDiscoveryView struct {
 	State             string   `json:"state"`

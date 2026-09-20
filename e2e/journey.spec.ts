@@ -58,7 +58,7 @@ test('resumes a saved Task without execution and explicitly starts the diagnosti
     const response = await route.fetch()
     const body = await response.json()
     body.agentReport = { id: 'layout-report', attemptId: 'layout-attempt', summary: 'Done', finalText: longReply, completedAt: '2026-09-07T00:00:00Z', authority: 'non_authoritative_agent_claim', claimedChecks: [] }
-    body.agentExecution = { profile: 'trusted_local', runtimeSource: 'local_pi', sandboxed: false, disclosureLabel: 'Trusted Local · No Sandbox' }
+    body.agentExecution = { profile: 'trusted_local', runtimeSource: 'local_pi', sandboxed: false, disclosureLabel: 'Local execution · No Sandbox' }
     body.reviewablePatch = { patchDigest: 'a', baselineDigest: 'b', declaredFilesDigest: 'c', resultId: 'result', agentAttemptId: 'attempt', verificationAttemptId: '', artifactId: 'artifact', rawDownload: '/patch', files: [{ path: 'README.md', lines: [{ kind: 'added', newLine: 1, text: 'Task complete' }] }] }
     body.status = 'accepted'
     body.agentReport.claimedChecks = [{ criterionId: 'check-1', status: 'FAIL', evidence: 'Recorded check failed' }]
@@ -71,7 +71,7 @@ test('resumes a saved Task without execution and explicitly starts the diagnosti
   await expect(outcome.getByText('Written to repository', { exact: true })).toBeVisible()
   await expect(outcome.getByText(/Later Git commits are not tracked here/)).toBeVisible()
   await expect(outcome.getByText('Human patch review')).toHaveCount(0)
-  await expect(outcome.getByText('Trusted Local · No Sandbox')).toBeVisible()
+  await expect(outcome.getByText('Local execution · No Sandbox')).toBeVisible()
   await outcome.getByText('Check source', { exact: true }).click()
   await expect(outcome.getByText('Chora did not run a separate check of these changes.')).toBeVisible()
   for (const [link, target] of [['View changes', 'diff-title'], ['View check results', 'checks-title']]) {

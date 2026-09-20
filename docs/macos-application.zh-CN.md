@@ -13,7 +13,7 @@ Gatekeeper、公证或分发验收。
 菜单栏应用准备受管理运行时，提供新建数据或迁移入口，启动本机回环 Workbench，
 然后打开默认浏览器。安装后的机器无需 Go、Node.js、npm 或 Chora 源码。
 任务仓库仍需 Git，以及自身检查、应用所需的工具。Docker 为可选依赖，仅用于
-主动准备的 Isolated Local。Local Connected 保持 No Sandbox 边界。
+主动准备的隔离执行。本机执行保持无沙箱边界。
 
 在 Chora 菜单选择 **Set Up Model Authentication…**。原生对话框使用 Pi 自己的
 Provider 认证方法，包括 API key，以及 Provider 提供的浏览器或设备认证。

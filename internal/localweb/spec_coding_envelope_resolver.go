@@ -15,7 +15,7 @@ import (
 
 // boundSpecCodingEnvelopeResolver resolves a Real Spec Coding envelope per Room.
 // A Room with a RepositoryBinding gets a BoundEnvelope bound to that repository
-// (the Local Connected path). Only positively classified legacy standalone
+// (the Local execution path). Only positively classified legacy standalone
 // Rooms retain the installed M1 envelope. Missing Project ownership fails closed.
 type boundSpecCodingEnvelopeResolver struct {
 	reader         storecontract.Reader
@@ -51,7 +51,7 @@ func (resolver *boundSpecCodingEnvelopeResolver) ResolveSpecCodingEnvelope(ctx c
 		return nil, err
 	}
 	if resolver.piVersion == "" {
-		return nil, fmt.Errorf("%w: a compatible PATH Pi is required to start a Local Connected Task", speccoding.ErrInvalidInstalledEnvelope)
+		return nil, fmt.Errorf("%w: a compatible PATH Pi is required to start a Local execution Task", speccoding.ErrInvalidInstalledEnvelope)
 	}
 	revision, _, _, err := currentTaskBase(ctx, binding.LocalLocator())
 	if err != nil {

@@ -101,8 +101,8 @@ export function NativeCapabilities({ projectId, editable }: { projectId: string;
   }
 
   return <details className="panel topic-room-form" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
-    <summary><strong>{t('Skills and MCP')}</strong> · {t('Local Connected only')}</summary>
-    <p className="entry-help">{t('New Local Connected executions inherit global Pi resources unless this Project overrides them here. Existing executions stay unchanged.')}</p>
+    <summary><strong>{t('Skills and MCP')}</strong> · {t('Local execution only')}</summary>
+    <p className="entry-help">{t('New Local execution runs inherit global Pi resources unless this Project overrides them here. Existing runs stay unchanged.')}</p>
     <p className="entry-help">{t('Enter references to existing local resources. Chora stores paths and server names only; it does not install packages or store credentials here.')}</p>
     {loading && <p role="status">{t('Loading native capabilities…')}</p>}
     {error && <p className="error-banner" role="alert">{error}</p>}

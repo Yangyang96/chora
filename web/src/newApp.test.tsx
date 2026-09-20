@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import NewApp from './newApp'
-import { TRUSTED_LOCAL_DISCLOSURE_POLICY, TRUSTED_LOCAL_LABEL } from './ui/AgentExecutionProfile'
+import { TRUSTED_LOCAL_DISCLOSURE_POLICY, LOCAL_EXECUTION_LABEL } from './ui/AgentExecutionProfile'
 import type { PiInstallationView } from './ui/PiInstallation'
 
 function jsonResponse(body: unknown) {
@@ -149,7 +149,7 @@ describe('NewApp', () => {
     await waitFor(() => expect(screen.queryByText(/Archived · 1/)).not.toBeInTheDocument())
   })
 
-  test('creates normal Tasks with the Isolated Local profile and never exposes legacy product choices', async () => {
+  test('creates normal Tasks with the Isolated execution profile and never exposes legacy product choices', async () => {
     window.history.replaceState({}, '', '/rooms/room-1')
     const requests: Array<{ method: string; path: string; body?: Record<string, unknown> }> = []
     const createdTask = { id: 'task-profile', agentExecutionProfile: 'isolated_local', planning: { revisions: [] } }
@@ -178,7 +178,7 @@ describe('NewApp', () => {
 
     render(<NewApp />)
     await userEvent.click((await screen.findAllByRole('button', { name: '＋ New Task' }))[0])
-    expect(screen.getByRole('radio', { name: 'Isolated Local' })).toBeChecked()
+    expect(screen.getByRole('radio', { name: 'Isolated execution' })).toBeChecked()
     expect(screen.queryByRole('radio', { name: 'Standard' })).not.toBeInTheDocument()
     expect(screen.queryByText('Diagnostic Fake')).not.toBeInTheDocument()
     expect(screen.queryByText('Real Spec Coding')).not.toBeInTheDocument()
@@ -218,7 +218,7 @@ describe('NewApp', () => {
 
     render(<NewApp />)
     await userEvent.click((await screen.findAllByRole('button', { name: '＋ New Task' }))[0])
-    const trusted = screen.getByRole('radio', { name: TRUSTED_LOCAL_LABEL })
+    const trusted = screen.getByRole('radio', { name: LOCAL_EXECUTION_LABEL })
     await waitFor(() => expect(trusted).toBeEnabled())
     await userEvent.click(trusted)
 
@@ -251,15 +251,15 @@ describe('NewApp', () => {
 
     render(<NewApp />)
     await userEvent.click((await screen.findAllByRole('button', { name: '＋ New Task' }))[0])
-    const trusted = screen.getByRole('radio', { name: TRUSTED_LOCAL_LABEL })
+    const trusted = screen.getByRole('radio', { name: LOCAL_EXECUTION_LABEL })
     await waitFor(() => expect(trusted).toBeEnabled())
     await userEvent.click(trusted)
 
-    expect(screen.getByRole('dialog', { name: TRUSTED_LOCAL_LABEL })).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: LOCAL_EXECUTION_LABEL })).toBeInTheDocument()
     expect(posts).toHaveLength(0)
   })
 
-  test('acknowledges the exact Trusted Local disclosure before creating that profile', async () => {
+  test('acknowledges the exact Local execution disclosure before creating that profile', async () => {
     window.history.replaceState({}, '', '/rooms/room-1')
     const requests: Array<{ method: string; path: string; body?: Record<string, unknown>; headers?: HeadersInit }> = []
     const createdTask = { id: 'task-trusted', agentExecutionProfile: 'trusted_local', planning: { revisions: [] } }
@@ -286,17 +286,17 @@ describe('NewApp', () => {
     render(<NewApp />)
     await userEvent.click((await screen.findAllByRole('button', { name: '＋ New Task' }))[0])
     await userEvent.type(screen.getByLabelText('What should Chora build?'), 'Use the local Pi profile')
-    await waitFor(() => expect(screen.getByRole('radio', { name: TRUSTED_LOCAL_LABEL })).toBeEnabled())
-    await userEvent.click(screen.getByRole('radio', { name: TRUSTED_LOCAL_LABEL }))
+    await waitFor(() => expect(screen.getByRole('radio', { name: LOCAL_EXECUTION_LABEL })).toBeEnabled())
+    await userEvent.click(screen.getByRole('radio', { name: LOCAL_EXECUTION_LABEL }))
     await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }))
     expect(requests.filter((request) => request.method === 'POST')).toHaveLength(0)
-    expect(screen.getByRole('radio', { name: 'Isolated Local' })).toBeChecked()
+    expect(screen.getByRole('radio', { name: 'Isolated execution' })).toBeChecked()
 
-    await userEvent.click(screen.getByRole('radio', { name: TRUSTED_LOCAL_LABEL }))
-    await userEvent.click(screen.getByRole('button', { name: 'Acknowledge and use Trusted Local' }))
-    expect(await screen.findByRole('radio', { name: TRUSTED_LOCAL_LABEL })).toBeChecked()
-    await userEvent.click(screen.getByRole('radio', { name: 'Isolated Local' }))
-    await userEvent.click(screen.getByRole('radio', { name: TRUSTED_LOCAL_LABEL }))
+    await userEvent.click(screen.getByRole('radio', { name: LOCAL_EXECUTION_LABEL }))
+    await userEvent.click(screen.getByRole('button', { name: 'Acknowledge and use local execution' }))
+    expect(await screen.findByRole('radio', { name: LOCAL_EXECUTION_LABEL })).toBeChecked()
+    await userEvent.click(screen.getByRole('radio', { name: 'Isolated execution' }))
+    await userEvent.click(screen.getByRole('radio', { name: LOCAL_EXECUTION_LABEL }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(requests.filter((request) => request.path === '/api/agent-execution/trusted-local-acknowledgements')).toHaveLength(1)
     await userEvent.click(screen.getByRole('button', { name: 'Start' }))
@@ -327,16 +327,16 @@ describe('NewApp', () => {
 
     render(<NewApp />)
     await userEvent.click((await screen.findAllByRole('button', { name: '＋ New Task' }))[0])
-    await waitFor(() => expect(screen.getByRole('radio', { name: TRUSTED_LOCAL_LABEL })).toBeEnabled())
-    await userEvent.click(screen.getByRole('radio', { name: TRUSTED_LOCAL_LABEL }))
-    await userEvent.click(screen.getByRole('button', { name: 'Acknowledge and use Trusted Local' }))
+    await waitFor(() => expect(screen.getByRole('radio', { name: LOCAL_EXECUTION_LABEL })).toBeEnabled())
+    await userEvent.click(screen.getByRole('radio', { name: LOCAL_EXECUTION_LABEL }))
+    await userEvent.click(screen.getByRole('button', { name: 'Acknowledge and use local execution' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('disclosure policy conflict')
-    expect(screen.getByRole('radio', { name: 'Isolated Local' })).toBeChecked()
+    expect(screen.getByRole('radio', { name: 'Isolated execution' })).toBeChecked()
     expect(posts).toEqual(['/api/agent-execution/trusted-local-acknowledgements'])
   })
 
-  test('keeps Trusted Local disabled and shows the reason when Pi discovery is not ready', async () => {
+  test('keeps Local execution disabled and shows the reason when Pi discovery is not ready', async () => {
     window.history.replaceState({}, '', '/rooms/room-1')
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = String(input)
@@ -358,13 +358,13 @@ describe('NewApp', () => {
     render(<NewApp />)
     await userEvent.click((await screen.findAllByRole('button', { name: '＋ New Task' }))[0])
 
-    const trusted = screen.getByRole('radio', { name: TRUSTED_LOCAL_LABEL })
+    const trusted = screen.getByRole('radio', { name: LOCAL_EXECUTION_LABEL })
     await waitFor(() => expect(trusted).toBeDisabled())
     expect(await within(screen.getByRole('main')).findByText('Pi is not configured')).toBeInTheDocument()
     expect(within(screen.getByRole('main')).getByText('no configured Pi provider answered ready')).toBeInTheDocument()
     // Isolated readiness is independent from native Pi discovery and no host fallback is selected.
-    expect(screen.getByRole('radio', { name: 'Isolated Local' })).toBeEnabled()
-    expect(screen.getByRole('radio', { name: 'Isolated Local' })).toBeChecked()
+    expect(screen.getByRole('radio', { name: 'Isolated execution' })).toBeEnabled()
+    expect(screen.getByRole('radio', { name: 'Isolated execution' })).toBeChecked()
   })
 
   test.each([false, true])('manual retry sends an optional selected model binding (%s)', async (selectModel) => {
@@ -372,7 +372,7 @@ describe('NewApp', () => {
     const catalog = { agentId: 'pi', runtimeIdentity: 'pi', runtimeVersion: '1', models: [{ provider: 'openai', modelId: 'gpt-5' }], digest: 'd' }
     const run = {
       id: 'run-model', status: 'revision_required', version: 11, attempt: 2, adapter: 'pi',
-      agentExecution: { profile: 'trusted_local', runtimeSource: 'local_pi', executionProvider: 'trusted_host', capabilityPolicy: 'pi.native', trustDisclosurePolicy: '', sandboxed: false, disclosureLabel: 'Trusted Local · No Sandbox' },
+      agentExecution: { profile: 'trusted_local', runtimeSource: 'local_pi', executionProvider: 'trusted_host', capabilityPolicy: 'pi.native', trustDisclosurePolicy: '', sandboxed: false, disclosureLabel: 'Local execution · No Sandbox' },
       room: { id: 'room-1', name: 'Lane Room', description: '' },
       task: { id: 'task-1', title: 'Retry model', goal: 'Retry with an optional model' },
       context: [], timeline: [], artifacts: [], unknowns: [], criteria: [], trajectory: [],
@@ -435,28 +435,28 @@ describe('NewApp', () => {
     }))
 
     render(<NewApp />)
-    expect((await screen.findAllByText('Standard')).length).toBeGreaterThan(0)
-    await userEvent.click(screen.getByRole('radio', { name: 'Isolated Local' }))
-    await userEvent.click(screen.getByRole('button', { name: 'Create successor with selected profile' }))
+    expect((await screen.findAllByText('standard')).length).toBeGreaterThan(0)
+    await userEvent.click(screen.getByRole('radio', { name: 'Isolated execution' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Create successor with selected environment' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('stale profile version')
     expect(posts).toEqual([expect.objectContaining({
       path: '/api/runs/run-profile/agent-execution-profile',
-      body: { profile: 'isolated_local', reason: 'Use this profile for a fresh successor Attempt.', expectedVersion: 11 },
+      body: { profile: 'isolated_local', reason: 'Use this execution environment for a fresh successor Attempt.', expectedVersion: 11 },
       headers: expect.objectContaining({ 'Idempotency-Key': expect.any(String) }),
     })])
-    expect((await screen.findAllByText('Standard')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('standard')).length).toBeGreaterThan(0)
     expect(posts.some((request) => request.path.endsWith('/retry'))).toBe(false)
   })
 
-  test('accepts and applies a Local Connected Agent-reported result without claiming verification', async () => {
+  test('accepts and applies a Local execution Agent-reported result without claiming verification', async () => {
     window.history.replaceState({}, '', '/rooms/room-1/tasks/task-1/runs/run-1')
     const baseRun = {
       id: 'run-1', status: 'awaiting_review', version: 6, attempt: 1, adapter: 'pi',
       room: { id: 'room-1', name: 'Lane Room', description: '' },
       task: { id: 'task-1', title: 'Add a sort button', goal: 'Add a sort button', worktree: { locator: 'chora/task-1-add-a-sort-button', state: 'ready' } },
       context: [], timeline: [], artifacts: [], unknowns: [],
-      verificationDisposition: { state: 'not_applicable', reason: 'Local Connected uses Agent-reported checks for this review.' },
+      verificationDisposition: { state: 'not_applicable', reason: 'Local execution uses Agent-reported checks for this review.' },
       agentReport: {
         id: 'report-1', attemptId: 'attempt-1', summary: 'The Agent reports that sorting works.', finalText: 'Done',
         completedAt: '2026-09-03T00:00:00Z', authority: 'non_authoritative_agent_claim',
@@ -695,11 +695,15 @@ describe('NewApp', () => {
       if (path === '/api/rooms') return jsonResponse({ activeRooms: [], archivedRooms: [] })
       if (path.endsWith('/tasks/task-1/runs')) return jsonResponse({ roomId: 'room-1', taskId: 'task-1', runs: [] })
       if (path === '/api/rooms/room-1') return jsonResponse({ ...roomRef, ownershipKind: 'legacy_standalone' })
-      if (path.endsWith('/tasks/task-1')) return jsonResponse({ id: 'task-1', roomId: 'room-1', title: 'Saved task', planning: { revisions: [], draft: { id: 'draft-1', editVersion: 1, content: { technical_steps: ['Saved step'], decisions: [], risks: [], unknowns: [] } } } })
+      if (path.endsWith('/tasks/task-1')) return jsonResponse({ id: 'task-1', roomId: 'room-1', title: 'Saved task', agentExecutionProfile: 'trusted_local', planning: { revisions: [], draft: { id: 'draft-1', editVersion: 1, content: { technical_steps: ['Saved step'], decisions: [], risks: [], unknowns: [] } } } })
       return init?.method === 'POST' ? jsonResponse({}) : errorResponse(404, 'unavailable test surface')
     }))
     render(<NewApp />)
-    expect(await screen.findByRole('button', { name: 'Start Run' })).toBeEnabled()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Start Run' })).toBeEnabled())
+    expect(screen.getByText(/Execution environment/)).toHaveTextContent('Execution environment · Local execution · No Sandbox')
+    await userEvent.click(screen.getByRole('button', { name: '中文' }))
+    expect(screen.getByText('本机执行 · 无沙箱').closest('p')).toHaveTextContent('执行环境 · 本机执行 · 无沙箱')
+    await userEvent.click(screen.getByRole('button', { name: 'EN' }))
     expect(posts).toEqual([])
     await userEvent.click(screen.getByRole('button', { name: 'Start Run' }))
     expect(posts).toContain('/api/tasks/task-1/plan/drafts/draft-1/submit')
@@ -951,7 +955,7 @@ test('can cancel resource preparation before Task creation returns an ID', async
   render(<NewApp />)
   await userEvent.click((await screen.findAllByRole('button', { name: '＋ New Task' }))[0])
   await userEvent.type(await screen.findByLabelText('What should Chora build?'), 'Update the frontend')
-  await userEvent.click(screen.getByRole('radio', { name: TRUSTED_LOCAL_LABEL }))
+  await userEvent.click(screen.getByRole('radio', { name: LOCAL_EXECUTION_LABEL }))
   await userEvent.click(screen.getByRole('button', { name: 'Start' }))
 
   const preparation = await screen.findByRole('region', { name: 'Repository preparation' })

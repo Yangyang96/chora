@@ -189,10 +189,10 @@ test('task-first real Pi changes two explicitly selected repositories, retains r
     'Do not change package.json, the existing test/shared.test.js, or fixture.bin. Finish with a concise summary of both repositories and the checks actually run.',
   ].join('\n')
   await page.getByLabel('What should Chora build?').fill(requirement)
-  await page.getByRole('radio', { name: 'Trusted Local · No Sandbox', exact: true }).click()
-  const disclosure = page.getByRole('dialog', { name: 'Trusted Local · No Sandbox' })
-  if (await disclosure.count()) await disclosure.getByRole('button', { name: 'Acknowledge and use Trusted Local' }).click()
-  await expect(page.getByRole('radio', { name: 'Trusted Local · No Sandbox', exact: true })).toBeChecked()
+  await page.getByRole('radio', { name: 'Local execution · No Sandbox', exact: true }).click()
+  const disclosure = page.getByRole('dialog', { name: 'Local execution · No Sandbox' })
+  if (await disclosure.count()) await disclosure.getByRole('button', { name: 'Acknowledge and use local execution' }).click()
+  await expect(page.getByRole('radio', { name: 'Local execution · No Sandbox', exact: true })).toBeChecked()
   await page.getByRole('button', { name: 'Start', exact: true }).click()
   await expect(page).toHaveURL(/\/rooms\/[^/]+\/tasks\/[^/]+\/runs\/[^/]+$/, { timeout: 120_000 })
 

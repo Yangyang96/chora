@@ -65,7 +65,7 @@ type isolatedLocalEnvironment struct {
 }
 
 func newIsolatedLocalEnvironment(sourceRoot, dataRoot string) *isolatedLocalEnvironment {
-	return &isolatedLocalEnvironment{sourceRoot: sourceRoot, dataRoot: dataRoot, view: isolatedLocalView{Policy: isolatedPolicy(), State: "not_prepared", Reason: "Prepare the public Pi Docker environment before selecting Isolated Local.", PiVersion: agentpi.IsolatedPiVersion, NodeVersion: "22.19.0", PreparationAvailable: sourceRoot != ""}}
+	return &isolatedLocalEnvironment{sourceRoot: sourceRoot, dataRoot: dataRoot, view: isolatedLocalView{Policy: isolatedPolicy(), State: "not_prepared", Reason: "Prepare the public Pi Docker environment before selecting Isolated execution.", PiVersion: agentpi.IsolatedPiVersion, NodeVersion: "22.19.0", PreparationAvailable: sourceRoot != ""}}
 }
 func (e *isolatedLocalEnvironment) status() isolatedLocalView {
 	e.mu.Lock()
@@ -138,7 +138,7 @@ func (s *Server) prepareIsolatedLocal(w http.ResponseWriter, r *http.Request) {
 }
 func (e *isolatedLocalEnvironment) available(ctx context.Context) error {
 	if e == nil || e.status().State != "ready" {
-		return errors.New("Isolated Local is not ready; prepare the environment and restart Workbench")
+		return errors.New("Isolated execution is not ready; prepare the environment and restart Workbench")
 	}
 	if err := e.proxyUnchanged(); err != nil {
 		return err
@@ -148,14 +148,14 @@ func (e *isolatedLocalEnvironment) available(ctx context.Context) error {
 		return err
 	}
 	if record.Source != e.source {
-		return errors.New("Isolated Local environment changed; restart required")
+		return errors.New("Isolated execution environment changed; restart required")
 	}
 	return nil
 }
 func (e *isolatedLocalEnvironment) proxyUnchanged() error {
 	proxy, err := isolatedproxy.Load(e.dataRoot)
 	if err != nil || proxy != e.proxy {
-		return errors.New("Isolated Local proxy configuration changed or is invalid; restore it or restart Workbench")
+		return errors.New("Isolated execution proxy configuration changed or is invalid; restore it or restart Workbench")
 	}
 	return nil
 }
@@ -352,7 +352,7 @@ func isolatedExecutionIdentity(source agentpi.IsolatedSource) speccoding.Isolate
 
 func (e *isolatedLocalEnvironment) modelCatalog(ctx context.Context) (domain.ModelCatalog, error) {
 	if e == nil {
-		return domain.ModelCatalog{}, errors.New("Isolated Local is unavailable")
+		return domain.ModelCatalog{}, errors.New("Isolated execution is unavailable")
 	}
 	if err := e.available(ctx); err != nil {
 		return domain.ModelCatalog{}, err

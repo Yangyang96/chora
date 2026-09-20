@@ -182,7 +182,7 @@ type ProductOptions struct {
 	RepositorySource app.RepositorySource
 	// DataRoot is the owner-private clone destination root for the Workbench.
 	DataRoot string
-	// PathPiEnabled selects the M2-S1 Local Connected PathPi + trustedhost
+	// PathPiEnabled selects the M2-S1 Local execution PathPi + trustedhost
 	// composition. It carries no Docker, pidistribution, --repository, or
 	// private-auth authority.
 	PathPiEnabled bool
@@ -423,7 +423,7 @@ func newServer(ctx context.Context, databasePath, webRoot string, logger *log.Lo
 	var verifierStatus verifierRuntimeStatus
 	var verifierErr error
 	if options.PathPiEnabled {
-		verifierStatus = verifierRuntimeStatus{Reason: "not applicable to Local Connected · No Sandbox", Mode: "not_applicable", Network: "host", Credentials: "Pi native configuration"}
+		verifierStatus = verifierRuntimeStatus{Reason: "not applicable to Local execution · No Sandbox", Mode: "not_applicable", Network: "host", Credentials: "Pi native configuration"}
 	} else {
 		verificationExecutor, verifierStatus, verifierErr = newProductVerifier(runtimeContext, repoRoot, runtimeRoot, product, options)
 		if verifierErr == nil {
@@ -493,7 +493,7 @@ func newServer(ctx context.Context, databasePath, webRoot string, logger *log.Lo
 	isolatedLocal.packagedHelper = options.PackagedIsolatedHelper
 	discoveryOptions := pidiscovery.Options{PiHome: options.PathPiHome, LookPath: options.PathPiLookPath}
 	if options.PathPiEnabled {
-		// M2-S1 Local Connected: PATH-discovered Pi supervised by trustedhost.
+		// M2-S1 Local execution: PATH-discovered Pi supervised by trustedhost.
 		// A non-ready discovery still boots the server (empty composition); the
 		// actionable state is reported by GET /api/pi/discovery.
 		timeoutPolicy := acceptanceTimeoutPolicyFor(options.O4AcceptanceAuthority)
@@ -1628,6 +1628,13 @@ func (server *Server) createTask(writer http.ResponseWriter, request *http.Reque
 		return
 	}
 	if server.pathPiEnabled && input.ExecutionProfile == app.TaskExecutionProfileRealSpecCoding {
+		if input.AgentExecutionProfile == "" {
+			input.AgentExecutionProfile = domain.AgentExecutionProfileIsolatedLocal
+		}
+		if !currentExecutionEnvironment(input.AgentExecutionProfile) {
+			writeError(writer, http.StatusBadRequest, errors.New("select local execution or isolated execution"))
+			return
+		}
 		if input.RealSpecCoding != nil {
 			writeError(writer, http.StatusBadRequest, errors.New("Project tasks must use saved Project scope and checks; update Project settings before starting"))
 			return
@@ -1809,13 +1816,13 @@ func (server *Server) createdTaskReferenceView(ctx context.Context, result app.C
 		if server.pathPiEnabled {
 			intent, err := server.store.Reader().GetSpecCodingIntent(ctx, result.Task.ID())
 			if err != nil || sha256.Sum256(intent.IntentJSON) != intent.IntentDigest {
-				return taskRefView{}, errors.New("Local Connected Spec Coding intent is unavailable")
+				return taskRefView{}, errors.New("Local execution Spec Coding intent is unavailable")
 			}
 			var frozen struct {
 				Repository speccoding.RepositoryIdentity `json:"repository"`
 			}
 			if json.Unmarshal(intent.IntentJSON, &frozen) != nil || frozen.Repository.Name == "" || frozen.Repository.SourceRevision == "" {
-				return taskRefView{}, errors.New("Local Connected repository identity is invalid")
+				return taskRefView{}, errors.New("Local execution repository identity is invalid")
 			}
 			repository = frozen.Repository
 		} else {

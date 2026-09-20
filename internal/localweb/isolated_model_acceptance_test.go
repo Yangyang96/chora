@@ -20,7 +20,7 @@ import (
 func TestIsolatedLocalRealModelSelectionAndRetry(t *testing.T) {
 	dataRoot := strings.TrimSpace(os.Getenv("CHORA_ISOLATED_ACCEPTANCE_DATA"))
 	if dataRoot == "" {
-		t.Fatal("CHORA_ISOLATED_ACCEPTANCE_DATA must name a prepared Isolated Local data root")
+		t.Fatal("CHORA_ISOLATED_ACCEPTANCE_DATA must name a prepared Isolated execution data root")
 	}
 	dataRoot, err := filepath.Abs(dataRoot)
 	if err != nil {
@@ -62,7 +62,7 @@ func TestIsolatedLocalRealModelSelectionAndRetry(t *testing.T) {
 	var readiness isolatedLocalView
 	requestJSON(t, handler, http.MethodGet, "/api/isolated-local", nil, http.StatusOK, &readiness)
 	if readiness.State != "ready" {
-		t.Fatalf("Isolated Local state = %s", readiness.State)
+		t.Fatalf("Isolated execution state = %s", readiness.State)
 	}
 	var catalog domain.ModelCatalog
 	requestJSON(t, handler, http.MethodGet, "/api/models?agentExecutionProfile=isolated_local", nil, http.StatusOK, &catalog)
@@ -174,7 +174,7 @@ func TestIsolatedLocalRealModelSelectionAndRetry(t *testing.T) {
 func assertIsolatedModelAcceptanceIdentity(t *testing.T, run runView, binding domain.ModelBinding) {
 	t.Helper()
 	if run.Status != domain.RunStateAwaitingReview || run.AgentExecution == nil || run.AgentExecution.Profile != domain.AgentExecutionProfileIsolatedLocal || run.AttemptDetail == nil {
-		t.Fatal("attempt did not complete under Isolated Local")
+		t.Fatal("attempt did not complete under Isolated execution")
 	}
 	if run.AttemptDetail.ModelBinding.JSON() != binding.JSON() {
 		t.Fatal("attempt requested model differs from selection")

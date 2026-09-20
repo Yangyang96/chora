@@ -4,12 +4,12 @@ import type { IsolatedLocalView } from '../types'
 
 export function IsolatedLocal({ value, onPrepare }: { value: IsolatedLocalView; onPrepare: () => Promise<void> | void }) {
   const { t } = useI18n()
-  const title = value.state === 'ready' ? 'Isolated Local is ready'
-    : value.state === 'preparing' ? 'Preparing Isolated Local…'
-    : value.state === 'failed' ? 'Isolated Local preparation failed'
+  const title = value.state === 'ready' ? 'Isolated execution is ready'
+    : value.state === 'preparing' ? 'Preparing Isolated execution…'
+    : value.state === 'failed' ? 'Isolated execution preparation failed'
     : value.state === 'restart_required' ? 'Restart Chora to finish preparation'
-    : 'Prepare Isolated Local'
-  return <section className="pi-discovery-inline" aria-label={t('Isolated Local readiness')}>
+    : 'Prepare Isolated execution'
+  return <section className="pi-discovery-inline" aria-label={t('Isolated execution readiness')}>
     <p role="status"><strong>{t(title)}</strong></p>
     {value.reason && <p>{value.reason}</p>}
     <p>{t('Pinned runtime: Pi {piVersion} · Node.js {nodeVersion}', { piVersion: value.piVersion, nodeVersion: value.nodeVersion })}</p>
@@ -22,6 +22,6 @@ export function IsolatedLocal({ value, onPrepare }: { value: IsolatedLocalView; 
       <dt>{t('Credentials')}</dt><dd>{t(value.policy.credentials)}</dd>
     </dl>}
     {(value.state === 'not_prepared' || value.state === 'failed') && value.preparationAvailable &&
-      <ActionButton type="button" className="btn-secondary" disabledReason="" onClick={() => void onPrepare()}>{t('Prepare Isolated Local')}</ActionButton>}
+      <ActionButton type="button" className="btn-secondary" disabledReason="" onClick={() => void onPrepare()}>{t('Prepare Isolated execution')}</ActionButton>}
   </section>
 }

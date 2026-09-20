@@ -44,7 +44,7 @@ flowchart LR
 
 **Apple Silicon Mac · Git · Node.js 22.19+ · npm 11+ · Go 1.26+**
 
-Bring your own model access, configured in Pi. Local Connected does not require Docker.
+Bring your own model access, configured in Pi. Local execution does not require Docker.
 Install `gh` only if you want to create or merge GitHub PRs from Chora.
 
 ### 2. Build and start Chora
@@ -76,7 +76,7 @@ Pi is the coding agent that executes tasks for Chora.
 4. Return to Chora and click **Refresh**. If the panel asks you to restart Chora,
    stop it with `Ctrl-C` and run the startup command again.
 
-This workflow uses **Trusted Local · No Sandbox** (Local Connected). Read and
+This workflow uses **Local execution · No Sandbox**. Read and
 acknowledge the in-app disclosure before starting: Pi runs on your host with
 access to local tools, files, credentials, and the network. Task worktrees
 separate code changes; they are not a security sandbox. Model requests go to
@@ -84,12 +84,12 @@ your configured provider.
 
 ### 4. Select an execution mode
 
-**Isolated Local** uses a publicly built, pinned Pi/Docker environment. Its initial
+**Isolated execution** uses a publicly built, pinned Pi/Docker environment. Its initial
 project scope is Node.js standard-library code. Prepare it in New Task and restart
 Workbench; unavailable isolation never falls back to the host. See the
-[Isolated Local guide](docs/isolated-local.md) for platforms, Codex login, resources
+[isolated execution guide](docs/isolated-local.md) for platforms, Codex login, resources
 and network policy. You can also explicitly select and acknowledge
-**Trusted Local · No Sandbox** to use your configured host Pi.
+**Local execution · No Sandbox** to use your configured host Pi.
 
 ## Your first task
 
@@ -105,7 +105,7 @@ rooms whenever you need them.
 
 **3. Choose the scope and start.** Confirm the repository, target branch, and
 check policy; automatic checks are a good starting point. Select and acknowledge
-Local Connected, then follow progress and answer any questions that need you.
+Local execution, then follow progress and answer any questions that need you.
 
 **4. Review, then deliver.** Read the diff and check results. Accept the change
 or ask for a fix. Accepted edits stay in the task worktree; Commit, Push, PR,
@@ -142,8 +142,8 @@ As of **September 20, 2026**, source is public and Chora remains in Developer Al
 | --- | --- |
 | Implemented | Multi-repository projects, rooms and tasks, visible execution, review/recovery, and per-repository delivery. |
 | Implemented | Pi setup guidance, model provenance, backup/restore, and local diagnostics. |
-| Current limits | Apple Silicon macOS + Pi; Local Connected has no sandbox. No desktop installer yet. |
-| Implemented | Public Isolated Local setup, Task Board V0, and Project Skills/MCP for Local Connected. |
+| Current limits | Apple Silicon macOS + Pi; local execution has no sandbox. No desktop installer yet. |
+| Implemented | Public isolated execution setup, Task Board V0, and Project Skills/MCP for local execution. |
 | Pending | Final product user acceptance and formal macOS distribution; published prereleases are not a stable-release claim. |
 | Next | Simpler execution settings, then software-project research, design and documentation. |
 | Later | Team and multi-agent collaboration; background/remote execution and additional providers when needed. |
@@ -181,7 +181,7 @@ For other failures, see [troubleshooting and diagnostics](docs/workbench-mainten
 
 The current real-agent setup is Pi on Apple Silicon macOS. Cross-platform CI
 checks do not establish support for the complete workflow on other systems.
-[Isolated Local](docs/isolated-local.md) is publicly preparable on the supported
+[Isolated execution](docs/isolated-local.md) is publicly preparable on the supported
 host, with its documented project, dependency and credential limits. Historical
 private M1 environments are not needed for that path. More providers and deployment
 choices remain future work; see the [roadmap](ROADMAP.md).

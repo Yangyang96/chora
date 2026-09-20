@@ -34,7 +34,7 @@ func (server *Server) getCurrentTrustedLocalAcknowledgement(writer http.Response
 		return
 	}
 	if err != nil {
-		writeError(writer, http.StatusInternalServerError, errors.New("Trusted Local acknowledgement state is unavailable"))
+		writeError(writer, http.StatusInternalServerError, errors.New("Local execution acknowledgement state is unavailable"))
 		return
 	}
 	writeJSON(writer, http.StatusOK, currentTrustedLocalAcknowledgementView{
@@ -182,7 +182,17 @@ func (server *Server) switchAgentExecutionProfile(writer http.ResponseWriter, re
 	writeJSON(writer, http.StatusOK, view)
 }
 
+// currentExecutionEnvironment identifies the two product execution choices.
+// Managed comparison profiles are not supported by the public local entry.
+func currentExecutionEnvironment(profile domain.AgentExecutionProfile) bool {
+	return profile == domain.AgentExecutionProfileTrustedLocal || profile == domain.AgentExecutionProfileIsolatedLocal
+}
+
 func (server *Server) requireAgentExecutionRoute(writer http.ResponseWriter, request *http.Request, binding domain.AgentExecutionProfileBinding) bool {
+	if server.pathPiEnabled && !currentExecutionEnvironment(binding.Profile()) {
+		writeError(writer, http.StatusBadRequest, errors.New("this execution environment is unsupported; create a new Task with local execution or isolated execution"))
+		return false
+	}
 	if !binding.Bound() {
 		writeError(writer, http.StatusServiceUnavailable, errors.New("selected Agent execution route is unavailable"))
 		return false

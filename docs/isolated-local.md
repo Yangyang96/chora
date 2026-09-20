@@ -1,11 +1,11 @@
-# Isolated Local in Workbench
+# Isolated execution in Workbench
 
 **English** | [简体中文](isolated-local.zh-CN.md)
 
-Isolated Local runs Pi in Docker and returns validated changes to the Task's
+Isolated execution runs Pi in Docker and returns validated changes to the Task's
 worktrees. Select it explicitly when creating a Task. An unavailable image,
 engine, credential or isolation boundary stops execution; it never selects
-Local Connected automatically.
+local execution automatically.
 
 ## Supported environment
 
@@ -29,7 +29,7 @@ endpoint explicitly. Remote Docker endpoints are unsupported.
 
 ## Prepare and run
 
-In the New Task panel, select **Isolated Local**, then **Prepare Isolated Local**.
+In the New Task panel, select **Isolated execution**, then **Prepare isolated execution**.
 Preparation downloads public npm inputs, verifies the frozen Pi tarball's SHA-512
 integrity, installs the committed consumer lock with lifecycle scripts disabled,
 and compiles the public check helper. It uses this official public Node image:
@@ -153,12 +153,12 @@ credential boundary only; the Workbench gate above supplies real-model evidence.
 
 Acceptance checklist:
 
-- Prepare from public inputs; select Isolated Local explicitly.
+- Prepare from public inputs; select isolated execution explicitly.
 - Cancel, restart and Resume; modify one repository using another as reference.
 - Verify final-content checks, reject in Review, repair and accept the new result.
 - Commit, Push, PR, Merge and cleanup against an owned disposable GitHub target.
 - Verify denied writes and invalid boundaries fail closed, with no host fallback.
-- Regress Local Connected and legacy Apply; retain skips and historical exclusions
+- Regress local execution and legacy Apply; retain skips and historical exclusions
   separately from passing tests.
 
 Minimal/Standard configurations, other Providers, remote execution, team features
@@ -173,7 +173,7 @@ requalification of historical evidence. Use `chora workbench` and
 
 ## Optional proxy for model requests
 
-Isolated Local can use an explicit HTTP or HTTPS proxy. Create
+Isolated execution can use an explicit HTTP or HTTPS proxy. Create
 `isolated-proxy.json` directly inside your Workbench `--data` directory, outside
 any repository, with mode `0600` and owned by your current user:
 
@@ -214,5 +214,5 @@ Docker administrators and processes inside the container. Chora scrubs endpoint
 text from captured runtime streams; Tasks should not print or copy environment
 configuration into their repository output. This is outbound routing, not a
 network allowlist: bridge networking and host-service reachability are unchanged.
-Docker image downloads use Docker/Colima's own proxy settings; Local Connected
+Docker image downloads use Docker/Colima's own proxy settings; local execution
 continues to use the environment of the process that starts Workbench.

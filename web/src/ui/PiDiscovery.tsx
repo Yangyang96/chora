@@ -19,7 +19,7 @@ export function piDiscoveryStateLabel(state: PiDiscoveryState): string {
     case 'ready':
       return 'Pi ready'
     case 'unavailable':
-      return 'Local Connected is not available on this server'
+      return 'Local execution is not available on this server'
     case 'missing':
       return 'Pi not found'
     case 'not_executable':
@@ -89,12 +89,12 @@ export function PiDiscovery() {
   }, [reload])
 
   if (phase === 'loading') {
-    return <p className="pi-discovery" role="status">{t('Checking Local Connected…')}</p>
+    return <p className="pi-discovery" role="status">{t('Checking Local execution…')}</p>
   }
   if (phase === 'error' || !discovery) {
     return (
       <div className="pi-discovery" role="alert">
-        <p>{t('Local Connected check failed')}</p>
+        <p>{t('Local execution check failed')}</p>
         {error && <p>{error}</p>}
         <button type="button" className="btn-secondary" onClick={() => setReload((n) => n + 1)}>
           {t('Refresh')}

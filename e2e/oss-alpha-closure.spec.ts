@@ -44,11 +44,11 @@ test('OSS Alpha public journey is explicit, fail-closed, replay-safe, and execut
   await assertSingleExecutionProfileSelector(page)
   await proveTrustedLocalFailsClosed(page)
 
-  await page.getByRole('radio', { name: 'Trusted Local · No Sandbox' }).click()
-  const disclosure = page.getByRole('dialog', { name: 'Trusted Local · No Sandbox' })
+  await page.getByRole('radio', { name: 'Local execution · No Sandbox' }).click()
+  const disclosure = page.getByRole('dialog', { name: 'Local execution · No Sandbox' })
   await expect(disclosure).toContainText(trustedLocalPolicy)
-  await disclosure.getByRole('button', { name: 'Acknowledge and use Trusted Local' }).click()
-  await expect(page.getByRole('radio', { name: 'Trusted Local · No Sandbox' })).toBeChecked()
+  await disclosure.getByRole('button', { name: 'Acknowledge and use local execution' }).click()
+  await expect(page.getByRole('radio', { name: 'Local execution · No Sandbox' })).toBeChecked()
   await expect.poll(() => acknowledgementRequests.length).toBe(1)
   expect(acknowledgementRequests[0]).toEqual({
     body: { policyVersion: trustedLocalPolicy },
@@ -175,19 +175,19 @@ async function createRoomAndOpenTaskComposer(page: Page) {
 }
 
 async function assertSingleExecutionProfileSelector(page: Page) {
-  const selector = page.getByRole('group', { name: 'Agent profile' })
+  const selector = page.getByRole('group', { name: 'Execution environment' })
   await expect(selector).toHaveCount(1)
   await expect(selector.getByRole('radio')).toHaveCount(2)
-  await expect(selector.getByRole('radio', { name: 'Isolated Local' })).toBeChecked()
+  await expect(selector.getByRole('radio', { name: 'Isolated execution' })).toBeChecked()
 }
 
 async function proveTrustedLocalFailsClosed(page: Page) {
-  await page.getByRole('radio', { name: 'Trusted Local · No Sandbox' }).click()
-  const disclosure = page.getByRole('dialog', { name: 'Trusted Local · No Sandbox' })
+  await page.getByRole('radio', { name: 'Local execution · No Sandbox' }).click()
+  const disclosure = page.getByRole('dialog', { name: 'Local execution · No Sandbox' })
   await expect(disclosure).toContainText('There is no Sandbox.')
   await disclosure.getByRole('button', { name: 'Cancel' }).click()
-  await expect(page.getByRole('radio', { name: 'Isolated Local' })).toBeChecked()
-  await expect(page.getByRole('radio', { name: 'Trusted Local · No Sandbox' })).not.toBeChecked()
+  await expect(page.getByRole('radio', { name: 'Isolated execution' })).toBeChecked()
+  await expect(page.getByRole('radio', { name: 'Local execution · No Sandbox' })).not.toBeChecked()
 }
 
 async function setAcknowledgementMode(request: APIRequestContext, mode: 'missing' | 'stale') {

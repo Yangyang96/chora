@@ -1,10 +1,10 @@
-# Skills and MCP in Local Connected
+# Skills and MCP in local execution
 
 [简体中文](native-capabilities.zh-CN.md)
 
 Project **Skills and MCP** manages references to existing local Pi resources.
-It applies to new Local Connected executions in every Room of that Project.
-Global Pi files and other Projects are unchanged. Isolated Local does not load
+It applies to new local executions in every Room of that Project.
+Global Pi files and other Projects are unchanged. Isolated execution does not load
 these resources and has no Skills/MCP configuration support in this slice.
 
 The qualified runtime is Pi 0.85.1 with the optional
@@ -29,7 +29,7 @@ this Project; removing an entry restores inheritance. Native repository-local
 discovery can differ between task workspaces. The Project discovery view shows
 global resources and the explicit Project references; each execution's observed
 state describes its own workspace. These local extensions run with the existing
-Local Connected **No Sandbox** permissions. External instructions and tool
+local execution's **No Sandbox** permissions. External instructions and tool
 responses do not gain authority over the task's contract.
 
 Chora stores references and disable entries, not the referenced contents or

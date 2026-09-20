@@ -184,7 +184,7 @@ path, and use the code that matches that held data. Never try to repair a schema
 mismatch by editing `schema_migrations` or by running an older binary against a
 database already migrated by newer code.
 
-## Isolated Local schema migration
+## Isolated execution schema migration
 
 Schema 41 → 42 is append-only and tested with a consistent SQLite backup,
 foreign-key/integrity checks and restoration of the original BLOB bytes. Chora
@@ -298,5 +298,5 @@ Use these recovery directions:
 | A session was interrupted | Restart with the same source and data root; use the visible Resume/Refresh/reconcile action. Keep `pi-sessions/`. |
 | Push, PR, Merge or Apply outcome is uncertain | Refresh/reconcile first. Do not replay the write or clean the worktree. |
 | Target branch advanced | Refresh the target state and create a newly reviewed delivery authority when required. An old Review does not authorize changed content. |
-| Wrong execution profile | Stop the attempt and select the intended disclosed profile before a new attempt. Local Connected remains an explicit no-Sandbox choice. |
+| Wrong execution profile | Stop the attempt and select the intended disclosed profile before a new attempt. **Local execution · No Sandbox** remains an explicit choice. |
 | Matching code refuses the schema | Stop. Use matching code with its matching backup; do not edit the migration ledger or attempt an in-place downgrade. |

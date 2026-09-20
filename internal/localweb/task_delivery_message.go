@@ -261,7 +261,7 @@ func validateDeliverySuggestion(kind string, v commitMessageSuggestion) error {
 
 func (server *Server) generatePiCommitMessage(ctx context.Context, input string) (commitMessageSuggestion, error) {
 	if !server.pathPiEnabled {
-		return commitMessageSuggestion{}, errors.New("Local Connected Pi is unavailable")
+		return commitMessageSuggestion{}, errors.New("Local execution Pi is unavailable")
 	}
 	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()

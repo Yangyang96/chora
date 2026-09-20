@@ -36,20 +36,20 @@ type localConnectedPatchStore struct {
 
 func newLocalConnectedPatchStore(root string, reader storecontract.Reader, resolver *taskWorktreeResolver) (*localConnectedPatchStore, error) {
 	if !cleanAbsolutePath(root) || reader == nil || resolver == nil {
-		return nil, errors.New("Local Connected Patch store configuration is incomplete")
+		return nil, errors.New("Local execution Patch store configuration is incomplete")
 	}
 	if err := os.MkdirAll(root, 0o700); err != nil {
-		return nil, fmt.Errorf("create Local Connected Patch store: %w", err)
+		return nil, fmt.Errorf("create Local execution Patch store: %w", err)
 	}
 	if err := os.Chmod(root, 0o700); err != nil {
-		return nil, fmt.Errorf("secure Local Connected Patch store: %w", err)
+		return nil, fmt.Errorf("secure Local execution Patch store: %w", err)
 	}
 	return &localConnectedPatchStore{root: root, reader: reader, resolver: resolver}, nil
 }
 
 func (store *localConnectedPatchStore) MaterializeReviewPatch(ctx context.Context, request app.ReviewPatchMaterializationRequest) (execution.WorkspaceArtifact, error) {
 	if store == nil || !request.RunID.Valid() || !request.TaskID.Valid() || !request.AttemptID.Valid() || !cleanAbsolutePath(request.WorkingRoot) {
-		return execution.WorkspaceArtifact{}, errors.New("invalid Local Connected Patch request")
+		return execution.WorkspaceArtifact{}, errors.New("invalid Local execution Patch request")
 	}
 	task, binding, err := store.taskRepository(ctx, request.TaskID)
 	if err != nil {
@@ -98,7 +98,7 @@ func (store *localConnectedPatchStore) MaterializeReviewPatch(ctx context.Contex
 		return execution.WorkspaceArtifact{}, err
 	}
 	return execution.WorkspaceArtifact{
-		Locator: locator, Description: "Digest-bound Patch from the Local Connected Task worktree",
+		Locator: locator, Description: "Digest-bound Patch from the Local execution Task worktree",
 		SHA256: hex.EncodeToString(digest[:]), MediaType: "text/x-diff",
 	}, nil
 }
@@ -369,7 +369,7 @@ func (store *localConnectedPatchStore) ReadReviewPatch(_ context.Context, locato
 
 func (store *localConnectedPatchStore) taskRepository(ctx context.Context, taskID domain.TaskID) (domain.Task, domain.RepositoryBinding, error) {
 	if store == nil || store.reader == nil {
-		return domain.Task{}, domain.RepositoryBinding{}, errors.New("Local Connected Patch store is unavailable")
+		return domain.Task{}, domain.RepositoryBinding{}, errors.New("Local execution Patch store is unavailable")
 	}
 	task, err := store.reader.GetTask(ctx, taskID)
 	if err != nil {

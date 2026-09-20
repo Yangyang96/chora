@@ -30,14 +30,14 @@ correct. The browser and logs show the actual result.
 
 ## Execution modes
 
-**Local Connected** runs the explicit command in the proven Task worktree with
+**Local execution · No Sandbox** runs the explicit command in the proven Task worktree with
 the host's tools and environment. It is **No Sandbox**. Configure the app to
 listen on loopback. Chora opens a loopback URL, but the application command still
 controls its own network listeners and can modify files as any local command can.
 Preview-generated changes remain subject to the existing Review and delivery
 checks; they do not become previously reviewed code.
 
-**Isolated Local** uses the prepared, verified image in a separate application
+**Isolated execution** uses the prepared, verified image in a separate application
 container. The Agent container's policy stays unchanged. Preview publishes one
 port on `127.0.0.1`; the host port may differ from the configured app port. Inside
 the container the app must listen on `0.0.0.0` to accept that forwarded connection.

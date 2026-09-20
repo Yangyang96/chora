@@ -47,9 +47,9 @@ export function NewTask({ projectId, roomId, roomName, busy, preparationPending 
 
   const startDisabledReason = [
     busy ? t(preparationPending ? 'Preparing task worktree…' : 'Wait for the current operation to finish.') : '',
-    disclosurePending ? t('Finish the Local Connected acknowledgement first.') : '',
+    disclosurePending ? t('Finish the Local execution acknowledgement first.') : '',
     !requirement.trim() ? t('Enter the task requirement.') : '',
-    isolatedLocalUnavailable ? t('Prepare Isolated Local and restart Chora if requested before starting.') : '',
+    isolatedLocalUnavailable ? t('Prepare Isolated execution and restart Chora if requested before starting.') : '',
     trustedLocalUnavailable ? t('Open the Pi readiness details and resolve the reported issue.') : '',
     usesTaskResources && (!resources || resources.length === 0) ? resourceBlocker || t('Loading repositories…') : '',
     !usesTaskResources && projectId && settingsVersion === undefined ? t('Wait for Project settings to load; resolve any settings error shown above.') : '',
@@ -96,10 +96,10 @@ export function NewTask({ projectId, roomId, roomName, busy, preparationPending 
       <ModelSelector key={agentExecutionProfile} agentExecutionProfile={agentExecutionProfile} value={modelBinding} onChange={setModelBinding} />
       {agentExecutionProfile === 'isolated_local' && isolatedLocal && <IsolatedLocal value={isolatedLocal} onPrepare={onPrepareIsolatedLocal ?? (() => {})} />}
       <p className="agent-profile-summary">
-        {agentExecutionProfile ? <>{t('Selected profile:')} <AgentExecutionDisclosure profile={agentExecutionProfile} /></> : t('Choose Local Connected and acknowledge its host access before starting.')}
+        {agentExecutionProfile ? <>{t('Selected environment:')} <AgentExecutionDisclosure profile={agentExecutionProfile} /></> : t('Choose Local execution and acknowledge its host access before starting.')}
       </p>
       <div className="form-actions">
-        <ActionButton type="button" className="btn-secondary" disabled={(busy && !preparationPending) || disclosurePending} disabledReason={disclosurePending ? 'Finish the Local Connected acknowledgement first.' : 'Wait for the current operation to finish.'} onClick={onCancel}>
+        <ActionButton type="button" className="btn-secondary" disabled={(busy && !preparationPending) || disclosurePending} disabledReason={disclosurePending ? 'Finish the Local execution acknowledgement first.' : 'Wait for the current operation to finish.'} onClick={onCancel}>
           {preparationPending ? t('Cancel preparation') : t('Cancel')}
         </ActionButton>
         <ActionButton type="submit" className="btn-primary" disabled={busy || disclosurePending || unavailable || !agentExecutionProfile || !requirement.trim() || (usesTaskResources ? !resources || resources.length === 0 : !!projectId && settingsVersion === undefined)} disabledReason={startDisabledReason}>

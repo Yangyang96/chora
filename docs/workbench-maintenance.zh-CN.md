@@ -158,7 +158,7 @@ go run ./cmd/chora workbench \
 保留的目录放回精确的数据根路径，并使用与它匹配的代码。不得通过编辑
 `schema_migrations` 修复不兼容，也不得让旧二进制写入已被新代码迁移的数据库。
 
-## 本地隔离模式的数据迁移
+## 隔离执行的数据迁移
 
 schema 41 → 42 通过追加迁移加入隔离 Profile 契约；已测试一致性 SQLite 备份、
 外键/完整性检查及原始 BLOB 字节恢复。升级前自动生成 `.chora-schema41-backup-*`。
@@ -252,5 +252,5 @@ Transcript、仓库内容或完整私有路径。
 | Session 中断 | 用相同源码和数据根目录重启，通过可见的 Resume/Refresh/核对动作恢复。保留 `pi-sessions/`。 |
 | Push、PR、Merge 或 Apply 结果不确定 | 先 Refresh/核对，不得重放写入或清理 worktree。 |
 | 目标分支前移 | 刷新目标状态；需要时创建新的、经过 Review 的交付授权。旧 Review 不授权变化后的内容。 |
-| 执行 Profile 选错 | 停止 Attempt，在新 Attempt 前选择预期且已披露的 Profile。Local Connected 始终是显式的无 Sandbox 选择。 |
+| 执行 Profile 选错 | 停止 Attempt，在新 Attempt 前选择预期且已披露的 Profile。**本机执行 · 无沙箱**始终是显式选择。 |
 | 匹配代码拒绝 schema | 停止；使用匹配代码及其匹配备份，不得编辑迁移账本或原地降级。 |

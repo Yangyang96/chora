@@ -78,7 +78,7 @@ func TestComposePiRuntimeActivatesOnlyExactTrustedLocalSelection(t *testing.T) {
 	}
 	status := piCompositionStatus(composition)
 	if !status.Enabled || status.Provider != domain.TrustedHostExecutionProvider || status.Image != "" || status.HostReadIsolation != "not claimed" {
-		t.Fatalf("Trusted Local status = %#v", status)
+		t.Fatalf("Local execution status = %#v", status)
 	}
 	fingerprinter, ok := composition.adapter.(execution.BindingFingerprinter)
 	if !ok {
@@ -86,14 +86,14 @@ func TestComposePiRuntimeActivatesOnlyExactTrustedLocalSelection(t *testing.T) {
 	}
 	trusted, _ := domain.NewAgentExecutionProfileBinding(domain.AgentExecutionProfileTrustedLocal)
 	if fingerprint, err := fingerprinter.FingerprintForBinding(context.Background(), trusted); err != nil || !fingerprint.Valid() || fingerprint.Version != agentpi.RuntimeVersion {
-		t.Fatalf("Trusted Local fingerprint = %#v, %v", fingerprint, err)
+		t.Fatalf("Local execution fingerprint = %#v, %v", fingerprint, err)
 	}
 	standard, _ := domain.NewAgentExecutionProfileBinding(domain.AgentExecutionProfileStandard)
 	if _, err := fingerprinter.FingerprintForBinding(context.Background(), standard); err == nil {
 		t.Fatal("local-only activation silently supplied a managed profile")
 	}
 	if err := validatePiCompositionFingerprints(context.Background(), composition); err != nil {
-		t.Fatalf("installed Trusted Local binding did not validate: %v", err)
+		t.Fatalf("installed Local execution binding did not validate: %v", err)
 	}
 
 	if err := os.WriteFile(packageJSON, []byte(`{"name":"@earendil-works/pi-coding-agent","version":"0.84.2","drift":true}`), 0o600); err != nil {
@@ -107,7 +107,7 @@ func TestComposePiRuntimeActivatesOnlyExactTrustedLocalSelection(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := fingerprinter.FingerprintForBinding(context.Background(), trusted); err == nil {
-		t.Fatal("immutable Trusted Local snapshot drift remained executable")
+		t.Fatal("immutable Local execution snapshot drift remained executable")
 	}
 }
 

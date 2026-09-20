@@ -55,7 +55,7 @@ func (s *Server) appPreviewManager() (*apppreview.Manager, error) {
 			RuntimeRoot: filepath.Join(s.runtimeRoot, "app-previews"),
 			ResolveIsolated: func(ctx context.Context) (apppreview.IsolatedRuntime, error) {
 				if s.isolatedLocal == nil {
-					return apppreview.IsolatedRuntime{}, errors.New("Isolated Local preview is unavailable; prepare the environment and restart Chora")
+					return apppreview.IsolatedRuntime{}, errors.New("Isolated execution preview is unavailable; prepare the environment and restart Chora")
 				}
 				record, err := isolatedenv.Load(ctx, s.isolatedLocal.dataRoot)
 				if err != nil {
@@ -221,7 +221,7 @@ func (s *Server) loadAppPreview(ctx context.Context, runID, repoID string) (appP
 	case domain.AgentExecutionProfileIsolatedLocal:
 		target.Profile = "isolated_local"
 	default:
-		v.Reason = "App preview supports Local Connected and Isolated Local Tasks"
+		v.Reason = "App preview supports Local execution and Isolated execution Tasks"
 	}
 	v.Profile = target.Profile
 	manager, err := s.appPreviewManager()

@@ -14,7 +14,7 @@ export function AuditDrawer({ run }: { run: RunView }) {
     ['Attempt', attempt?.id ?? '—'],
     ['Runtime', attempt?.runtime ? `${attempt.runtime.adapterId} · ${attempt.runtime.kind} · ${attempt.runtime.version}` : '—'],
     ['Session', attempt?.runtime?.sessionId ?? '—'],
-    ['Agent profile', profileLabel ?? '—'],
+    ['Execution environment', profileLabel ?? '—'],
     ['Runtime source', execution?.runtimeSource ?? '—'],
     ['Execution provider', execution?.executionProvider ?? '—'],
     ['Capability policy', execution?.capabilityPolicy ?? '—'],

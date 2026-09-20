@@ -21,7 +21,7 @@ func (server *Server) verifyNativeCapabilities(writer http.ResponseWriter, reque
 		return
 	}
 	if !server.pathPiEnabled {
-		writeError(writer, http.StatusConflict, errors.New("native capability verification requires Local Connected"))
+		writeError(writer, http.StatusConflict, errors.New("native capability verification requires Local execution"))
 		return
 	}
 	config, err := server.service.GetNativeCapabilities(request.Context(), id)
@@ -65,7 +65,7 @@ func (server *Server) getNativeCapabilityStatus(writer http.ResponseWriter, requ
 	}{Observations: []nativecapabilities.Observation{}}
 	discovery, err := pidiscovery.Discover(request.Context(), server.piDiscoveryOptions)
 	if err != nil || discovery.State != pidiscovery.StateReady {
-		view.Warning = "Pi is unavailable. Configure the Local Connected runtime first."
+		view.Warning = "Pi is unavailable. Configure the Local execution runtime first."
 	} else {
 		home, e := pidiscovery.ResolvePiHome(server.piDiscoveryOptions.PiHome)
 		if e == nil {

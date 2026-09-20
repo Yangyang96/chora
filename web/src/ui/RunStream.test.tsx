@@ -75,10 +75,10 @@ function verifiedAttempt() {
 }
 
 describe('RunStream workbench sections', () => {
-  test('translates the generated Local Connected verification disposition', () => {
+  test('translates the generated Local execution verification disposition', () => {
     window.localStorage.setItem('chora.locale', 'zh-CN')
     const run = makeRun({
-      verificationDisposition: { state: 'not_applicable', reason: 'Local Connected uses Agent-reported checks; no independent Verifier ran.' },
+      verificationDisposition: { state: 'not_applicable', reason: 'Local execution uses Agent-reported checks; no independent Verifier ran.' },
       criteria: [{ id: 'criterion-1', title: 'Requested behavior is implemented', status: 'passed', evidence: '' }],
     })
     const props = {
@@ -87,7 +87,7 @@ describe('RunStream workbench sections', () => {
       onResolveDecision: vi.fn(), onRetryVerification: vi.fn(), onChangeRequirement: vi.fn(),
     }
     render(<LanguageProvider><RunStream {...props} /></LanguageProvider>)
-    expect(screen.getAllByText('本地连接使用 Agent 自报检查；未运行独立验证器。').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('本机执行使用 Agent 自报检查；未运行独立验证器。').length).toBeGreaterThan(0)
     expect(screen.getByText('已实现要求的行为')).toBeInTheDocument()
     window.localStorage.clear()
   })
@@ -363,7 +363,7 @@ describe('RunStream review actions', () => {
     const onRetry = vi.fn()
     const run = makeRun({
       status: 'revision_required',
-      agentExecution: { profile: 'trusted_local', runtimeSource: 'local_pi', executionProvider: 'trusted_host', capabilityPolicy: 'pi.native', trustDisclosurePolicy: '', sandboxed: false, disclosureLabel: 'Trusted Local · No Sandbox' },
+      agentExecution: { profile: 'trusted_local', runtimeSource: 'local_pi', executionProvider: 'trusted_host', capabilityPolicy: 'pi.native', trustDisclosurePolicy: '', sandboxed: false, disclosureLabel: 'Local execution · No Sandbox' },
       controls: { canCancel: false, canRetry: true, canReview: false },
       attemptHistory: [{ id: 'attempt-1', sequence: 1, state: 'failed', snapshotId: 's1', snapshotDigest: 'd1', artifacts: [], unknowns: [], modelProvenance: { status: 'observed', identities: [{ provider: 'old-provider', modelId: 'old-model' }] } }],
     })
@@ -459,11 +459,11 @@ describe('RunStream review actions', () => {
 test('separates failed Pi checks from the requirement and human patch review', async () => {
   const evidence = 'Agent-reported, non-authoritative: verify-1 reported a tool error'
   renderWorkbench(makeRun({
-    agentExecution: { profile: 'trusted_local', runtimeSource: 'local_pi', executionProvider: 'trusted_host', capabilityPolicy: 'pi.native', trustDisclosurePolicy: 'chora.trusted-local-disclosure.v1', sandboxed: false, disclosureLabel: 'Trusted Local · No Sandbox' },
+    agentExecution: { profile: 'trusted_local', runtimeSource: 'local_pi', executionProvider: 'trusted_host', capabilityPolicy: 'pi.native', trustDisclosurePolicy: 'chora.trusted-local-disclosure.v1', sandboxed: false, disclosureLabel: 'Local execution · No Sandbox' },
     reviewablePatch: { evidenceKind: 'agent_reported', patchDigest: 'a'.repeat(64), baselineDigest: 'b'.repeat(64), declaredFilesDigest: 'c'.repeat(64), resultId: 'result-1', agentAttemptId: 'attempt-1', verificationAttemptId: '', artifactId: 'artifact-1', rawDownload: '/patch', files: [{ path: 'README.md', lines: [] }] },
     criteria: [{ id: 'criterion-1', title: 'Requested behavior is implemented', status: 'FAIL', evidence }],
-    verificationDisposition: { state: 'not_applicable', reason: 'Local Connected uses Agent-reported checks; no independent Verifier ran.' },
-    agentReport: { id: 'report-1', attemptId: 'attempt-1', summary: 'Agent completed the Local Connected turn.', finalText: 'README changed; make test failed.', completedAt: '2026-09-07T00:00:00Z', authority: 'non_authoritative_agent_claim', claimedChecks: [{ criterionId: 'criterion-1', status: 'FAIL', evidence }] },
+    verificationDisposition: { state: 'not_applicable', reason: 'Local execution uses Agent-reported checks; no independent Verifier ran.' },
+    agentReport: { id: 'report-1', attemptId: 'attempt-1', summary: 'Agent completed the Local execution turn.', finalText: 'README changed; make test failed.', completedAt: '2026-09-07T00:00:00Z', authority: 'non_authoritative_agent_claim', claimedChecks: [{ criterionId: 'criterion-1', status: 'FAIL', evidence }] },
   }))
   const checks = screen.getByRole('table', { name: 'Checks' })
   expect(within(checks).getByText('Requested change')).toBeInTheDocument()
@@ -488,7 +488,7 @@ test.each([
 ])('keeps check outcome separate from a successful repository write (%j)', (statuses, expected) => {
   renderWorkbench(makeRun({
     status: 'accepted',
-    agentExecution: { profile: 'trusted_local', runtimeSource: 'local_pi', executionProvider: 'trusted_host', capabilityPolicy: 'pi.native', trustDisclosurePolicy: 'chora.trusted-local-disclosure.v1', sandboxed: false, disclosureLabel: 'Trusted Local · No Sandbox' },
+    agentExecution: { profile: 'trusted_local', runtimeSource: 'local_pi', executionProvider: 'trusted_host', capabilityPolicy: 'pi.native', trustDisclosurePolicy: 'chora.trusted-local-disclosure.v1', sandboxed: false, disclosureLabel: 'Local execution · No Sandbox' },
     agentReport: { id: 'report', attemptId: 'attempt', summary: '', finalText: '', completedAt: '', authority: 'non_authoritative_agent_claim', claimedChecks: (statuses as string[]).map((status, i) => ({ criterionId: `c${i}`, status, evidence: '' })) },
     patchApplication: { state: 'applied', version: 1, patchDigest: 'a', targetIdentity: 'target', baseRevision: 'base', affectedPaths: ['README.md'], preStateDigest: 'b', startedAt: '', updatedAt: '' },
   }))

@@ -6,19 +6,17 @@ import { PiDiscoveryStatus } from './PiDiscovery'
 import type { PiDiscoveryFetch } from './PiDiscovery'
 
 export const TRUSTED_LOCAL_DISCLOSURE_POLICY = 'chora.trusted-local-disclosure.v1'
-export const TRUSTED_LOCAL_LABEL = 'Trusted Local · No Sandbox'
+export const LOCAL_EXECUTION_LABEL = 'Local execution · No Sandbox'
 
 const profiles: Array<{ id: AgentExecutionProfile; label: string; description: string }> = [
-  { id: 'isolated_local', label: 'Isolated Local', description: 'Pinned Pi in an isolated environment with bounded files, resources, network, and credentials.' },
-  { id: 'trusted_local', label: TRUSTED_LOCAL_LABEL, description: 'Supported local Pi with your native configuration and host access.' },
+  { id: 'isolated_local', label: 'Isolated execution', description: 'Pinned Pi in an isolated environment with bounded files, resources, network, and credentials.' },
+  { id: 'trusted_local', label: LOCAL_EXECUTION_LABEL, description: 'Supported local Pi with your native configuration and host access.' },
 ]
 
 export function agentExecutionProfileLabel(profile?: AgentExecutionProfile): string | null {
-  if (profile === 'trusted_local') return TRUSTED_LOCAL_LABEL
-  if (profile === 'isolated_local') return 'Isolated Local'
-  if (profile === 'minimal') return 'Minimal'
-  if (profile === 'standard') return 'Standard'
-  return null
+  if (profile === 'trusted_local') return LOCAL_EXECUTION_LABEL
+  if (profile === 'isolated_local') return 'Isolated execution'
+  return profile ?? null
 }
 
 export function AgentExecutionDisclosure({ agentExecution, profile, className = '' }: {
@@ -26,10 +24,11 @@ export function AgentExecutionDisclosure({ agentExecution, profile, className = 
   profile?: AgentExecutionProfile
   className?: string
 }) {
+  const { t } = useI18n()
   const selected = agentExecution?.profile ?? profile
   const label = agentExecutionProfileLabel(selected)
   if (!label) return null
-  return <span className={`agent-execution-disclosure ${selected === 'trusted_local' ? 'trusted-local' : ''} ${className}`.trim()}>{label}</span>
+  return <span className={`agent-execution-disclosure ${selected === 'trusted_local' ? 'trusted-local' : ''} ${className}`.trim()}>{t(label)}</span>
 }
 
 export function AgentExecutionProfileSelector({ value, disabled, trustedLocalSelectable = true, piDiscovery, acknowledgedPolicyVersion, onChange, onAcknowledgeTrustedLocal, onDisclosurePendingChange }: {
@@ -47,12 +46,11 @@ export function AgentExecutionProfileSelector({ value, disabled, trustedLocalSel
   const previousProfile = useRef(value)
   const [pendingTrustedLocal, setPendingTrustedLocal] = useState(false)
   const [acknowledging, setAcknowledging] = useState(false)
-  // Local Connected is selectable only when Pi discovery resolves ready, or
-  // when discovery is `unavailable` (an M1 server whose Trusted Local path is
+  // Local execution is selectable only when Pi discovery resolves ready, or
+  // when discovery is `unavailable` (an M1 server whose local execution path is
   // the managed local_pi source, gated only by the disclosure acknowledgement).
   // A selector without discovery management (piDiscovery undefined) keeps the
-  // legacy behaviour so minimal/standard and the disclosure flow stay
-  // independent of the probe.
+  // acknowledgement flow independent of the probe.
   const piReady = piDiscovery === undefined
     || (piDiscovery.phase === 'loaded' && (piDiscovery.discovery.state === 'ready' || piDiscovery.discovery.state === 'unavailable'))
 
@@ -83,7 +81,7 @@ export function AgentExecutionProfileSelector({ value, disabled, trustedLocalSel
   return (
     <>
       <fieldset className="agent-profile-selector" aria-labelledby={legendID} disabled={disabled || pendingTrustedLocal}>
-        <legend id={legendID}>Agent profile</legend>
+        <legend id={legendID}>{t('Execution environment')}</legend>
         {profiles.map((profile) => (
           <label key={profile.id} className={value === profile.id ? 'selected' : ''}>
             <input
@@ -104,10 +102,10 @@ export function AgentExecutionProfileSelector({ value, disabled, trustedLocalSel
       </fieldset>
 
       {piDiscovery?.phase === 'loading' && (
-        <p className="pi-discovery-inline">{t('Checking Local Connected…')}</p>
+        <p className="pi-discovery-inline">{t('Checking Local execution…')}</p>
       )}
       {piDiscovery?.phase === 'error' && (
-        <p className="pi-discovery-inline">{t('Local Connected check failed')}</p>
+        <p className="pi-discovery-inline">{t('Local execution check failed')}</p>
       )}
       {piDiscovery?.phase === 'loaded' && piDiscovery.discovery.state !== 'ready' && piDiscovery.discovery.state !== 'unavailable' && (
         <PiDiscoveryStatus discovery={piDiscovery.discovery} className="pi-discovery-inline" />
@@ -116,16 +114,16 @@ export function AgentExecutionProfileSelector({ value, disabled, trustedLocalSel
       {pendingTrustedLocal && (
         <div className="disclosure-backdrop" role="presentation">
           <section className="trusted-local-disclosure" role="dialog" aria-modal="true" aria-labelledby={`${legendID}-disclosure-title`}>
-            <h2 id={`${legendID}-disclosure-title`}>{TRUSTED_LOCAL_LABEL}</h2>
-            <p><strong>Disclosure policy:</strong> <code>{TRUSTED_LOCAL_DISCLOSURE_POLICY}</code></p>
-            <p>Trusted Local runs the supported local Pi directly as a process on this host.</p>
-            <p>It inherits the user’s Pi configuration, Skills, Rules, MCP servers, Hooks, Extensions, login state, shell environment, configuration, and credentials.</p>
-            <p>It can have broader filesystem and network access than a managed profile.</p>
-            <p>There is no Sandbox. Chora does not claim that unrelated host directories are unreadable, network access is restricted, ambient credentials are absent, or the run is reproducible.</p>
+            <h2 id={`${legendID}-disclosure-title`}>{t(LOCAL_EXECUTION_LABEL)}</h2>
+            <p><strong>{t('Disclosure policy:')}</strong> <code>{TRUSTED_LOCAL_DISCLOSURE_POLICY}</code></p>
+            <p>{t('Local execution runs the supported local Pi directly as a process on this host.')}</p>
+            <p>{t('It inherits the user’s Pi configuration, Skills, Rules, MCP servers, Hooks, Extensions, login state, shell environment, configuration, and credentials.')}</p>
+            <p>{t('It can have broader filesystem and network access than an isolated environment.')}</p>
+            <p>{t('There is no Sandbox. Chora does not claim that unrelated host directories are unreadable, network access is restricted, ambient credentials are absent, or the run is reproducible.')}</p>
             <div className="form-actions">
-              <ActionButton type="button" className="btn-secondary" disabled={acknowledging} disabledReason={'Saving the Local Connected acknowledgement. Please wait.'} onClick={closeDisclosure}>Cancel</ActionButton>
-              <ActionButton type="button" className="btn-primary" disabled={acknowledging} disabledReason={'Saving the Local Connected acknowledgement. Please wait.'} onClick={acknowledge}>
-                {acknowledging ? 'Acknowledging…' : 'Acknowledge and use Trusted Local'}
+              <ActionButton type="button" className="btn-secondary" disabled={acknowledging} disabledReason={t('Saving the local execution acknowledgement. Please wait.')} onClick={closeDisclosure}>{t('Cancel')}</ActionButton>
+              <ActionButton type="button" className="btn-primary" disabled={acknowledging} disabledReason={t('Saving the local execution acknowledgement. Please wait.')} onClick={acknowledge}>
+                {t(acknowledging ? 'Acknowledging…' : 'Acknowledge and use local execution')}
               </ActionButton>
             </div>
           </section>
