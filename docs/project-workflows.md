@@ -2,8 +2,8 @@
 
 **English** | [简体中文](project-workflows.zh-CN.md)
 
-Accepted product direction, 2026-09-20. S8-1 execution terminology is implemented;
-reusable Project defaults and S9 remain planned.
+Accepted product direction, 2026-09-20. S8 execution terminology and reusable Project defaults are implemented;
+S9 remains planned.
 [The roadmap](../ROADMAP.md#next-personal-workspace-slices) owns their delivery
 order, scope and completion criteria.
 
@@ -69,28 +69,39 @@ commands, file paths and policy identifiers are unchanged.
 
 ## Reusable settings with explicit execution authority
 
-M2-S8 reuses the existing model controls and native Skills/MCP configuration to
-provide Project defaults and deliberate Task overrides. Defaults must not silently
-choose host execution: the local disclosure still requires acknowledgement.
-Show the selected environment, effective model choice and relevant capability
-availability before launch. A Runtime default is distinct from an observed model;
-record actual-use provenance after execution as today.
+Open **Default execution settings** in a Project to choose its execution
+environment and either an explicit model or **Use runtime default**. An
+unconfigured Project uses isolated execution and the Runtime default. Saving
+local execution as a default does not acknowledge host access or start anything.
+New Tasks show the inherited settings. **Override Project defaults for this task**
+changes only that Task; turning it off restores the Project values.
 
-Resolve Project defaults and Task overrides when creating the Task's execution
-settings. Freeze the effective settings and their source/version in execution
-records. Changing a Project default affects later Tasks, not an existing Task's
-retries, resume or history. Explicit changes use the supported successor-execution
-contract; when no compatible switch exists, require a new Task. Do not widen the
-existing model/profile switch contracts as a side effect of adding defaults.
+Creation resolves the selected Project version and Task overrides, then stores
+an immutable snapshot with the source of each choice. A stale form is rejected;
+reopen the composer to load the new defaults. Task details show the frozen initial
+settings after a restart. Later Project edits do not change an existing Task's
+retries, resumed session or history. Explicit successor model/environment switches
+retain their existing contracts and provenance; the initial Task snapshot remains
+unchanged. Runtime default is a selection policy, not an observed model identity.
 
-Model, credentials and capabilities must be supported by the chosen environment.
-Today [Project Skills/MCP](native-capabilities.md) applies only to local execution;
-the isolated route has its own model and credential limitations described in the
-[isolated execution guide](isolated-local.md). Inheriting settings must not project
-host extensions, files or credentials into isolation. Unsupported selections
-stay unavailable and explain how to recover; they do not trigger model or host
-fallback. Cancellation, restart, immutable repository bases and reviewed results
-retain their existing guarantees.
+Skills/MCP use the existing enabled native configuration. There is no Task-level
+capability picker: name a Skill in the task or let the Agent select appropriate
+capabilities. Project capability references are captured with the Task and reused
+for later attempts. Chora does not copy referenced contents or credentials, freeze
+global Pi files, or promise a live MCP connection. Existing resume fingerprint
+checks still reject changed loaded resources. Configure a new Task when Project
+capability references need to change.
+
+Before launch, the composer discloses the environment, model selection and whether
+native Skills/MCP are supported. Local execution still requires the full
+**No Sandbox** acknowledgement. An unavailable saved model stays selected and
+blocks launch until explicitly repaired; there is no automatic model fallback.
+Isolation must be ready and never falls back to host execution. Saving defaults
+does not install tools, copy credentials or grant resource access.
+
+[Project Skills/MCP](native-capabilities.md) applies only to local execution;
+isolated execution does not load host capabilities. Its model/credential limits
+remain those in the [isolated execution guide](isolated-local.md).
 
 ## The first project collaboration journey
 

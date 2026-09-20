@@ -74,7 +74,7 @@ func TestV28UpgradePreservesPopulatedLocalReviewResult(t *testing.T) {
 	ddl += "DROP TABLE result_closures; DROP TABLE task_delivery_operations; DROP TABLE repository_delivery_defaults; DROP TABLE apply_repository_steps; DROP TABLE apply_operations; DROP TABLE resource_result_reviews; DROP TABLE result_repository_changes; DROP TABLE resource_result_groups; DROP TABLE check_invocations; DROP TABLE repository_check_definitions; DROP TABLE task_repository_worktrees; DROP TABLE task_resource_snapshots; DROP TABLE room_repository_refs; DROP TABLE project_repositories; DROP TABLE repositories; \n"
 	// Remove only the post-v29 Task authority additions in this test-owned DB.
 	ddl += "DROP TRIGGER task_worktrees_base_authority_insert; DROP TRIGGER task_worktrees_base_authority_update; DROP TRIGGER task_worktrees_immutable_binding; ALTER TABLE task_worktrees DROP COLUMN pinned_base_tree; ALTER TABLE task_worktrees DROP COLUMN base_ref; ALTER TABLE task_worktrees DROP COLUMN start_policy;\n"
-	ddl += "DROP TRIGGER project_settings_identity_immutable; DROP TRIGGER project_settings_no_delete; DROP TABLE project_settings; DROP TRIGGER rooms_ownership_insert_valid; DROP TRIGGER rooms_ownership_immutable; DROP TRIGGER projects_default_room_insert_valid; DROP INDEX rooms_project_idx; DROP INDEX projects_state_idx; DROP TABLE project_repository_resources; ALTER TABLE rooms DROP COLUMN ownership_kind; ALTER TABLE rooms DROP COLUMN project_id; DROP TABLE projects;\n"
+	ddl += "DROP TABLE task_execution_settings; DROP TABLE project_execution_settings; DROP TRIGGER project_settings_identity_immutable; DROP TRIGGER project_settings_no_delete; DROP TABLE project_settings; DROP TRIGGER rooms_ownership_insert_valid; DROP TRIGGER rooms_ownership_immutable; DROP TRIGGER projects_default_room_insert_valid; DROP INDEX rooms_project_idx; DROP INDEX projects_state_idx; DROP TABLE project_repository_resources; ALTER TABLE rooms DROP COLUMN ownership_kind; ALTER TABLE rooms DROP COLUMN project_id; DROP TABLE projects;\n"
 	worktreeSchema := read("0024_task_worktree_siblings.sql")
 	immutable := worktreeSchema[strings.Index(worktreeSchema, "CREATE TRIGGER task_worktrees_immutable_binding"):strings.Index(worktreeSchema, "CREATE TRIGGER task_worktrees_state_transition")]
 	ddl += immutable + "ALTER TABLE review_decisions RENAME COLUMN comment TO reviewer_note; DELETE FROM schema_migrations WHERE version>=29; COMMIT;"
@@ -93,7 +93,7 @@ func TestV28UpgradePreservesPopulatedLocalReviewResult(t *testing.T) {
 	if err != nil || result != fixture.result {
 		t.Fatalf("v28 Result changed during upgrade: %#v, %v", result, err)
 	}
-	if version, err := upgraded.SchemaVersion(ctx); err != nil || version != 43 {
+	if version, err := upgraded.SchemaVersion(ctx); err != nil || version != 44 {
 		t.Fatalf("version=%d, %v", version, err)
 	}
 }

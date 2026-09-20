@@ -143,22 +143,27 @@ func (server *Server) createResourceTask(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	var input struct {
-		Requirement           string                       `json:"requirement"`
-		Title                 string                       `json:"title"`
-		AgentExecutionProfile domain.AgentExecutionProfile `json:"agentExecutionProfile"`
-		ModelBinding          json.RawMessage              `json:"modelBinding"`
-		RevisionIDs           []string                     `json:"revisionIds"`
-		Resources             []taskResourceSelection      `json:"resources"`
+		ExecutionSettings     *app.ExecutionSettingsSelection `json:"executionSettings"`
+		Requirement           string                          `json:"requirement"`
+		Title                 string                          `json:"title"`
+		AgentExecutionProfile domain.AgentExecutionProfile    `json:"agentExecutionProfile"`
+		ModelBinding          json.RawMessage                 `json:"modelBinding"`
+		RevisionIDs           []string                        `json:"revisionIds"`
+		Resources             []taskResourceSelection         `json:"resources"`
 	}
 	if err = decodeJSON(r, &input); err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	if !server.pathPiEnabled || (input.AgentExecutionProfile != domain.AgentExecutionProfileTrustedLocal && input.AgentExecutionProfile != domain.AgentExecutionProfileIsolatedLocal) || room.OwnershipKind() != domain.RoomOwnershipProject || len(input.Resources) == 0 || len(input.Resources) > domain.TaskRepositoryLimit {
+	if !server.pathPiEnabled || (input.ExecutionSettings == nil && !currentExecutionEnvironment(input.AgentExecutionProfile)) || room.OwnershipKind() != domain.RoomOwnershipProject || len(input.Resources) == 0 || len(input.Resources) > domain.TaskRepositoryLimit {
 		writeError(w, http.StatusUnprocessableEntity, errors.New("select repositories and explicitly choose an execution mode"))
 		return
 	}
-	if input.AgentExecutionProfile == domain.AgentExecutionProfileIsolatedLocal {
+	if input.ExecutionSettings != nil && (input.AgentExecutionProfile != "" || len(input.ModelBinding) > 0) {
+		writeError(w, http.StatusBadRequest, errors.New("use executionSettings without separate environment or model fields"))
+		return
+	}
+	if input.ExecutionSettings == nil && input.AgentExecutionProfile == domain.AgentExecutionProfileIsolatedLocal {
 		if err := server.isolatedLocal.available(r.Context()); err != nil {
 			writeError(w, http.StatusServiceUnavailable, err)
 			return
@@ -197,9 +202,9 @@ func (server *Server) createResourceTask(w http.ResponseWriter, r *http.Request)
 			return
 		}
 	}
-	result, err := server.service.CreateTask(r.Context(), app.CreateTaskRequest{CommandMeta: requestCommandMeta(r, "create-task"), RoomID: roomID, Title: title, ExecutionProfile: app.TaskExecutionProfileRealSpecCoding, AgentExecutionProfile: input.AgentExecutionProfile, ModelBinding: modelBinding, RevisionIDs: revisionIDs, RealSpecCoding: &app.RealSpecCodingInput{Resources: &snapshot, Requirement: input.Requirement, Constraints: []string{"Operate only in selected task repository worktrees, respecting access roles and limits."}, OutOfScope: []string{"Changes to original checkouts, unselected repositories, automatic Commit/Push or host configuration."}, Criteria: []app.RealSpecCodingCriterion{{Title: "Requested behavior is implemented", Description: input.Requirement}}}})
+	result, err := server.service.CreateTask(r.Context(), app.CreateTaskRequest{CommandMeta: requestCommandMeta(r, "create-task"), RoomID: roomID, Title: title, ExecutionProfile: app.TaskExecutionProfileRealSpecCoding, AgentExecutionProfile: input.AgentExecutionProfile, ModelBinding: modelBinding, ExecutionSettings: input.ExecutionSettings, ResolveExecutionModel: server.resolveExecutionModel, RevisionIDs: revisionIDs, RealSpecCoding: &app.RealSpecCodingInput{Resources: &snapshot, Requirement: input.Requirement, Constraints: []string{"Operate only in selected task repository worktrees, respecting access roles and limits."}, OutOfScope: []string{"Changes to original checkouts, unselected repositories, automatic Commit/Push or host configuration."}, Criteria: []app.RealSpecCodingCriterion{{Title: "Requested behavior is implemented", Description: input.Requirement}}}})
 	if err != nil {
-		writeStoreError(w, err)
+		writeAgentExecutionCommandError(w, err)
 		return
 	}
 	view, err := server.createdTaskReferenceView(r.Context(), result)

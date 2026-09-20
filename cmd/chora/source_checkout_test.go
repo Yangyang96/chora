@@ -69,7 +69,7 @@ func TestSourceCheckoutRejectsUnsafeOAuthBeforeDocker(t *testing.T) {
 	}
 }
 
-func TestWorkbenchDocumentationUsesLocalConnectedEntry(t *testing.T) {
+func TestWorkbenchDocumentationUsesLocalExecutionEntry(t *testing.T) {
 	for _, name := range []string{"README.md", "README.zh-CN.md"} {
 		data, err := os.ReadFile(filepath.Join("..", "..", name))
 		if err != nil {
@@ -91,11 +91,17 @@ func TestWorkbenchDocumentationUsesLocalConnectedEntry(t *testing.T) {
 			"npm ci",
 			"/login",
 			"/model",
-			"Local Connected",
 		} {
 			if !strings.Contains(text, required) {
 				t.Fatalf("%s is missing the supported Workbench contract %q", name, required)
 			}
+		}
+		label := "Local execution"
+		if name == "README.zh-CN.md" {
+			label = "本机执行"
+		}
+		if !strings.Contains(text, label) {
+			t.Fatalf("%s is missing execution label %q", name, label)
 		}
 		disclosure := "No Sandbox"
 		if name == "README.zh-CN.md" {

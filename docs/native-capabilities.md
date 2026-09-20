@@ -3,7 +3,7 @@
 [简体中文](native-capabilities.zh-CN.md)
 
 Project **Skills and MCP** manages references to existing local Pi resources.
-It applies to new local executions in every Room of that Project.
+It applies to new Tasks using local execution in every Room of that Project.
 Global Pi files and other Projects are unchanged. Isolated execution does not load
 these resources and has no Skills/MCP configuration support in this slice.
 
@@ -21,7 +21,7 @@ Skill files/directories, an optional installed bridge directory and an optional
 existing MCP configuration file. Use **Disabled Skill paths** for the exact
 Skill file paths shown by discovery; use **Disabled MCP server names** for
 server identifiers. The first save enables Project-managed capability loading
-for future executions; Projects without a saved configuration keep their existing
+for future Tasks; Projects without a saved configuration keep their existing
 native Pi loading behavior. Save the configuration before verifying it.
 
 Global resources are inherited by default. Project disable entries affect only
@@ -54,7 +54,9 @@ A failed or authentication-required server is unavailable; other capabilities
 can continue. The Project view shows per-execution observations, and the task
 view warns when its recorded capabilities are unavailable. Repair the source
 configuration or authentication and retry verification. Changes take effect on
-new executions. An explicit session resume reuses its original Project settings
+new Tasks. Tasks capture these Project references at creation; retries keep the
+original references. All enabled capabilities remain available for explicit user
+invocation or the Agent's own selection, without a Task-level capability picker. An explicit session resume reuses its original Project settings
 and refuses changed resource/configuration fingerprints; start a fresh execution
 when those resources have changed. Fingerprints cover loaded Skill text and
 qualified bridge runtime sources; they do not certify arbitrary third-party

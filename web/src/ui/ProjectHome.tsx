@@ -7,6 +7,7 @@ import type { ProjectRoomView, ProjectView } from '../types'
 import { RepositoryChecks } from './RepositoryChecks'
 import { RepositoryDeliveryDefaults } from './RepositoryDeliveryDefaults'
 import { NativeCapabilities } from './NativeCapabilities'
+import { ProjectExecutionSettingsPanel } from './ProjectExecutionSettings'
 
 type ProjectHomeProps = {
   project: ProjectView
@@ -261,6 +262,7 @@ export function ProjectHome({ project, onChange, onOpenRoom, onResume, onTasks }
     {error && <p className="error-banner" role="alert">{error}</p>}
 
     <NativeCapabilities projectId={project.id} editable={project.state === 'active'} />
+    <ProjectExecutionSettingsPanel projectId={project.id} editable={project.state === 'active'} />
 
     <section className="project-rooms" aria-label={t('Repositories')}>
       <div className="title-actions"><h2>{t('Repositories')}</h2>{project.state === 'active' && <ActionButton type="button" className="btn-secondary" disabled={busy !== ''} disabledReason={'Wait for the current operation to finish.'} onClick={() => void addRepository()}>{busy === 'repository-add' ? t('Waiting for folder selection…') : t('＋ Add repository')}</ActionButton>}</div>

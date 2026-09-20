@@ -141,6 +141,7 @@ type Store interface {
 }
 
 type Reader interface {
+	ExecutionSettingsReader
 	TaskBoardReader
 	ResultClosureReader
 	DeliveryReader
@@ -231,6 +232,7 @@ type Reader interface {
 }
 
 type WriteTx interface {
+	ExecutionSettingsWriter
 	ResultClosureWriter
 	DeliveryWriter
 	ResourceWriter

@@ -960,6 +960,8 @@ func (server *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/projects/{projectID}", server.getProject)
 	mux.HandleFunc("GET /api/projects/{projectID}/settings", server.getProjectSettings)
 	mux.HandleFunc("PUT /api/projects/{projectID}/settings", server.putProjectSettings)
+	mux.HandleFunc("GET /api/projects/{projectID}/execution-settings", server.getProjectExecutionSettings)
+	mux.HandleFunc("PUT /api/projects/{projectID}/execution-settings", server.putProjectExecutionSettings)
 	mux.HandleFunc("GET /api/projects/{projectID}/capabilities/config", server.getNativeCapabilities)
 	mux.HandleFunc("PUT /api/projects/{projectID}/capabilities/config", server.putNativeCapabilities)
 	mux.HandleFunc("GET /api/projects/{projectID}/capabilities/status", server.getNativeCapabilityStatus)
@@ -1580,14 +1582,15 @@ func (server *Server) createTask(writer http.ResponseWriter, request *http.Reque
 		}
 	}
 	var input struct {
-		ProjectSettingsVersion *uint64                      `json:"projectSettingsVersion"`
-		Title                  string                       `json:"title"`
-		Goal                   string                       `json:"goal"`
-		ExecutionProfile       app.TaskExecutionProfile     `json:"executionProfile"`
-		AgentExecutionProfile  domain.AgentExecutionProfile `json:"agentExecutionProfile"`
-		ModelBinding           json.RawMessage              `json:"modelBinding"`
-		Criteria               []string                     `json:"criteria"`
-		RevisionIDs            []string                     `json:"revisionIds"`
+		ExecutionSettings      *app.ExecutionSettingsSelection `json:"executionSettings"`
+		ProjectSettingsVersion *uint64                         `json:"projectSettingsVersion"`
+		Title                  string                          `json:"title"`
+		Goal                   string                          `json:"goal"`
+		ExecutionProfile       app.TaskExecutionProfile        `json:"executionProfile"`
+		AgentExecutionProfile  domain.AgentExecutionProfile    `json:"agentExecutionProfile"`
+		ModelBinding           json.RawMessage                 `json:"modelBinding"`
+		Criteria               []string                        `json:"criteria"`
+		RevisionIDs            []string                        `json:"revisionIds"`
 		RealSpecCoding         *struct {
 			Requirement string   `json:"requirement"`
 			Constraints []string `json:"constraints"`
@@ -1628,10 +1631,14 @@ func (server *Server) createTask(writer http.ResponseWriter, request *http.Reque
 		return
 	}
 	if server.pathPiEnabled && input.ExecutionProfile == app.TaskExecutionProfileRealSpecCoding {
-		if input.AgentExecutionProfile == "" {
+		if input.ExecutionSettings != nil && (input.AgentExecutionProfile != "" || len(input.ModelBinding) > 0) {
+			writeError(writer, http.StatusBadRequest, errors.New("use executionSettings without separate environment or model fields"))
+			return
+		}
+		if input.ExecutionSettings == nil && input.AgentExecutionProfile == "" {
 			input.AgentExecutionProfile = domain.AgentExecutionProfileIsolatedLocal
 		}
-		if !currentExecutionEnvironment(input.AgentExecutionProfile) {
+		if input.ExecutionSettings == nil && !currentExecutionEnvironment(input.AgentExecutionProfile) {
 			writeError(writer, http.StatusBadRequest, errors.New("select local execution or isolated execution"))
 			return
 		}
@@ -1773,7 +1780,7 @@ func (server *Server) createTask(writer http.ResponseWriter, request *http.Reque
 	}
 	result, err := server.service.CreateTask(request.Context(), app.CreateTaskRequest{
 		CommandMeta: meta, RoomID: roomID, Title: input.Title, Goal: input.Goal, ExecutionProfile: input.ExecutionProfile,
-		AgentExecutionProfile: input.AgentExecutionProfile, ModelBinding: modelBinding, Criteria: criteria, RevisionIDs: revisionIDs, PlanContent: planContent, RealSpecCoding: realInput,
+		AgentExecutionProfile: input.AgentExecutionProfile, ModelBinding: modelBinding, ExecutionSettings: input.ExecutionSettings, ResolveExecutionModel: server.resolveExecutionModel, Criteria: criteria, RevisionIDs: revisionIDs, PlanContent: planContent, RealSpecCoding: realInput,
 	})
 	if err != nil {
 		writePlanningCommandError(writer, err)
@@ -1793,6 +1800,11 @@ func (server *Server) createdTaskReferenceView(ctx context.Context, result app.C
 		Draft:     &draft,
 		Revisions: []technicalPlanRevisionView{},
 	})
+	settings, settingsErr := server.taskExecutionSettingsView(ctx, result.Task.ID())
+	if settingsErr != nil {
+		return taskRefView{}, settingsErr
+	}
+	view.ExecutionSettings = settings
 	view.ExecutionProfile = string(result.ExecutionProfile)
 	if result.AgentExecutionProfile != "" {
 		view.AgentExecutionProfile = string(result.AgentExecutionProfile)
@@ -2146,6 +2158,11 @@ func (server *Server) taskReferenceView(ctx context.Context, taskID domain.TaskI
 	} else if !errors.Is(bindingErr, storecontract.ErrNotFound) {
 		return taskRefView{}, bindingErr
 	}
+	settings, settingsErr := server.taskExecutionSettingsView(ctx, taskID)
+	if settingsErr != nil {
+		return taskRefView{}, settingsErr
+	}
+	view.ExecutionSettings = settings
 	worktree, worktreeErr := reader.GetTaskWorktreeBinding(ctx, taskID)
 	if worktreeErr == nil {
 		item := taskWorktreeViewOf(worktree)

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/Yangyang96/chora/internal/contextcore"
 	"github.com/Yangyang96/chora/internal/domain"
+	"github.com/Yangyang96/chora/internal/nativecapabilities"
 	"github.com/Yangyang96/chora/internal/speccoding"
 	storecontract "github.com/Yangyang96/chora/internal/store"
 )
@@ -22,6 +24,7 @@ type taskWire struct {
 	State                                      domain.TaskState
 	Archived                                   bool
 	ArchivedAt                                 time.Time
+	ModelBinding                               domain.ModelBinding
 }
 
 type creationWire struct {
@@ -65,7 +68,7 @@ func wireTask(task domain.Task) taskWire {
 	if task.PredecessorTaskID().Valid() {
 		predecessor = task.PredecessorTaskID().String()
 	}
-	return taskWire{ID: task.ID().String(), RoomID: task.RoomID().String(), PredecessorTaskID: predecessor, Title: task.Title(), Goal: task.Goal(), Criteria: criteria, State: task.State(), Archived: task.Archived(), ArchivedAt: task.ArchivedAt()}
+	return taskWire{ID: task.ID().String(), RoomID: task.RoomID().String(), PredecessorTaskID: predecessor, Title: task.Title(), Goal: task.Goal(), Criteria: criteria, State: task.State(), Archived: task.Archived(), ArchivedAt: task.ArchivedAt(), ModelBinding: task.ModelBinding()}
 }
 
 func restoreTaskWire(wire taskWire) (domain.Task, error) {
@@ -96,7 +99,7 @@ func restoreTaskWire(wire taskWire) (domain.Task, error) {
 		}
 		criteria = append(criteria, criterion)
 	}
-	return domain.RestoreTask(domain.TaskRecord{ID: id, RoomID: roomID, PredecessorTaskID: predecessor, Title: wire.Title, Goal: wire.Goal, Criteria: criteria, State: wire.State, Archived: wire.Archived, ArchivedAt: wire.ArchivedAt})
+	return domain.RestoreTask(domain.TaskRecord{ID: id, RoomID: roomID, PredecessorTaskID: predecessor, Title: wire.Title, Goal: wire.Goal, Criteria: criteria, State: wire.State, Archived: wire.Archived, ArchivedAt: wire.ArchivedAt, ModelBinding: wire.ModelBinding})
 }
 
 func optionalPlanRevisionID(id domain.TechnicalPlanRevisionID) string {
@@ -146,9 +149,13 @@ func (s *Service) CreateTask(ctx context.Context, request CreateTaskRequest) (Cr
 	}
 	var agentProfile domain.AgentExecutionProfile
 	if profile == TaskExecutionProfileRealSpecCoding {
-		agentProfile, err = normalizedAgentExecutionProfile(request.AgentExecutionProfile)
-		if err != nil {
-			return CreateTaskResult{}, err
+		if request.ExecutionSettings == nil {
+			agentProfile, err = normalizedAgentExecutionProfile(request.AgentExecutionProfile)
+			if err != nil {
+				return CreateTaskResult{}, err
+			}
+		} else if request.AgentExecutionProfile != "" || request.ModelBinding.Configured() {
+			return CreateTaskResult{}, fmt.Errorf("%w: execution settings cannot be combined with legacy execution selection", ErrInvalidCommand)
 		}
 	} else if request.AgentExecutionProfile != "" {
 		return CreateTaskResult{}, fmt.Errorf("%w: diagnostic Fake Tasks do not accept an Agent execution profile", ErrInvalidCommand)
@@ -170,7 +177,9 @@ func (s *Service) CreateTask(ctx context.Context, request CreateTaskRequest) (Cr
 		RevisionIDs           []string
 		PlanContent           domain.TechnicalPlanContent
 		RealSpecCoding        *RealSpecCodingInput
-	}{request.Title, request.Goal, profile, agentProfile, criteria, revisionIDs, request.PlanContent, request.RealSpecCoding}, now)
+		ModelBinding          domain.ModelBinding
+		ExecutionSettings     *ExecutionSettingsSelection
+	}{request.Title, request.Goal, profile, agentProfile, criteria, revisionIDs, request.PlanContent, request.RealSpecCoding, request.ModelBinding, request.ExecutionSettings}, now)
 	if err != nil {
 		return CreateTaskResult{}, err
 	}
@@ -251,6 +260,82 @@ func (s *Service) CreateTask(ctx context.Context, request CreateTaskRequest) (Cr
 		if room.State() != domain.RoomStateActive {
 			return storecontract.ErrRoomStateForbidden
 		}
+		var frozenExecutionSettings *domain.TaskExecutionSettings
+		resolvedModelBinding := request.ModelBinding
+		if profile == TaskExecutionProfileRealSpecCoding && room.ProjectID().Valid() {
+			if request.ExecutionSettings != nil {
+				project, err := tx.GetProject(ctx, room.ProjectID())
+				if err != nil {
+					return err
+				}
+				if project.State() != domain.ProjectStateActive {
+					return fmt.Errorf("%w: restore the Project before creating Tasks", ErrInvalidCommand)
+				}
+				projectSettings, settingsErr := tx.GetProjectExecutionSettings(ctx, room.ProjectID())
+				if errors.Is(settingsErr, storecontract.ErrNotFound) {
+					projectSettings = defaultProjectExecutionSettings(room.ProjectID())
+				} else if settingsErr != nil {
+					return settingsErr
+				}
+				if projectSettings.Version != request.ExecutionSettings.ProjectVersion {
+					return storecontract.ErrVersionConflict
+				}
+				agentProfile = projectSettings.AgentExecutionProfile
+				environmentSource := domain.ExecutionSettingsSourceProject
+				if projectSettings.Version == 0 {
+					environmentSource = domain.ExecutionSettingsSourceDefault
+				}
+				if request.ExecutionSettings.AgentExecutionProfile != "" {
+					agentProfile, err = domain.ParseAgentExecutionProfile(string(request.ExecutionSettings.AgentExecutionProfile))
+					if err != nil || !currentProjectExecutionProfile(agentProfile) {
+						return fmt.Errorf("%w: invalid execution environment", ErrInvalidCommand)
+					}
+					environmentSource = domain.ExecutionSettingsSourceTask
+				}
+				model := projectSettings.Model
+				modelSource := domain.ExecutionSettingsSourceProject
+				if projectSettings.Version == 0 {
+					modelSource = domain.ExecutionSettingsSourceDefault
+				}
+				if request.ExecutionSettings.Model != nil {
+					modelSource = domain.ExecutionSettingsSourceTask
+					if bytes.Equal(bytes.TrimSpace(request.ExecutionSettings.Model), []byte("null")) {
+						model = nil
+					} else {
+						var selected domain.ModelIdentity
+						if err := json.Unmarshal(request.ExecutionSettings.Model, &selected); err != nil {
+							return fmt.Errorf("%w: invalid execution model", ErrInvalidCommand)
+						}
+						model = &selected
+					}
+				}
+				resolver := request.ResolveExecutionModel
+				if resolver == nil {
+					resolver = s.deps.ResolveExecutionModel
+				}
+				if resolver == nil {
+					return fmt.Errorf("%w: execution model resolver is unavailable", ErrInvalidCommand)
+				}
+				resolvedModelBinding, err = resolver(ctx, agentProfile, model)
+				if err != nil {
+					return fmt.Errorf("%w: resolve execution model: %v", ErrInvalidCommand, err)
+				}
+				if model == nil && resolvedModelBinding.Configured() {
+					return fmt.Errorf("%w: runtime-default model resolution returned an explicit model", ErrInvalidCommand)
+				}
+				if model != nil && (!resolvedModelBinding.Configured() || resolvedModelBinding.Record().ModelIdentity != *model) {
+					return fmt.Errorf("%w: resolved model does not match the selected model", ErrInvalidCommand)
+				}
+				frozenExecutionSettings = &domain.TaskExecutionSettings{ProjectID: room.ProjectID(), ProjectVersion: projectSettings.Version, AgentExecutionProfile: agentProfile, EnvironmentSource: environmentSource, ModelSource: modelSource, ModelBinding: resolvedModelBinding, CreatedAt: now}
+			} else if agentProfile == domain.AgentExecutionProfileTrustedLocal || agentProfile == domain.AgentExecutionProfileIsolatedLocal {
+				// Legacy callers already supplied an exact environment and model binding.
+				// Freeze those values without consulting mutable Project defaults.
+				frozenExecutionSettings = &domain.TaskExecutionSettings{ProjectID: room.ProjectID(), AgentExecutionProfile: agentProfile, EnvironmentSource: domain.ExecutionSettingsSourceTask, ModelSource: domain.ExecutionSettingsSourceDefault, ModelBinding: resolvedModelBinding, CreatedAt: now}
+				if resolvedModelBinding.Configured() {
+					frozenExecutionSettings.ModelSource = domain.ExecutionSettingsSourceTask
+				}
+			}
+		}
 		var task domain.Task
 		var intent speccoding.DeclaredUserTask
 		planContent := request.PlanContent
@@ -269,8 +354,8 @@ func (s *Service) CreateTask(ctx context.Context, request CreateTaskRequest) (Cr
 				return err
 			}
 		}
-		if request.ModelBinding.Configured() {
-			task, err = task.BindModel(request.ModelBinding)
+		if resolvedModelBinding.Configured() {
+			task, err = task.BindModel(resolvedModelBinding)
 			if err != nil {
 				return err
 			}
@@ -291,6 +376,27 @@ func (s *Service) CreateTask(ctx context.Context, request CreateTaskRequest) (Cr
 		}
 		if err := tx.InsertTask(ctx, task); err != nil {
 			return err
+		}
+		if frozenExecutionSettings != nil {
+			frozenExecutionSettings.TaskID = task.ID()
+			config := nativecapabilities.Config{Version: 0, SkillPaths: []string{}, DisabledSkillPaths: []string{}, DisabledMCPServers: []string{}}
+			if s.deps.DataRoot != "" {
+				config, err = nativecapabilities.Read(s.deps.DataRoot, room.ProjectID().String())
+				if err != nil {
+					return err
+				}
+			}
+			encoded, err := json.Marshal(config)
+			if err != nil {
+				return err
+			}
+			frozenExecutionSettings.NativeCapabilitiesJSON = string(encoded)
+			if err := frozenExecutionSettings.Validate(); err != nil {
+				return err
+			}
+			if err := tx.InsertTaskExecutionSettings(ctx, *frozenExecutionSettings); err != nil {
+				return err
+			}
 		}
 		if profile == TaskExecutionProfileRealSpecCoding {
 			preference, err := newTaskAgentExecutionProfilePreference(task.ID(), 1, agentProfile, request.CommandMeta, now)

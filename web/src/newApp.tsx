@@ -12,6 +12,7 @@ import { AddProject } from './ui/AddProject'
 import { AppShell } from './ui/AppShell'
 import { CreateRoom } from './ui/CreateRoom'
 import { NewTask } from './ui/NewTask'
+import { TaskExecutionSnapshot } from './ui/TaskExecutionSnapshot'
 import { PiInstallation } from './ui/PiInstallation'
 import { PiDiscoveryStatus, type PiDiscoveryFetch } from './ui/PiDiscovery'
 import { ProjectList } from './ui/ProjectList'
@@ -442,7 +443,7 @@ function NewAppContent() {
     }
   }
 
-  async function createTask(requirement: string, agentExecutionProfile: AgentExecutionProfile, projectSettingsVersion?: number, resources?: TaskResourceSelection[], modelBinding?: ModelBinding) {
+  async function createTask(requirement: string, agentExecutionProfile: AgentExecutionProfile, projectSettingsVersion?: number, resources?: TaskResourceSelection[], modelBinding?: ModelBinding, executionSettings?: import('./types').TaskExecutionSettingsInput) {
     const briefLocator = roomID ? `room://${roomID}/brief` : ''
     const revisions = roomDetail?.revisions ?? []
     const currentBrief = [...revisions].reverse().find((revision) => revision.locator === briefLocator)
@@ -460,7 +461,7 @@ function NewAppContent() {
       const created = await api<TaskRef>(resources ? `/api/v2/rooms/${encodeURIComponent(roomID)}/tasks` : `/api/rooms/${encodeURIComponent(roomID)}/tasks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': commandKey('create-task') },
-        body: JSON.stringify(resources ? { requirement, title: requirement.slice(0,96), resources, revisionIds: [currentBrief.id], agentExecutionProfile, modelBinding } : {
+        body: JSON.stringify(resources ? { requirement, title: requirement.slice(0,96), resources, revisionIds: [currentBrief.id], executionSettings } : {
           title: requirement.slice(0, 96),
           goal: requirement,
           criteria: ['Requirement satisfied'],
@@ -772,6 +773,7 @@ function NewAppContent() {
         {task && <TaskProgress preparing={busy} />}
         <p>{task ? task.title || t('Task') : t('Loading…')}</p>
         {taskPlan && <section aria-label={t('Plan')}><h2>{t('Plan')}</h2><ol>{taskPlan.technical_steps.map((step, index) => <li key={index}>{step}</li>)}</ol></section>}
+        {task?.executionSettings && <TaskExecutionSnapshot value={task.executionSettings} />}
         {unsupportedTaskProfile ? <>
           <p role="status">{t('This task selected a retired execution environment, which this local workbench cannot start. Keep this task and reuse its requirement to explicitly choose an available environment for a new task.')}</p>
           <ActionButton type="button" className="btn-primary" disabled={busy} disabledReason={'Wait for the current operation to finish.'} onClick={recoverExecutionChoice}>{t('Reuse requirement and choose execution mode')}</ActionButton>

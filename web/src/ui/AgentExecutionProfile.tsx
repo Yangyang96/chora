@@ -1,5 +1,5 @@
 import { ActionButton } from './ActionButton'
-import { useId, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { useI18n } from '../i18n'
 import type { AgentExecution, AgentExecutionProfile } from '../types'
 import { PiDiscoveryStatus } from './PiDiscovery'
@@ -31,10 +31,12 @@ export function AgentExecutionDisclosure({ agentExecution, profile, className = 
   return <span className={`agent-execution-disclosure ${selected === 'trusted_local' ? 'trusted-local' : ''} ${className}`.trim()}>{t(label)}</span>
 }
 
-export function AgentExecutionProfileSelector({ value, disabled, trustedLocalSelectable = true, piDiscovery, acknowledgedPolicyVersion, onChange, onAcknowledgeTrustedLocal, onDisclosurePendingChange }: {
+export function AgentExecutionProfileSelector({ value, disabled, trustedLocalSelectable = true, requireTrustedLocalAcknowledgement = true, disclosureRequest = 0, piDiscovery, acknowledgedPolicyVersion, onChange, onAcknowledgeTrustedLocal, onDisclosurePendingChange }: {
   value?: AgentExecutionProfile
   disabled?: boolean
   trustedLocalSelectable?: boolean
+  requireTrustedLocalAcknowledgement?: boolean
+  disclosureRequest?: number
   piDiscovery?: PiDiscoveryFetch
   acknowledgedPolicyVersion?: string
   onChange: (profile: AgentExecutionProfile) => void
@@ -44,6 +46,7 @@ export function AgentExecutionProfileSelector({ value, disabled, trustedLocalSel
   const { t } = useI18n()
   const legendID = useId()
   const previousProfile = useRef(value)
+  const previousDisclosureRequest = useRef(disclosureRequest)
   const [pendingTrustedLocal, setPendingTrustedLocal] = useState(false)
   const [acknowledging, setAcknowledging] = useState(false)
   // Local execution is selectable only when Pi discovery resolves ready, or
@@ -54,13 +57,23 @@ export function AgentExecutionProfileSelector({ value, disabled, trustedLocalSel
   const piReady = piDiscovery === undefined
     || (piDiscovery.phase === 'loaded' && (piDiscovery.discovery.state === 'ready' || piDiscovery.discovery.state === 'unavailable'))
 
+  useEffect(() => {
+    if (disclosureRequest === previousDisclosureRequest.current) return
+    previousDisclosureRequest.current = disclosureRequest
+    if (value === 'trusted_local' && acknowledgedPolicyVersion !== TRUSTED_LOCAL_DISCLOSURE_POLICY) {
+      previousProfile.current = value
+      setPendingTrustedLocal(true)
+      onDisclosurePendingChange?.(true)
+    }
+  }, [acknowledgedPolicyVersion, disclosureRequest, onDisclosurePendingChange, value])
+
   function closeDisclosure() {
     setPendingTrustedLocal(false)
     onDisclosurePendingChange?.(false)
   }
 
   function select(profile: AgentExecutionProfile) {
-    if (profile !== 'trusted_local' || acknowledgedPolicyVersion === TRUSTED_LOCAL_DISCLOSURE_POLICY) {
+    if (profile !== 'trusted_local' || !requireTrustedLocalAcknowledgement || acknowledgedPolicyVersion === TRUSTED_LOCAL_DISCLOSURE_POLICY) {
       onChange(profile)
       return
     }

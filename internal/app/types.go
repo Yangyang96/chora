@@ -1,6 +1,8 @@
 package app
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -88,6 +90,14 @@ type CreateTaskRequest struct {
 	RevisionIDs           []domain.ContextRevisionID
 	PlanContent           domain.TechnicalPlanContent
 	RealSpecCoding        *RealSpecCodingInput
+	ExecutionSettings     *ExecutionSettingsSelection
+	ResolveExecutionModel func(context.Context, domain.AgentExecutionProfile, *domain.ModelIdentity) (domain.ModelBinding, error) `json:"-"`
+}
+
+type ExecutionSettingsSelection struct {
+	ProjectVersion        uint64                       `json:"projectVersion"`
+	AgentExecutionProfile domain.AgentExecutionProfile `json:"agentExecutionProfile,omitempty"`
+	Model                 json.RawMessage              `json:"model,omitempty"`
 }
 type CreateTaskResult struct {
 	Task                  domain.Task

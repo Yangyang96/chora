@@ -45,6 +45,7 @@ type Dependencies struct {
 	RepositorySource            RepositorySource
 	DataRoot                    string
 	RoomCreationMode            RoomCreationMode
+	ResolveExecutionModel       func(context.Context, domain.AgentExecutionProfile, *domain.ModelIdentity) (domain.ModelBinding, error)
 
 	// AutoStartVerification starts independent verification automatically as
 	// soon as the Agent completes and produces a reviewable result, instead of

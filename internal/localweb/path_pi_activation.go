@@ -84,7 +84,7 @@ func composePathPiRuntime(ctx context.Context, runtimeRoot, sessionRoot string, 
 			if !room.ProjectID().Valid() {
 				return nil, nil, nil
 			}
-			config, e := nativecapabilities.Read(guard.dataRoot, room.ProjectID().String())
+			config, e := taskNativeCapabilities(ctx, guard.reader, guard.dataRoot, task, room.ProjectID())
 			if e != nil {
 				return nil, nil, e
 			}

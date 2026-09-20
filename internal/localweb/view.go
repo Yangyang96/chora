@@ -271,11 +271,12 @@ type roomDetailView struct {
 }
 
 type taskView struct {
-	ID                    string            `json:"id"`
-	Title                 string            `json:"title"`
-	Goal                  string            `json:"goal"`
-	AgentExecutionProfile string            `json:"agentExecutionProfile,omitempty"`
-	Worktree              *taskWorktreeView `json:"worktree,omitempty"`
+	ExecutionSettings     *taskExecutionSettingsView `json:"executionSettings,omitempty"`
+	ID                    string                     `json:"id"`
+	Title                 string                     `json:"title"`
+	Goal                  string                     `json:"goal"`
+	AgentExecutionProfile string                     `json:"agentExecutionProfile,omitempty"`
+	Worktree              *taskWorktreeView          `json:"worktree,omitempty"`
 }
 
 type roomTaskCountsView struct {
@@ -681,6 +682,7 @@ func automaticRetryFinalizedView(attemptState domain.AttemptState, session store
 }
 
 type taskRefView struct {
+	ExecutionSettings     *taskExecutionSettingsView   `json:"executionSettings,omitempty"`
 	ResourceSnapshot      *domain.TaskResourceSnapshot `json:"resourceSnapshot,omitempty"`
 	ID                    string                       `json:"id"`
 	RoomID                string                       `json:"roomId"`
@@ -1298,6 +1300,11 @@ func (server *Server) runView(ctx context.Context, runID domain.RunID) (runView,
 			revisionByCandidate[candidateID] = item
 		}
 	}
+	settings, settingsErr := server.taskExecutionSettingsView(ctx, task.ID())
+	if settingsErr != nil {
+		return runView{}, settingsErr
+	}
+	view.Task.ExecutionSettings = settings
 	selection, err := reader.GetTaskRevisionSelection(ctx, task.ID())
 	if err == nil {
 		item := selectionViewOf(selection)
