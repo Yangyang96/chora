@@ -183,6 +183,7 @@ type Config struct {
 	PathPiSource        PathPiSource
 	SessionRoot         string
 	ResourceObserver    *ResourceObserverBinding
+	NativeCapabilities  func(domain.AgentRun, domain.Attempt, string, domain.AttemptID) ([]string, map[string]string, error)
 	ReadFile            func(string) ([]byte, error)
 	ReadSourceFile      func(string) ([]byte, error)
 	ValidateLocalSource func(context.Context, LocalPiSource) error
@@ -468,6 +469,16 @@ func (adapter *Adapter) prepareStartForSource(request execution.StartRequest, so
 	if err != nil {
 		return execution.Invocation{}, err
 	}
+	if source.pathPi && adapter.config.NativeCapabilities != nil {
+		extra, env, capabilityErr := adapter.config.NativeCapabilities(request.Run, request.Attempt, request.WorkspaceRoot, domain.AttemptID{})
+		if capabilityErr != nil {
+			return execution.Invocation{}, capabilityErr
+		}
+		arguments = append(arguments, extra...)
+		for key, value := range env {
+			environment[key] = value
+		}
+	}
 	return execution.NewInvocation(execution.InvocationParams{
 		AdapterID: AdapterID, Executable: source.executable, Arguments: arguments,
 		Environment: environment, WorkingRoot: request.WorkspaceRoot, Stdin: prompt,
@@ -556,6 +567,16 @@ func (adapter *Adapter) PrepareResume(ctx context.Context, request execution.Res
 		arguments, err = adapter.configureResourceObserver(source, request.Attempt.ID(), request.Binding.WorkingRoot, request.ExecutionContractDocument, arguments, environment)
 		if err != nil {
 			return execution.Invocation{}, err
+		}
+	}
+	if adapter.config.NativeCapabilities != nil {
+		extra, env, capabilityErr := adapter.config.NativeCapabilities(request.Run, request.Attempt, request.Binding.WorkingRoot, ownerID)
+		if capabilityErr != nil {
+			return execution.Invocation{}, capabilityErr
+		}
+		arguments = append(arguments, extra...)
+		for key, value := range env {
+			environment[key] = value
 		}
 	}
 	return execution.NewInvocation(execution.InvocationParams{AdapterID: AdapterID, Executable: source.executable, Arguments: arguments, Environment: environment, WorkingRoot: request.Binding.WorkingRoot, Stdin: prompt, LaunchToken: request.LaunchToken, Target: target})

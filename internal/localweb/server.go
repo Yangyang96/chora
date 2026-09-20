@@ -502,7 +502,7 @@ func newServer(ctx context.Context, databasePath, webRoot string, logger *log.Lo
 		}
 		installer, installedSelection, discoveryOptions, piErr = preparePiInstallation(runtimeContext, options.DataRoot, discoveryOptions)
 		if piErr == nil {
-			composedPi, pathPiDiscovery, piErr = composePathPiRuntime(runtimeContext, runtimeRoot, options.PathPiSessionRoot, discoveryOptions, timeoutPolicy, piInstallationGuard{installer: installer, selection: installedSelection})
+			composedPi, pathPiDiscovery, piErr = composePathPiRuntime(runtimeContext, runtimeRoot, options.PathPiSessionRoot, discoveryOptions, timeoutPolicy, piInstallationGuard{installer: installer, selection: installedSelection, reader: store.Reader(), dataRoot: options.DataRoot})
 		} else {
 			installationBlocked = true
 			discoveryOptions.LookPath = func(string) (string, error) { return "", errors.New("managed Pi selection is unavailable") }
@@ -960,6 +960,10 @@ func (server *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/projects/{projectID}", server.getProject)
 	mux.HandleFunc("GET /api/projects/{projectID}/settings", server.getProjectSettings)
 	mux.HandleFunc("PUT /api/projects/{projectID}/settings", server.putProjectSettings)
+	mux.HandleFunc("GET /api/projects/{projectID}/capabilities/config", server.getNativeCapabilities)
+	mux.HandleFunc("PUT /api/projects/{projectID}/capabilities/config", server.putNativeCapabilities)
+	mux.HandleFunc("GET /api/projects/{projectID}/capabilities/status", server.getNativeCapabilityStatus)
+	mux.HandleFunc("POST /api/projects/{projectID}/capabilities/verify", server.verifyNativeCapabilities)
 	mux.HandleFunc("GET /api/projects/{projectID}/continuity", server.projectContinuity)
 	mux.Handle("POST /api/projects/{projectID}/open-external", http.NewCrossOriginProtection().Handler(http.HandlerFunc(server.openExternalDirectory)))
 	mux.HandleFunc("DELETE /api/projects/{projectID}", server.removeProject)

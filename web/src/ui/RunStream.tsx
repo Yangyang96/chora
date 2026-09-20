@@ -143,6 +143,11 @@ export function RunStream({ run, busy, onResultClosed, trustedLocalSelectionRead
 
   return (
     <div className="stream">
+      {run.nativeCapabilities && (run.nativeCapabilities.bridge.status === 'unavailable' || [...run.nativeCapabilities.skills, ...run.nativeCapabilities.servers].some(item => ['failed', 'needs-auth', 'unavailable'].includes(item.status))) && <aside className="warning-banner" role="status">
+        <strong>{t('Some Skills or MCP servers are unavailable')}</strong>
+        <p>{t('This execution can continue with its other capabilities. Repair the configuration or authentication in Project Skills and MCP, then retry verification.')}</p>
+        <a href={`/projects/${encodeURIComponent(run.nativeCapabilities.projectID)}`}>{t('Open Project Skills and MCP')}</a>
+      </aside>}
       <div className="stream-head">
         <div className="stream-head-details">
           <strong>

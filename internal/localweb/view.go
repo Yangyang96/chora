@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -14,11 +15,14 @@ import (
 	"github.com/Yangyang96/chora/internal/app"
 	"github.com/Yangyang96/chora/internal/domain"
 	"github.com/Yangyang96/chora/internal/execution"
+	"github.com/Yangyang96/chora/internal/nativecapabilities"
 	"github.com/Yangyang96/chora/internal/speccoding"
 	storecontract "github.com/Yangyang96/chora/internal/store"
 )
 
 type runView struct {
+	NativeCapabilities *nativecapabilities.Observation `json:"nativeCapabilities,omitempty"`
+
 	ResultClosed            bool                        `json:"resultClosed,omitempty"`
 	ResourceResult          *resourceResultView         `json:"resourceResult,omitempty"`
 	ResourceApply           *app.ResourceApplyView      `json:"resourceApply,omitempty"`
@@ -1443,6 +1447,12 @@ func (server *Server) runView(ctx context.Context, runID domain.RunID) (runView,
 		}
 		view.AgentExecution = agentExecutionViewOf(attempt.AgentExecutionProfileBinding())
 		view.Attempt = attempt.Sequence()
+		if attempt.AgentExecutionProfileBinding().Profile() == domain.AgentExecutionProfileTrustedLocal {
+			if observation, e := nativecapabilities.ReadObservation(filepath.Join(server.runtimeRoot, "native-capabilities"), room.ProjectID(), attempt.ID()); e == nil {
+				observation.Running = observation.Running && attempt.State() == domain.AttemptStateRunning
+				view.NativeCapabilities = &observation
+			}
+		}
 		view.AttemptDetail = &attemptDetailView{
 			ID: attempt.ID().String(), Sequence: attempt.Sequence(), State: attempt.State(),
 			ExecutionWorkspace: executionWorkspace, Sandbox: sandbox, AgentExecution: agentExecutionViewOf(attempt.AgentExecutionProfileBinding()), ModelBinding: attempt.ModelBinding(), ModelProvenance: modelProvenance[attempt.ID().String()],

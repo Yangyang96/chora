@@ -387,6 +387,163 @@ func TestDirectWorkingRootRecoveryRejectsWorkspaceModeDrift(t *testing.T) {
 	}
 }
 
+func TestCapabilityArgumentsRecoverFromDurableValidationEvidence(t *testing.T) {
+	platform := newFakePlatform()
+	base := t.TempDir()
+	source := testSource(t, base)
+	resourcesAvailable := true
+	config := testConfig(t, base, 64, time.Minute)
+	config.DirectWorkingRoot = true
+	config.ValidateCapabilityArguments = capabilityArgumentValidator(&resourcesAvailable)
+	supervisor, err := newWithDependencies(config, platform, realTimerFactory{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	config = supervisor.config.Config
+	arguments := append(append([]string(nil), config.AllowedArguments...), "--capability-manifest", filepath.Join(base, "capabilities.json"))
+	launch := execution.LaunchToken{Value: "launch-capability-recovery"}
+	outcome := supervisor.Start(context.Background(), invocationFor(t, config, source, launch, arguments, trustedEnvironment()), newRecordingSink(launch))
+	if outcome.Kind != execution.Started {
+		t.Fatalf("Start = %#v", outcome)
+	}
+	record, err := supervisor.recordForHandle(outcome.Handle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := readManifest(record.root)
+	if err != nil || manifest.Schema != capabilityManifestSchema || !reflect.DeepEqual(manifest.ValidatedArguments, config.AllowedArguments) || manifest.ValidatedArgumentDigest != digestStrings(config.AllowedArguments) {
+		t.Fatalf("capability validation evidence = %#v, %v", manifest, err)
+	}
+
+	resourcesAvailable = false
+	restarted, err := newWithDependencies(config, platform, realTimerFactory{})
+	if err != nil {
+		t.Fatalf("restart re-read mutable capability resources: %v", err)
+	}
+	reconciled, err := restarted.Reconcile(context.Background(), outcome.Identity)
+	if err != nil || reconciled.Kind != execution.ReconcileAlive {
+		t.Fatalf("recovered capability process = %#v, %v", reconciled, err)
+	}
+	stopAndFinalize(t, restarted, platform, outcome.Handle)
+}
+
+func TestLegacyDirectArgumentsRecoverWithCapabilityValidationConfigured(t *testing.T) {
+	platform := newFakePlatform()
+	base := t.TempDir()
+	source := testSource(t, base)
+	config := testConfig(t, base, 64, time.Minute)
+	config.DirectWorkingRoot = true
+	supervisor, err := newWithDependencies(config, platform, realTimerFactory{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	config = supervisor.config.Config
+	launch := execution.LaunchToken{Value: "launch-legacy-direct-recovery"}
+	outcome := supervisor.Start(context.Background(), invocationFor(t, config, source, launch, config.AllowedArguments, trustedEnvironment()), newRecordingSink(launch))
+	if outcome.Kind != execution.Started {
+		t.Fatalf("Start = %#v", outcome)
+	}
+	record, err := supervisor.recordForHandle(outcome.Handle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := readManifest(record.root)
+	if err != nil || manifest.Schema != directArgvManifestSchema {
+		t.Fatalf("legacy direct manifest = %#v, %v", manifest, err)
+	}
+
+	resourcesAvailable := false
+	config.ValidateCapabilityArguments = capabilityArgumentValidator(&resourcesAvailable)
+	restarted, err := newWithDependencies(config, platform, realTimerFactory{})
+	if err != nil {
+		t.Fatalf("legacy direct restart used capability validation: %v", err)
+	}
+	reconciled, err := restarted.Reconcile(context.Background(), outcome.Identity)
+	if err != nil || reconciled.Kind != execution.ReconcileAlive {
+		t.Fatalf("recovered legacy direct process = %#v, %v", reconciled, err)
+	}
+	stopAndFinalize(t, restarted, platform, outcome.Handle)
+}
+
+func TestLegacyTerminalUnknownCapabilityArgumentsRemainRejected(t *testing.T) {
+	base := t.TempDir()
+	resourcesAvailable := true
+	config := testConfig(t, base, 64, time.Minute)
+	config.DirectWorkingRoot = true
+	config.ValidateCapabilityArguments = capabilityArgumentValidator(&resourcesAvailable)
+	supervisor, err := newWithDependencies(config, newFakePlatform(), realTimerFactory{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	arguments := append(append([]string(nil), supervisor.config.AllowedArguments...), "--capability-manifest", filepath.Join(base, "capabilities.json"))
+	manifest := processManifest{
+		Schema:         directArgvManifestSchema,
+		Arguments:      arguments,
+		ArgumentDigest: digestStrings(arguments),
+		State:          stateTerminal,
+		TerminalProof:  true,
+	}
+	if supervisor.validateRecoveredArguments(manifest) {
+		t.Fatal("legacy terminal record accepted unknown capability suffix")
+	}
+}
+
+func TestCapabilityArgumentRecoveryRejectsTamperedValidationEvidence(t *testing.T) {
+	platform := newFakePlatform()
+	base := t.TempDir()
+	source := testSource(t, base)
+	resourcesAvailable := true
+	config := testConfig(t, base, 64, time.Minute)
+	config.DirectWorkingRoot = true
+	config.ValidateCapabilityArguments = capabilityArgumentValidator(&resourcesAvailable)
+	supervisor, err := newWithDependencies(config, platform, realTimerFactory{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	config = supervisor.config.Config
+	arguments := append(append([]string(nil), config.AllowedArguments...), "--capability-manifest", filepath.Join(base, "capabilities.json"))
+	launch := execution.LaunchToken{Value: "launch-capability-tamper"}
+	outcome := supervisor.Start(context.Background(), invocationFor(t, config, source, launch, arguments, trustedEnvironment()), newRecordingSink(launch))
+	if outcome.Kind != execution.Started {
+		t.Fatalf("Start = %#v", outcome)
+	}
+	record, err := supervisor.recordForHandle(outcome.Handle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := readManifest(record.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := manifest
+	original.ValidatedArguments = append([]string(nil), manifest.ValidatedArguments...)
+	manifest.ValidatedArguments[0] = "--tampered"
+	manifest.ValidatedArgumentDigest = digestStrings(manifest.ValidatedArguments)
+	if err := writeManifest(record.root, manifest); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := newWithDependencies(config, platform, realTimerFactory{}); !errors.Is(err, ErrRecoveryUncertain) {
+		t.Fatalf("tampered capability evidence recovery = %v", err)
+	}
+	if err := writeManifest(record.root, original); err != nil {
+		t.Fatal(err)
+	}
+	stopAndFinalize(t, supervisor, platform, outcome.Handle)
+}
+
+func capabilityArgumentValidator(resourcesAvailable *bool) func(execution.Invocation) ([]string, error) {
+	return func(invocation execution.Invocation) ([]string, error) {
+		if resourcesAvailable == nil || !*resourcesAvailable {
+			return nil, errors.New("capability resources are unavailable")
+		}
+		arguments := invocation.Arguments()
+		if len(arguments) < 2 || arguments[len(arguments)-2] != "--capability-manifest" || !filepath.IsAbs(arguments[len(arguments)-1]) {
+			return nil, errors.New("invalid capability arguments")
+		}
+		return arguments[:len(arguments)-2], nil
+	}
+}
+
 func TestStartMergesCapturedAmbientEnvironmentWithoutAmbientChoraAuthority(t *testing.T) {
 	platform := newFakePlatform()
 	base := t.TempDir()

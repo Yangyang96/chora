@@ -23,6 +23,7 @@ const (
 	manifestSchema           = "chora.trusted-host-process.v2"
 	directManifestSchema     = "chora.trusted-host-process.v3"
 	directArgvManifestSchema = "chora.trusted-host-process.v4"
+	capabilityManifestSchema = "chora.trusted-host-process.v5"
 	manifestOwner            = "chora:internal/trustedhost"
 	manifestName             = "process.json"
 	attemptPrefix            = "attempt-"
@@ -59,6 +60,8 @@ type processManifest struct {
 	ExecutableSHA256         string        `json:"executable_sha256"`
 	ArgumentDigest           string        `json:"argument_digest"`
 	Arguments                []string      `json:"arguments,omitempty"`
+	ValidatedArgumentDigest  string        `json:"validated_argument_digest,omitempty"`
+	ValidatedArguments       []string      `json:"validated_arguments,omitempty"`
 	EnvironmentDigest        string        `json:"environment_digest"`
 	AmbientEnvironmentDigest string        `json:"ambient_environment_digest"`
 	RuntimeClosureDigest     string        `json:"runtime_closure_digest"`
@@ -225,6 +228,12 @@ func (supervisor *Supervisor) prepare(ctx context.Context, invocation execution.
 		return nil, processSpec{}, nil, nil, err
 	}
 	arguments := invocation.Arguments()
+	validatedArguments, err := supervisor.validatedInvocationArguments(invocation)
+	if err != nil {
+		_ = stdoutFile.Close()
+		_ = stderrFile.Close()
+		return nil, processSpec{}, nil, nil, err
+	}
 	gateNonce, err := randomGateNonce()
 	if err != nil {
 		_ = stdoutFile.Close()
@@ -240,6 +249,12 @@ func (supervisor *Supervisor) prepare(ctx context.Context, invocation execution.
 		return nil, processSpec{}, nil, nil, fmt.Errorf("capture launch gate owner identity: %w", err)
 	}
 	argumentDigest := digestStrings(arguments)
+	validatedArgumentDigest := ""
+	var durableValidatedArguments []string
+	if supervisor.config.ValidateCapabilityArguments != nil {
+		validatedArgumentDigest = digestStrings(validatedArguments)
+		durableValidatedArguments = append([]string(nil), validatedArguments...)
+	}
 	environmentDigest := digestStrings(environment)
 	runtimeClosureDigest := hex.EncodeToString(supervisor.config.runtimeClosureIdentity[:])
 	launchContractDigest := digestLaunchContract(supervisor.config.AllowedExecutable, argumentDigest, environmentDigest, runtimeClosureDigest)
@@ -254,8 +269,10 @@ func (supervisor *Supervisor) prepare(ctx context.Context, invocation execution.
 		gateOwnerPID:             gateOwnerPID, gateOwnerBirth: gateOwnerBirth,
 		handle: execution.RuntimeHandle{Value: "trustedhost:" + digest}, launch: launch, terminal: terminal,
 		sink: sink, done: make(chan struct{}), exitCode: -1, state: statePrepared,
-		directWorkspace: supervisor.config.DirectWorkingRoot,
-		drained:         map[execution.StreamKind]bool{}, notified: map[execution.StreamKind]int64{},
+		directWorkspace:         supervisor.config.DirectWorkingRoot,
+		validatedArguments:      durableValidatedArguments,
+		validatedArgumentDigest: validatedArgumentDigest,
+		drained:                 map[execution.StreamKind]bool{}, notified: map[execution.StreamKind]int64{},
 	}
 	manifest := manifestFor(record)
 	manifest.Executable = supervisor.config.AllowedExecutable.Path
@@ -265,6 +282,11 @@ func (supervisor *Supervisor) prepare(ctx context.Context, invocation execution.
 	if supervisor.config.DirectWorkingRoot {
 		manifest.Schema = directArgvManifestSchema
 		manifest.Arguments = append([]string(nil), arguments...)
+		if supervisor.config.ValidateCapabilityArguments != nil {
+			manifest.Schema = capabilityManifestSchema
+			manifest.ValidatedArguments = append([]string(nil), validatedArguments...)
+			manifest.ValidatedArgumentDigest = validatedArgumentDigest
+		}
 	}
 	manifest.EnvironmentDigest = environmentDigest
 	manifest.AmbientEnvironmentDigest = supervisor.config.ambientEnvironmentDigest
@@ -473,8 +495,10 @@ func (supervisor *Supervisor) persist(record *processRecord) error {
 	next.ExecutableSHA256 = current.ExecutableSHA256
 	next.ArgumentDigest = current.ArgumentDigest
 	next.Arguments = append([]string(nil), current.Arguments...)
-	if current.Schema == directArgvManifestSchema {
-		next.Schema = directArgvManifestSchema
+	next.ValidatedArgumentDigest = current.ValidatedArgumentDigest
+	next.ValidatedArguments = append([]string(nil), current.ValidatedArguments...)
+	if current.Schema == directArgvManifestSchema || current.Schema == capabilityManifestSchema {
+		next.Schema = current.Schema
 	}
 	next.EnvironmentDigest = current.EnvironmentDigest
 	next.AmbientEnvironmentDigest = current.AmbientEnvironmentDigest
@@ -577,10 +601,7 @@ func (supervisor *Supervisor) loadRecords() error {
 			return fmt.Errorf("%w: read %s: %v", ErrRecoveryUncertain, entry.Name(), err)
 		}
 		manifestExecutable, executableErr := executableIdentityFromManifest(manifest)
-		argvValid := manifest.ArgumentDigest == digestStrings(supervisor.config.AllowedArguments)
-		if manifest.Schema == directArgvManifestSchema {
-			argvValid = validateAllowedArguments(manifest.Arguments, supervisor.config.AllowedArguments, supervisor.config.AllowedTrailingPathRoot, supervisor.config.AllowedObserverPath) == nil && manifest.ArgumentDigest == digestStrings(manifest.Arguments)
-		}
+		argvValid := supervisor.validateRecoveredArguments(manifest)
 		if executableErr != nil || manifestExecutable != supervisor.config.AllowedExecutable || !argvValid {
 			return fmt.Errorf("%w: durable launch contract is outside configured executable/argv policy", ErrRecoveryUncertain)
 		}
@@ -622,6 +643,40 @@ func (supervisor *Supervisor) loadRecords() error {
 	return nil
 }
 
+func (supervisor *Supervisor) validateRecoveredArguments(manifest processManifest) bool {
+	switch manifest.Schema {
+	case manifestSchema, directManifestSchema:
+		return manifest.ArgumentDigest == digestStrings(supervisor.config.AllowedArguments)
+	case directArgvManifestSchema:
+		if manifest.ArgumentDigest != digestStrings(manifest.Arguments) {
+			return false
+		}
+		return validateAllowedArguments(manifest.Arguments, supervisor.config.AllowedArguments, supervisor.config.AllowedTrailingPathRoot, supervisor.config.AllowedObserverPath) == nil
+	case capabilityManifestSchema:
+		return supervisor.config.ValidateCapabilityArguments != nil &&
+			manifest.ArgumentDigest == digestStrings(manifest.Arguments) &&
+			manifest.ValidatedArgumentDigest != "" &&
+			manifest.ValidatedArgumentDigest == digestStrings(manifest.ValidatedArguments) &&
+			len(manifest.ValidatedArguments) <= len(manifest.Arguments) &&
+			equalStrings(manifest.ValidatedArguments, manifest.Arguments[:len(manifest.ValidatedArguments)]) &&
+			validateAllowedArguments(manifest.ValidatedArguments, supervisor.config.AllowedArguments, supervisor.config.AllowedTrailingPathRoot, supervisor.config.AllowedObserverPath) == nil
+	default:
+		return false
+	}
+}
+
+func equalStrings(first, second []string) bool {
+	if len(first) != len(second) {
+		return false
+	}
+	for index := range first {
+		if first[index] != second[index] {
+			return false
+		}
+	}
+	return true
+}
+
 func recordFromManifest(root string, manifest processManifest, directWorkingRoot bool, runtimeRoot string) (*processRecord, error) {
 	launch := execution.LaunchToken{Value: manifest.LaunchToken}
 	expectedRootName := attemptPrefix + launchDigest(launch)
@@ -640,6 +695,9 @@ func recordFromManifest(root string, manifest processManifest, directWorkingRoot
 	expectedHandle := "trustedhost:" + launchDigest(launch)
 	validSchema := manifest.Schema == expectedSchema
 	if directWorkingRoot && manifest.Schema == directManifestSchema && len(manifest.Arguments) == 0 {
+		validSchema = true
+	}
+	if directWorkingRoot && manifest.Schema == capabilityManifestSchema && manifest.ValidatedArgumentDigest != "" {
 		validSchema = true
 	}
 	if !validSchema || manifest.WorkspaceMode != expectedWorkspaceMode || manifest.Owner != manifestOwner || !launch.Valid() || filepath.Base(root) != expectedRootName ||
@@ -680,7 +738,9 @@ func recordFromManifest(root string, manifest processManifest, directWorkingRoot
 		exitCode:            manifest.ExitCode, terminalProof: manifest.TerminalProof, state: manifest.State,
 		terminalPersisted: manifest.TerminalProof,
 		diagnostic:        manifest.Diagnostic, directWorkspace: directWorkingRoot,
-		drained: map[execution.StreamKind]bool{}, notified: map[execution.StreamKind]int64{},
+		validatedArguments:      append([]string(nil), manifest.ValidatedArguments...),
+		validatedArgumentDigest: manifest.ValidatedArgumentDigest,
+		drained:                 map[execution.StreamKind]bool{}, notified: map[execution.StreamKind]int64{},
 	}
 	if identity.Valid() && identity != processIdentity(record) {
 		return nil, errors.New("process identity digest mismatch")
@@ -766,10 +826,15 @@ func verifyOwnedRecord(record *processRecord, runtimeRoot string) error {
 			return errors.New("direct workspace is unavailable or unsafe")
 		}
 	}
+	if record.validatedArgumentDigest != "" {
+		expectedSchema = capabilityManifestSchema
+	}
 	validSchema := manifest.Schema == expectedSchema || record.recovered && manifest.Schema == directManifestSchema && len(manifest.Arguments) == 0
 	if !validSchema || manifest.WorkspaceMode != expectedWorkspaceMode || manifest.Owner != manifestOwner || manifest.Handle != record.handle.Value || manifest.Identity != record.identity.Value || manifest.LaunchToken != record.launch.Value ||
 		manifest.Workspace != record.workspace || manifest.OutputDirectory != record.outputDir || manifest.StdoutPath != record.stdoutPath || manifest.StderrPath != record.stderrPath ||
-		manifest.AmbientEnvironmentDigest != record.ambientEnvironmentDigest || manifest.RuntimeClosureDigest != record.runtimeClosureDigest || manifest.LaunchContractDigest != record.launchContractDigest || manifest.GateProtocol != gateProtocol || manifest.GateReceiptPath != record.gateReceiptPath || manifest.GateNonce != record.gateNonce ||
+		manifest.AmbientEnvironmentDigest != record.ambientEnvironmentDigest || manifest.RuntimeClosureDigest != record.runtimeClosureDigest || manifest.LaunchContractDigest != record.launchContractDigest ||
+		manifest.ValidatedArgumentDigest != record.validatedArgumentDigest || !equalStrings(manifest.ValidatedArguments, record.validatedArguments) ||
+		manifest.GateProtocol != gateProtocol || manifest.GateReceiptPath != record.gateReceiptPath || manifest.GateNonce != record.gateNonce ||
 		manifest.GateOwnerPID != record.gateOwnerPID || manifest.GateOwnerBirth != record.gateOwnerBirth ||
 		!manifest.TerminalProof || manifest.State != stateTerminal {
 		return errors.New("terminal ownership manifest mismatch")

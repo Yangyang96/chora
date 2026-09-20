@@ -182,6 +182,7 @@ export type ModelProvenance = {
 }
 
 export type RunView = {
+  nativeCapabilities?: { projectID: string; observedAt: string; running: boolean; configVersion: number; bridge: { status: string }; skills: Array<{ name: string; status: string }>; servers: Array<{ name: string; status: string }> }
   resultClosed?: boolean
   result?: { id: string; attemptId: string; outcome: string; createdAt: string }
   id: string

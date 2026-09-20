@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"syscall"
@@ -61,6 +62,12 @@ type Config struct {
 	AllowedArguments    []string
 	AllowedObserverPath string
 	ValidateObserver    func(context.Context) error
+
+	// ValidateCapabilityArguments validates any capability suffix and returns
+	// the exact argv prefix governed by the static argument policy. The durable
+	// prefix is used during recovery so mutable capability resources are not
+	// re-read after a successful launch.
+	ValidateCapabilityArguments func(execution.Invocation) ([]string, error)
 	// DirectWorkingRoot runs the native process in Invocation.WorkingRoot
 	// instead of a private copy. This is only for explicitly disclosed Local
 	// Connected execution where the caller owns and has already proven the Task
@@ -145,6 +152,8 @@ type processRecord struct {
 	persistErr                 error
 	diagnostic                 string
 	directWorkspace            bool
+	validatedArguments         []string
+	validatedArgumentDigest    string
 	drained                    map[execution.StreamKind]bool
 	notified                   map[execution.StreamKind]int64
 }
@@ -373,7 +382,7 @@ func (supervisor *Supervisor) validateInvocation(invocation execution.Invocation
 	if !invocation.LaunchToken().Valid() || sink == nil || sink.Binding() != invocation.LaunchToken() {
 		return errors.New("runtime sink binding does not match launch token")
 	}
-	if err := validateAllowedArguments(invocation.Arguments(), supervisor.config.AllowedArguments, supervisor.config.AllowedTrailingPathRoot, supervisor.config.AllowedObserverPath); err != nil {
+	if _, err := supervisor.validatedInvocationArguments(invocation); err != nil {
 		return err
 	}
 	if err := validateEnvironment(invocation.Environment()); err != nil {
@@ -406,6 +415,25 @@ func (supervisor *Supervisor) validateInvocation(invocation execution.Invocation
 		return errors.New("source workspace and trusted-host runtime root overlap")
 	}
 	return nil
+}
+
+func (supervisor *Supervisor) validatedInvocationArguments(invocation execution.Invocation) ([]string, error) {
+	arguments := invocation.Arguments()
+	validated := arguments
+	if supervisor.config.ValidateCapabilityArguments != nil {
+		var err error
+		validated, err = supervisor.config.ValidateCapabilityArguments(invocation)
+		if err != nil {
+			return nil, err
+		}
+		if len(validated) > len(arguments) || !reflect.DeepEqual(validated, arguments[:len(validated)]) {
+			return nil, errors.New("capability argument validation must strip only an exact argv suffix")
+		}
+	}
+	if err := validateAllowedArguments(validated, supervisor.config.AllowedArguments, supervisor.config.AllowedTrailingPathRoot, supervisor.config.AllowedObserverPath); err != nil {
+		return nil, err
+	}
+	return append([]string(nil), validated...), nil
 }
 
 func (supervisor *Supervisor) containUnidentifiedChild(record *processRecord, child childProcess, pid int, observation processObservation, observeErr error) execution.StartOutcome {

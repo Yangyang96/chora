@@ -12,7 +12,8 @@ selection technical acceptance on 2026-09-15. M2-S5-3 optional app preview passe
 technical acceptance on 2026-09-16. M2-S6 local application implementation and
 native interaction acceptance are complete; formal distribution remains deferred.
 M2-S6A Native Task Board V0 passed technical acceptance on 2026-09-19.
-M2-S7 Provider-native Skills/MCP setup is the next planned feature slice.
+M2-S7 Provider-native Skills/MCP setup passed technical acceptance on 2026-09-20
+for Local Connected.
 
 Project is the long-lived owner of repository resources and topic Rooms. A Task
 belongs to one Room and selects its repository scope. Empty Projects, multiple
@@ -138,7 +139,8 @@ PLANNED_NOT_STARTED without calendar dates:
    complete; formal distribution and signed-update qualification remain deferred.
 6. M2-S6A: complete, Native Task Board V0 over existing Tasks; shared Project/Room
    views, accurate lifecycle projection and Needs attention.
-7. M2-S7: next, deliberate Provider-native Skills/MCP setup and capability inspection.
+7. M2-S7: technical acceptance complete on 2026-09-20; Project-scoped Local Connected
+   [Skills/MCP setup](docs/native-capabilities.md), capability inspection and retry.
 8. M3: Agent delegation, aggregation and conflicts after basic team authority;
    background/remote continuation belongs to M4.
 

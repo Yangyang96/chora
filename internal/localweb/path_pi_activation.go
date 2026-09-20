@@ -6,14 +6,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/Yangyang96/chora/internal/domain"
 	"os"
 	"path/filepath"
 	"strings"
 
 	agentpi "github.com/Yangyang96/chora/internal/agent/pi"
+	"github.com/Yangyang96/chora/internal/domain"
+	"github.com/Yangyang96/chora/internal/execution"
+	"github.com/Yangyang96/chora/internal/nativecapabilities"
 	"github.com/Yangyang96/chora/internal/pidiscovery"
 	"github.com/Yangyang96/chora/internal/piinstall"
+	storecontract "github.com/Yangyang96/chora/internal/store"
 	"github.com/Yangyang96/chora/internal/trustedhost"
 )
 
@@ -65,7 +68,30 @@ func composePathPiRuntime(ctx context.Context, runtimeRoot, sessionRoot string, 
 	if err != nil {
 		return piComposition{}, result, fmt.Errorf("prepare read-only resource observer: %w", err)
 	}
-	adapter, err := agentpi.New(agentpi.Config{PathPiSource: source, SessionRoot: sessionRoot, ResourceObserver: &observer, ModelCatalog: func(ctx context.Context, profile domain.AgentExecutionProfile) (domain.ModelCatalog, error) {
+	capabilityRoot := filepath.Join(runtimeRoot, "native-capabilities")
+	var capabilities func(domain.AgentRun, domain.Attempt, string, domain.AttemptID) ([]string, map[string]string, error)
+	if len(installGuards) > 0 && installGuards[0].reader != nil {
+		guard := installGuards[0]
+		capabilities = func(run domain.AgentRun, attempt domain.Attempt, cwd string, owner domain.AttemptID) ([]string, map[string]string, error) {
+			task, e := guard.reader.GetTask(ctx, run.TaskID())
+			if e != nil {
+				return nil, nil, e
+			}
+			room, e := guard.reader.GetRoom(ctx, task.RoomID())
+			if e != nil {
+				return nil, nil, e
+			}
+			if !room.ProjectID().Valid() {
+				return nil, nil, nil
+			}
+			config, e := nativecapabilities.Read(guard.dataRoot, room.ProjectID().String())
+			if e != nil {
+				return nil, nil, e
+			}
+			return nativecapabilities.Prepare(ctx, capabilityRoot, room.ProjectID().String(), result.ExecutablePath, resolvedHome, cwd, attempt.ID(), owner, config)
+		}
+	}
+	adapter, err := agentpi.New(agentpi.Config{PathPiSource: source, SessionRoot: sessionRoot, ResourceObserver: &observer, NativeCapabilities: capabilities, ModelCatalog: func(ctx context.Context, profile domain.AgentExecutionProfile) (domain.ModelCatalog, error) {
 		if profile != domain.AgentExecutionProfileTrustedLocal {
 			return domain.ModelCatalog{}, errors.New("Runtime model discovery is unavailable for this profile")
 		}
@@ -80,6 +106,9 @@ func composePathPiRuntime(ctx context.Context, runtimeRoot, sessionRoot string, 
 		AllowedExecutable:   executable,
 		AllowedArguments:    append([]string(nil), pathPiArgumentsPrefix...),
 		AllowedObserverPath: observer.ExtensionPath, ValidateObserver: observer.Validate,
+		ValidateCapabilityArguments: func(invocation execution.Invocation) ([]string, error) {
+			return nativecapabilities.StripValidatedArguments(capabilityRoot, invocation)
+		},
 		AllowedTrailingPathRoot: sessionRoot,
 		DirectWorkingRoot:       true,
 		MaxRuntime:              timeoutPolicy.AttemptTimeout,
@@ -108,6 +137,8 @@ func composePathPiRuntime(ctx context.Context, runtimeRoot, sessionRoot string, 
 // A newly selected installation requires a fresh server composition. Checking
 // at the supervisor boundary also covers API starts and automatic retries.
 type piInstallationGuard struct {
+	reader    storecontract.Reader
+	dataRoot  string
 	installer piinstall.Installer
 	selection piinstall.Selection
 }

@@ -33,6 +33,11 @@ The maintained credential-free public browser journey is `npm run e2e:public`
 or `make public-e2e`. Real Pi validation remains a separate explicit
 `npm run test:e2e:pi-local-connected` run; a skipped real case is not acceptance.
 
+## Skills and MCP
+
+- [Skills and MCP in Local Connected](native-capabilities.md) — Project configuration,
+  native capability discovery, failure states and connection verification.
+
 ## Task board implementation
 
 - [Task board guide](task-board.md) — Project/Room Board/List, attention,

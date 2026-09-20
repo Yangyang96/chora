@@ -29,6 +29,11 @@
 `make public-e2e`。真实 Pi 验证仍通过独立的
 `npm run test:e2e:pi-local-connected` 显式运行；真实用例被 skip 不构成验收。
 
+## Skills 和 MCP
+
+- [Local Connected 中的 Skills 和 MCP](native-capabilities.zh-CN.md)：项目配置、
+  原生能力发现、失败状态和连接验证；[英文权威版本](native-capabilities.md)。
+
 ## 任务看板实施
 
 - [任务看板使用指南](task-board.zh-CN.md)：Project/Room 看板与列表、待处理提醒、
