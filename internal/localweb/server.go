@@ -925,6 +925,7 @@ func (server *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v2/projects", server.createEmptyProject)
 	mux.HandleFunc("GET /api/v2/projects", server.listResourceProjects)
 	mux.HandleFunc("GET /api/v2/projects/{projectID}", server.getProjectResources)
+	mux.HandleFunc("GET /api/v2/projects/{projectID}/task-board", server.getTaskBoard)
 	mux.HandleFunc("PATCH /api/v2/projects/{projectID}", server.changeResourceProject)
 	mux.HandleFunc("POST /api/v2/projects/{projectID}/archive", server.changeResourceProject)
 	mux.HandleFunc("POST /api/v2/projects/{projectID}/restore", server.changeResourceProject)

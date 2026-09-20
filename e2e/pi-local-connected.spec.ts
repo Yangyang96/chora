@@ -275,6 +275,15 @@ test('real Pi works in the Task worktree, then human Accept & Apply updates only
   await expect(checks).toContainText('according to Pi')
 
   const reviewURL = page.url()
+  const boardRoomID = new URL(reviewURL).pathname.split('/')[2]
+  const boardTaskID = new URL(reviewURL).pathname.split('/')[4]
+  const boardOwner = await getJSON<{ projectId: string }>(request, `/api/rooms/${boardRoomID}`)
+  const boardPath = `/api/v2/projects/${boardOwner.projectId}/task-board`
+  const reviewBoard = await getJSON<{ cards: Array<{ taskId: string; phase: string; attention: { state: string } }> }>(request, boardPath)
+  expect(reviewBoard.cards.find(card => card.taskId === boardTaskID)).toMatchObject({ phase: 'review', attention: { state: 'required' } })
+  await page.goto(`/projects/${boardOwner.projectId}/tasks`)
+  await expect(page.locator('.board-column-review .board-card')).toHaveCount(1)
+  await page.goto(reviewURL)
   await stopServer('SIGTERM')
   await startServer()
   await resumeFromHome(page, reviewURL)
@@ -307,6 +316,11 @@ test('real Pi works in the Task worktree, then human Accept & Apply updates only
   const segments = new URL(runURL).pathname.split('/')
   const workspace = await getJSON<{ tasks: Array<{ id: string; latestRun: { status: string; patchApplicationState?: string } }> }>(request, `/api/rooms/${segments[2]}/workspace`)
   expect(workspace.tasks.find(task => task.id === segments[4])?.latestRun.patchApplicationState).toBe('applied')
+  const appliedBoard = await getJSON<{ cards: Array<{ taskId: string; phase: string; outcome: string }> }>(request, boardPath)
+  expect(appliedBoard.cards.find(card => card.taskId === boardTaskID)).toMatchObject({ phase: 'finished', outcome: 'applied_locally' })
+  await page.goto(`/rooms/${boardRoomID}/tasks`)
+  await expect(page.locator('.board-column-finished .board-card')).toHaveCount(1)
+  await expect(page.locator('.task-board')).toContainText('Applied locally')
   await page.goto(`/rooms/${segments[2]}`)
   await page.getByRole('button', { name: '中文', exact: true }).click()
   await expect(page.locator('.task-card .task-state').filter({ hasText: '已应用' }).first()).toBeVisible()

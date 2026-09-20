@@ -249,6 +249,21 @@ func TestTaskDeliveryGitHubLifecycleReconcileAndCleanup(t *testing.T) {
 	runID, _ := domain.ParseRunID(accepted.ID)
 	assertSummary := func(want string) {
 		t.Helper()
+		roomID, _ := domain.ParseRoomID(accepted.Room.ID)
+		boardRoom, boardErr := result.server.store.Reader().GetRoom(context.Background(), roomID)
+		if boardErr != nil {
+			t.Fatal(boardErr)
+		}
+		var board app.TaskBoardView
+		requestJSON(t, result.server.Handler(), "GET", "/api/v2/projects/"+boardRoom.ProjectID().String()+"/task-board", nil, 200, &board)
+		if board.Total != 1 || len(board.Cards) != 1 || board.Cards[0].Phase == nil || *board.Cards[0].Phase != "delivery" || len(board.Cards[0].Repositories) != 2 {
+			t.Fatalf("board omitted partial %s: %+v", want, board)
+		}
+		wantedBoardStatus := map[string]string{"uncommitted": "pending_commit", "committed": "pending_push", "pushed": "pending_pr", "pr_open": "pending_merge", "pr_closed": "pr_closed", "merged": "delivered", "cleaned": "delivered"}[want]
+		if wantedBoardStatus != "" && board.Cards[0].Repositories[0].Status != wantedBoardStatus {
+			t.Fatalf("board %s: %+v", want, board.Cards[0])
+		}
+
 		// Summary must also work with no filesystem, materializer or hosting adapter.
 		run, err := result.server.store.Reader().GetRun(context.Background(), runID)
 		if err != nil {

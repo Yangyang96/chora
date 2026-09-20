@@ -2,13 +2,14 @@
 
 **English (authoritative)** | [简体中文](task-board-plan.zh-CN.md)
 
-Status: **PLANNED_NOT_STARTED**. This is an implementation specification, not a
-shipped-feature guide or an acceptance record. Updated: 2026-09-17.
+Status: **COMPLETE**. S6A-1, S6A-2 and S6A-3 passed technical acceptance on
+2026-09-19. This document retains the scope and acceptance contract. See the
+[operating guide](task-board.md) for use.
 
 Baseline inspected: [`b93100d`](https://github.com/Yangyang96/chora/commit/b93100d536c5866456efa9551a4fad92db5d8ee4),
 after M2-S6 local application implementation and native interaction acceptance.
 Formal signing, notarization and signed-update qualification remain separate.
-Recheck current source before implementing; do not overwrite intervening work.
+The planning baseline is historical; the implementation is based on current main.
 
 ## 1. Decision and sequence
 
@@ -48,7 +49,7 @@ Agent steps remain inside that card's detail. No mandatory board visit is added
 to the current Room -> New Task -> execution journey. This is the initial coding
 view, not a universal requirement that every future work type must create a PR.
 
-## 3. Current source and integration points
+## 3. Source and integration points at the planning baseline
 
 | Source | Existing responsibility and implication |
 | --- | --- |
@@ -223,11 +224,17 @@ expected-version checks, idempotency and confirmation remain the final boundary.
 
 ## 8. Read API, refresh and lifecycle integration
 
-Proposed route: `GET /api/v2/projects/{projectId}/task-board`, accepting optional
-Room/repository, phase, attention and archive filters plus cursor/limit. Verify
-route conventions before naming it; these parameters are not existing API claims.
+Implemented route: `GET /api/v2/projects/{projectId}/task-board`, accepting
+`roomId`, `repoId`, `phase`, `attention`, `archived`, `cursor`, `limit` and
+`optionsCursor`.
 Return cards, filtered totals, phase/attention/reconciliation counts, freshness
 and a next cursor. Room-scoped display uses the same derivation and API contract.
+Filter choices have an independent `optionsSnapshot` and `nextOptionsCursor`.
+Each options page advances both Room and repository lists by 100; a shorter list
+is exhausted independently. Each list contains at most 100 choices plus its
+selected out-of-page choice. The options hash includes Project and all option
+IDs/names, not Task progress; changed choices return 409 and restart only choice
+pagination. The UI loads further choices explicitly and retains Task pages.
 
 Validate all supplied IDs against the Project. Cross-project Room/repository
 filters must not broaden access. Preserve existing local authentication, origin
@@ -269,7 +276,8 @@ previews or change existing recovery rules.
 
 ## 9. Implementation slices
 
-All slices below are **PLANNED_NOT_STARTED** until implemented and verified.
+All three slices are implemented and technically qualified. The exit conditions
+below remain the acceptance contract.
 
 | Slice | Deliverable | Exit condition |
 | --- | --- | --- |
@@ -285,7 +293,8 @@ Task, Run, review or delivery data.
 
 ## 10. Required acceptance matrix
 
-These are tests to implement/run, **not results already obtained**.
+These retained requirements define acceptance. Implementation evidence and limits
+are summarized below; a listed requirement alone is not proof of passing.
 
 | ID | Case | Required result |
 | --- | --- | --- |
@@ -352,7 +361,7 @@ with membership, revocation, concurrency and authority rules. An assignee alone
 is not authorization. **M4:** queued/background/remote work, budgets and
 notifications with real execution ownership. None is hidden work in V0.
 
-## 12. Implementation handoff
+## 12. Original implementation handoff
 
 Read this English specification with [Roadmap](../ROADMAP.md),
 [Contributing](../CONTRIBUTING.md) and the source references above. The Chinese
@@ -360,7 +369,7 @@ translation carries the same scope. Public documents contain requirements and
 sanitized status only. Do not add private handoffs/evidence to this PR or change
 the repository's publication exclusions.
 
-Suggested implementation request after the planning PR is available in the checkout:
+Retained original scope request; completed work does not need to be restarted:
 
 ```text
 Implement Chora M2-S6A Native Task Board V0 from ROADMAP.md and
@@ -377,3 +386,65 @@ implementation and verification status. Report changed files, checks and any
 blocked real-environment acceptance. Do not mark skipped work PASS or create
 releases, tags, installers or distribution claims as part of this task.
 ```
+
+
+## 13. Implementation and verification
+
+The implementation adds a pure shared projection, a transactional SQLite summary
+reader and the read-only API, with no board-state migration. Project and Room
+views share Board/List, URL filters, next-step links, stale-data handling and
+bounded polling. Automatic verification remains service-owned; the redundant
+Run-page trigger is removed and disconnect/two-view tests cover continuity.
+
+Coverage is retained in the [projection tests](../internal/app/task_board_test.go),
+[summary integrity tests](../internal/store/sqlite/task_board_test.go),
+[multi-repository scale tests](../internal/store/sqlite/task_board_resource_scale_test.go),
+[API tests](../internal/localweb/task_board_test.go),
+[verification continuity tests](../internal/app/verification_continuity_test.go),
+[UI tests](../web/src/ui/TaskBoard.test.tsx) and
+[browser journeys](../e2e/task-board.spec.ts). Existing delivery and explicit
+closure integration tests also assert board outcomes, including partial delivery,
+closed PRs, cleanup and zero-change results with failed checks.
+
+Observed on Apple Silicon macOS:
+
+- A 1,000-Task/10-Room fixture without Run history used 11 summary queries;
+  a 50-card page was 39,607 bytes. The observed summary read was 26.51 ms and
+  full first-page derivation 25.72 ms. This is fixture evidence, not a capacity SLA.
+- A populated SQLite fixture covered 120 Tasks across six active Rooms, eight
+  repositories per Task, 960 results and delivery operations, 360 hosting
+  observations, 120 Apply steps and 120 closures. Its directory held 125 Rooms
+  and 512 repositories. Three rounds of three reads each used 11 queries per
+  read; 50/100-card responses were 131,431–131,533 / 245,532–245,633 bytes.
+  Observed normal summary-read times were 0.424–3.449 seconds while other gates
+  ran on the host; normal and race checks passed. This tests bounded summary
+  payload, pagination and no writes/external calls, not a latency promise.
+- A fixed two-Room/three-Task browser fixture found both required plan reviews
+  with no missed attention item, manual status edit, Run creation or model call.
+  Board navigation used three clicks plus one filter change; retained Room lists
+  used four clicks, including Back. Both opened the same owning Plan detail.
+  The scripted elapsed times were 474 ms and 349 ms respectively; they do not
+  establish a human-efficiency improvement. Across each navigation path, 22/37
+  GET responses were observed, with 40,810/48,691 measured bytes respectively;
+  one list-response body was unavailable and excluded from its byte total.
+- A selected real Local Connected Pi journey exercised review, correction,
+  local Apply, service restart and the resulting board outcome. Runtime-profile
+  fixtures cover both Local Connected and Isolated Local projection; this slice
+  does not claim a new real isolated-Agent qualification.
+- A real app-preview browser journey retained the running preview while visiting
+  the board and then stopped/cleaned it through its existing owner. A development
+  macOS app bundle passed its 12-case packaged-service browser suite, including
+  tab closure, reopening and restart. Unchanged native menu/quit interactions
+  retain S6 acceptance; formal signing, notarization and distribution remain
+  deferred. No release or installer is published by this slice.
+
+Validation passed: `make test`, `make verify`, `make vet`, `npm run e2e`,
+`npm run e2e:public`, publication/documentation checks and `git diff --check`.
+The final filter-pagination correction additionally passed all Task Board
+app/API tests in normal and race modes, the populated SQLite scale test in both
+modes, and a rerun of the complete E2E and packaged-service suites. The complete
+verification gate includes the final 33-file/289-test Web suite and production
+build. Unchanged business tests retain the complete preceding gate evidence.
+The standard E2E suite skips its scenario-specific OSS case; that same case
+passes separately in the dedicated OSS stage. The selected real-Pi case passes
+separately; unselected real scenarios are not claimed as new acceptance.

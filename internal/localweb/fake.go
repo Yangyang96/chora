@@ -36,6 +36,7 @@ func (registry *adapterRegistry) Get(id string) (execution.AgentAdapter, error) 
 
 type fakeSupervisor struct {
 	mu                  sync.Mutex
+	identityNamespace   string
 	invocation          execution.Invocation
 	sink                execution.RuntimeSink
 	exited              bool
@@ -60,8 +61,8 @@ func (supervisor *fakeSupervisor) Start(_ context.Context, invocation execution.
 	supervisor.exited = false
 	return execution.StartOutcome{
 		Kind:        execution.Started,
-		Handle:      execution.RuntimeHandle{Value: "local-fake-handle"},
-		Identity:    execution.ProcessIdentity{Value: "local-fake-process"},
+		Handle:      execution.RuntimeHandle{Value: supervisor.identityNamespace + "local-fake-handle"},
+		Identity:    execution.ProcessIdentity{Value: supervisor.identityNamespace + "local-fake-process"},
 		LaunchToken: invocation.LaunchToken(),
 	}
 }
@@ -100,13 +101,13 @@ func (supervisor *fakeSupervisor) Reconcile(context.Context, execution.ProcessId
 	supervisor.mu.Lock()
 	defer supervisor.mu.Unlock()
 	if supervisor.reconcileOverride != "" {
-		return execution.ReconcileOutcome{Kind: supervisor.reconcileOverride, Handle: execution.RuntimeHandle{Value: "local-fake-handle"}, LaunchToken: supervisor.invocation.LaunchToken(), Diagnostic: supervisor.reconcileDiagnostic}, nil
+		return execution.ReconcileOutcome{Kind: supervisor.reconcileOverride, Handle: execution.RuntimeHandle{Value: supervisor.identityNamespace + "local-fake-handle"}, LaunchToken: supervisor.invocation.LaunchToken(), Diagnostic: supervisor.reconcileDiagnostic}, nil
 	}
 	kind := execution.ReconcileAlive
 	if supervisor.exited {
 		kind = execution.ReconcileDead
 	}
-	return execution.ReconcileOutcome{Kind: kind, Handle: execution.RuntimeHandle{Value: "local-fake-handle"}, LaunchToken: supervisor.invocation.LaunchToken()}, nil
+	return execution.ReconcileOutcome{Kind: kind, Handle: execution.RuntimeHandle{Value: supervisor.identityNamespace + "local-fake-handle"}, LaunchToken: supervisor.invocation.LaunchToken()}, nil
 }
 
 func (supervisor *fakeSupervisor) ReconcileLaunch(_ context.Context, launch execution.LaunchToken) (execution.ReconcileOutcome, error) {
@@ -116,7 +117,7 @@ func (supervisor *fakeSupervisor) ReconcileLaunch(_ context.Context, launch exec
 	if supervisor.exited {
 		kind = execution.ReconcileDead
 	}
-	return execution.ReconcileOutcome{Kind: kind, Handle: execution.RuntimeHandle{Value: "local-fake-handle"}, LaunchToken: launch}, nil
+	return execution.ReconcileOutcome{Kind: kind, Handle: execution.RuntimeHandle{Value: supervisor.identityNamespace + "local-fake-handle"}, LaunchToken: launch}, nil
 }
 
 func (supervisor *fakeSupervisor) Read(_ context.Context, _ execution.RuntimeHandle, kind execution.StreamKind, offset int64, limit int) (execution.StreamChunk, error) {

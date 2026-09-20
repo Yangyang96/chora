@@ -84,7 +84,15 @@ try {
   await expect(previewPage.locator('body')).toHaveText('Task preview content')
   await previewPage.close()
 
-  await page.goto(baseURL)
+  const roomID = route.split('/')[2]
+  const roomResponse = await context.request.get(`${baseURL}/api/rooms/${roomID}`)
+  expect(roomResponse.ok()).toBeTruthy()
+  const room = await roomResponse.json()
+  await page.goto(`${baseURL}/projects/${room.projectId}/tasks`)
+  await expect(page.locator('.task-board .board-card')).toHaveCount(1)
+  await expect(page.getByRole('region', { name: 'Review', exact: true })).toBeVisible()
+  const stillRunning = await fetch(previewURL)
+  expect(await stillRunning.text()).toBe('Task preview content\n')
   await page.goBack()
   await expect(page.getByRole('heading', { name: 'Repository results', exact: true })).toBeVisible()
   const resumedSummary = page.getByText('App preview (optional)', { exact: true })

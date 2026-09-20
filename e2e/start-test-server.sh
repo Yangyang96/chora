@@ -2,7 +2,8 @@
 set -euo pipefail
 
 port="${CHORA_E2E_PORT:-18787}"
-tmp_dir="$(mktemp -d "$PWD/.chora-e2e.XXXXXX")"
+tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/chora-e2e.XXXXXX")"
+tmp_dir="$(cd "$tmp_dir" && pwd -P)"
 chmod 700 "$tmp_dir"
 child_pid=""
 

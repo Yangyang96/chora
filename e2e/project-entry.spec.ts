@@ -331,6 +331,27 @@ test('task-first Room prompts for a Task instead of exposing a legacy API error'
   await expect(page.getByText(/upgrade_required/)).toHaveCount(0)
 })
 
+test('task board survives tab closure and a local application service restart', async ({ page, context, request }) => {
+  const created = await request.post('/api/v2/projects', { data: { name: 'Board lifecycle' } })
+  expect(created.status(), await created.text()).toBe(201)
+  const project = await created.json()
+  const url = `/projects/${project.id}/tasks?mode=list`
+  await page.goto(url)
+  await expect(page.getByRole('region', { name: 'Task board', exact: true })).toBeVisible()
+  await expect(page.getByText('No tasks match these filters.')).toBeVisible()
+  await page.close()
+  expect((await request.get('/api/status')).ok()).toBeTruthy()
+  const reopened = await context.newPage()
+  await reopened.goto(url)
+  await expect(reopened.getByRole('button', { name: 'List', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await stopServer('SIGTERM')
+  await startServer()
+  await reopened.reload()
+  await expect(reopened.getByText('No tasks match these filters.')).toBeVisible()
+  await reopened.getByRole('button', { name: '＋ New Task', exact: true }).click()
+  await expect(reopened.getByLabel('What should Chora build?')).toBeVisible()
+})
+
 async function createGitRepo(label: string) {
   const root = await mkdtemp(join(tmpdir(), `chora-${label}-`))
   const canonical = await realpath(root)

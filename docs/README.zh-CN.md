@@ -29,11 +29,13 @@
 `make public-e2e`。真实 Pi 验证仍通过独立的
 `npm run test:e2e:pi-local-connected` 显式运行；真实用例被 skip 不构成验收。
 
-## 待实施方案
+## 任务看板实施
 
+- [任务看板使用指南](task-board.zh-CN.md)：Project/Room 看板与列表、待处理提醒、
+  筛选、生命周期结果和新鲜度。
 - [原生任务看板 V0 — M2-S6A（英文权威版本）](task-board-plan.md)及其
-  [中文译文](task-board-plan.zh-CN.md)：**PLANNED_NOT_STARTED**，本地 S6 之后、S7 之前。
-  包含产品边界、生命周期投影、只读 API、实施切片、验收矩阵和交接入口，不是当前功能说明。
+  [中文译文](task-board-plan.zh-CN.md)：**COMPLETE**，包含产品边界、生命周期投影、
+  只读 API 和验收矩阵。
 
 ## 仅本地保留的验证证据
 

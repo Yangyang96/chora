@@ -16,6 +16,7 @@ import { PiInstallation } from './ui/PiInstallation'
 import { PiDiscoveryStatus, type PiDiscoveryFetch } from './ui/PiDiscovery'
 import { ProjectList } from './ui/ProjectList'
 import { ProjectHome } from './ui/ProjectHome'
+import { TaskBoard } from './ui/TaskBoard'
 import { RoomHome } from './ui/RoomHome'
 import { RunStream } from './ui/RunStream'
 import { TaskProgress } from './ui/TaskProgress'
@@ -23,7 +24,7 @@ import { Sidebar } from './ui/Sidebar'
 import { AgentExecutionDisclosure, TRUSTED_LOCAL_DISCLOSURE_POLICY } from './ui/AgentExecutionProfile'
 import './ui/ui.css'
 
-type Route = { kind: 'directory' } | { kind: 'project'; projectID: string } | { kind: 'room'; roomID: string } | { kind: 'task'; roomID: string; taskID: string } | { kind: 'run'; roomID: string; taskID: string; runID: string }
+type Route = { kind: 'directory' } | { kind: 'project'; projectID: string; tasks?: boolean } | { kind: 'room'; roomID: string; tasks?: boolean } | { kind: 'task'; roomID: string; taskID: string } | { kind: 'run'; roomID: string; taskID: string; runID: string }
 
 type TaskResourceSummary = { repoId: string; name?: string }
 type ResourceTaskRef = TaskRef & { resourceSnapshot?: { resources: TaskResourceSummary[] } }
@@ -45,6 +46,8 @@ const unavailableIsolatedLocal = (reason: string): IsolatedLocalView => ({
 
 function routeFromLocation(): Route {
   const parts = window.location.pathname.split('/').filter(Boolean).map(decodeURIComponent)
+  if (parts.length === 3 && parts[0] === 'projects' && parts[2] === 'tasks') return { kind: 'project', projectID: parts[1], tasks: true }
+  if (parts.length === 3 && parts[0] === 'rooms' && parts[2] === 'tasks') return { kind: 'room', roomID: parts[1], tasks: true }
   if (parts.length === 2 && parts[0] === 'projects') return { kind: 'project', projectID: parts[1] }
   if (parts.length === 2 && parts[0] === 'rooms') return { kind: 'room', roomID: parts[1] }
   if (parts.length === 4 && parts[0] === 'rooms' && parts[2] === 'tasks') return { kind: 'task', roomID: parts[1], taskID: parts[3] }
@@ -70,7 +73,6 @@ function NewAppContent() {
   const [piDiscovery, setPiDiscovery] = useState<PiDiscoveryFetch>({ phase: 'loading' })
   const [isolatedLocal, setIsolatedLocal] = useState<IsolatedLocalView>(() => unavailableIsolatedLocal('Checking Isolated Local readiness…'))
   const [resourcePreparation, setResourcePreparation] = useState<ResourcePreparation>()
-  const automaticVerification = useRef(new Set<string>())
   const taskWorkflow = useRef<AbortController | undefined>(undefined)
 
   const roomID = route.kind === 'directory' || route.kind === 'project' ? undefined : route.roomID
@@ -213,7 +215,7 @@ function NewAppContent() {
         .catch((reason) => {
           if (!cancelled) setError(reason instanceof Error ? reason.message : String(reason))
         })
-    } else {
+    } else if (!route.tasks) {
       api<RoomWorkspace>(`/api/rooms/${encodeURIComponent(route.roomID)}/workspace`)
         .then((ws) => {
           if (cancelled) return
@@ -229,7 +231,7 @@ function NewAppContent() {
   }, [route])
 
   useEffect(() => {
-    if (route.kind !== 'room') return
+    if (route.kind !== 'room' || route.tasks) return
     let cancelled = false
     // Room cards must reflect failures and automatic retries while the user stays here.
     const timer = window.setInterval(() => {
@@ -253,41 +255,6 @@ function NewAppContent() {
     }, 1000)
     return () => { cancelled = true; window.clearInterval(timer) }
   }, [route, run?.id, run?.status, run?.verificationDisposition?.state, run?.patchApplication?.state, run?.automaticRetry?.state])
-
-  useEffect(() => {
-    if (route.kind !== 'run' || !run || run.id !== route.runID || run.status !== 'awaiting_verification' || !run.controls?.canStartVerification) return
-    let cancelled = false
-    const expectedRunID = route.runID
-    const key = `${run.id}:${run.version}`
-    if (automaticVerification.current.has(key)) return
-    automaticVerification.current.add(key)
-    api<RunView>(`/api/runs/${encodeURIComponent(run.id)}/verification`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Idempotency-Key': commandKey('automatic-verification'),
-        'X-Chora-Automatic': 'true',
-      },
-      body: '{}',
-    })
-      .then((next) => { if (!cancelled && next.id === expectedRunID) setRun(next) })
-      .catch(async (reason) => {
-        try {
-          const current = await api<RunView>(`/api/runs/${encodeURIComponent(run.id)}`)
-          if (cancelled || current.id !== expectedRunID) return
-          setRun(current)
-          if (current.status === 'awaiting_verification' && current.controls?.canStartVerification) {
-            setError(reason instanceof Error ? reason.message : String(reason))
-            automaticVerification.current.delete(key)
-          }
-        } catch (reason) {
-          if (cancelled) return
-          setError(reason instanceof Error ? reason.message : String(reason))
-          automaticVerification.current.delete(key)
-        }
-      })
-    return () => { cancelled = true }
-  }, [route, run?.id, run?.status, run?.version, run?.controls?.canStartVerification])
 
   useEffect(() => {
     if (!resourcePreparation) return
@@ -774,8 +741,10 @@ function NewAppContent() {
     main = <CreateRoom busy={busy} onCancel={() => setView('home')} onCreate={createRoom} />
   } else if (route.kind === 'directory') {
     main = <ProjectList onResume={navigate} refreshKey={directoryRefresh} onAddProject={() => setView('addProject')} onOpenProject={(selected) => navigate(`/projects/${encodeURIComponent(selected.id)}`)} />
+  } else if ((route.kind === 'project' || route.kind === 'room') && route.tasks) {
+    main = routeProject ? <TaskBoard key={`${routeProject.id}:${roomID ?? ''}`} project={routeProject} roomId={roomID} onNavigate={navigate} onNewTask={() => { setInitialRequirement(''); navigate(`/rooms/${encodeURIComponent(roomID ?? routeProject.defaultRoomId)}`, 'newTask') }} /> : <p>{t('Loading…')}</p>
   } else if (route.kind === 'project') {
-    main = routeProject ? <ProjectHome key={routeProject.id} project={routeProject} onChange={(updated) => { setProject(updated); setDirectoryRefresh((n) => n + 1) }} onOpenRoom={(room) => navigate(`/rooms/${encodeURIComponent(room.id)}`)} onResume={navigate} /> : null
+    main = routeProject ? <ProjectHome onTasks={() => navigate(`/projects/${encodeURIComponent(routeProject.id)}/tasks`)} key={routeProject.id} project={routeProject} onChange={(updated) => { setProject(updated); setDirectoryRefresh((n) => n + 1) }} onOpenRoom={(room) => navigate(`/rooms/${encodeURIComponent(room.id)}`)} onResume={navigate} /> : null
   } else if (view === 'newTask' && workspace) {
     main = (
       <NewTask
@@ -812,7 +781,7 @@ function NewAppContent() {
       </div>
     )
   } else if (workspace) {
-    main = <RoomHome room={workspace.room} tasks={workspace.tasks} project={routeProject} onOpenProject={routeProject ? () => navigate(`/projects/${encodeURIComponent(routeProject.id)}`) : undefined} onNewTask={() => { setInitialRequirement(''); setView('newTask') }} onOpenTask={(task) => navigate(task.currentAction.url || `/rooms/${encodeURIComponent(workspace.room.id)}/tasks/${encodeURIComponent(task.id)}`)} onArchiveTask={archiveTask} onRestoreTask={restoreTask} onArchiveRoom={() => void changeRoomState('archive')} onRestoreRoom={() => void changeRoomState('restore')} />
+    main = <RoomHome onTasks={routeProject ? () => navigate(`/rooms/${encodeURIComponent(workspace.room.id)}/tasks`) : undefined} room={workspace.room} tasks={workspace.tasks} project={routeProject} onOpenProject={routeProject ? () => navigate(`/projects/${encodeURIComponent(routeProject.id)}`) : undefined} onNewTask={() => { setInitialRequirement(''); setView('newTask') }} onOpenTask={(task) => navigate(task.currentAction.url || `/rooms/${encodeURIComponent(workspace.room.id)}/tasks/${encodeURIComponent(task.id)}`)} onArchiveTask={archiveTask} onRestoreTask={restoreTask} onArchiveRoom={() => void changeRoomState('archive')} onRestoreRoom={() => void changeRoomState('restore')} />
   } else {
     main = null
   }

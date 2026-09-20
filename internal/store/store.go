@@ -141,6 +141,7 @@ type Store interface {
 }
 
 type Reader interface {
+	TaskBoardReader
 	ResultClosureReader
 	DeliveryReader
 	ResourceReader

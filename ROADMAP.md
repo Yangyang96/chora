@@ -2,7 +2,7 @@
 
 [简体中文](ROADMAP.zh-CN.md) · [README](README.md)
 
-Status, 2026-09-17: Developer Alpha with public source. Real multi-repository delivery
+Status, 2026-09-19: Developer Alpha with public source. Real multi-repository delivery
 qualification, `M2_S3_PASS` and local DA-1/O5 preparation are complete. Source was
 published on 2026-09-10; versioned prereleases are recorded on the
 [Releases page](https://github.com/Yangyang96/chora/releases). M2 as a whole is
@@ -11,7 +11,8 @@ M2-S5-1 passed technical acceptance on 2026-09-14. M2-S5-2 passed Pi model
 selection technical acceptance on 2026-09-15. M2-S5-3 optional app preview passed
 technical acceptance on 2026-09-16. M2-S6 local application implementation and
 native interaction acceptance are complete; formal distribution remains deferred.
-M2-S6A Native Task Board V0 is the next planned feature slice, before M2-S7.
+M2-S6A Native Task Board V0 passed technical acceptance on 2026-09-19.
+M2-S7 Provider-native Skills/MCP setup is the next planned feature slice.
 
 Project is the long-lived owner of repository resources and topic Rooms. A Task
 belongs to one Room and selects its repository scope. Empty Projects, multiple
@@ -33,7 +34,7 @@ Local Connected / No Sandbox. It is not a stable or installed release.
 | M2-S5-1 | Native in-flight instructions and evidence-linked decisions, risks, unknowns, human gates, resolution and reopening | Technical acceptance complete on 2026-09-14; internal evidence retained privately. |
 | M2-S5-3 | Optional Task app preview in Local Connected and Isolated Local, logs, stop and recovery cleanup | Technical acceptance complete on 2026-09-16 on Apple Silicon macOS. |
 | M2-S6 | macOS application, bundled runtime, owned service lifecycle and local native interactions | Local implementation/development-package validation complete; native interaction acceptance recorded on 2026-09-17. Formal distribution and signed-update qualification remain deferred. |
-| M2-S6A | Native Task Board V0: existing Tasks, Project/Room views, attention and evidence-based phase projection | PLANNED_NOT_STARTED; next after local S6, before S7. See the implementation plan below. |
+| M2-S6A | Native Task Board V0: existing Tasks, Project/Room views, attention and evidence-based phase projection | COMPLETE: S6A-1/2/3 passed technical acceptance on 2026-09-19. See the scope and verification summary below. |
 | DA-1 / O5 v2 | Exact local candidate, public checks, licenses/SBOM, secret scans and release materials | Local candidate preparation passed; final user acceptance and publication actions are recorded separately. |
 
 Technical acceptance was frozen on 2026-09-09, followed by identity and publication
@@ -97,9 +98,9 @@ onboarding and actual model provenance/native configuration guidance. S3-2 cover
 source updates, compatibility, backup and recovery. S3-3 qualifies the integrated
 public journey and maintained CI. All four slices passed technical acceptance.
 
-Remaining M2 feature work includes M2-S6A Task Board V0, deferred S4-2 profiles
-and native Skills/MCP setup. S6 local implementation is complete; formal macOS
-distribution qualification remains separate and does not block S6A. M3 owns
+Remaining M2 feature work includes deferred S4-2 profiles and native Skills/MCP
+setup. S6 local implementation and S6A Task Board V0 are complete; formal macOS
+distribution qualification remains separate. M3 owns
 Agent delegation, aggregation and conflicts; M4 adds background/remote execution.
 These keep the priorities below and are not new first-Alpha requirements.
 
@@ -135,9 +136,9 @@ PLANNED_NOT_STARTED without calendar dates:
 4. M2-S5-3: complete; optional local app preview, logs, stop and cleanup.
 5. M2-S6: local macOS application implementation and native interaction acceptance
    complete; formal distribution and signed-update qualification remain deferred.
-6. M2-S6A: next, Native Task Board V0 over existing Tasks; shared Project/Room
+6. M2-S6A: complete, Native Task Board V0 over existing Tasks; shared Project/Room
    views, accurate lifecycle projection and Needs attention.
-7. M2-S7: deliberate Provider-native Skills/MCP setup and capability inspection.
+7. M2-S7: next, deliberate Provider-native Skills/MCP setup and capability inspection.
 8. M3: Agent delegation, aggregation and conflicts after basic team authority;
    background/remote continuation belongs to M4.
 
@@ -153,11 +154,11 @@ Only necessary authorized gates block work, and answers cannot replay stale
 execution. No second model loop or Contexere dependency. These retained acceptance
 boundaries do not change P3/P4 or first-release acceptance.
 
-## Next after local M2-S6: Native Task Board V0 (M2-S6A)
+## Completed Native Task Board V0 (M2-S6A)
 
-Status: **PLANNED_NOT_STARTED**. The [implementation plan](docs/task-board-plan.md)
-is the source for scope, lifecycle mapping, API/read-model design, implementation
-slices, B01-B27 acceptance cases and a ready-to-use implementation handoff.
+Status: **COMPLETE**, 2026-09-19. The [implementation plan](docs/task-board-plan.md)
+retains the scope, lifecycle mapping, API contract, B01-B27 acceptance matrix and
+verification summary. See the [operating guide](docs/task-board.md) for use.
 
 Keep Project -> Room -> Task ownership. A board card is the existing Task, not a
 new Issue or a copy per Run/repository. Add a Project Tasks view with Board/List
@@ -174,9 +175,9 @@ group. Archiving remains an independent visibility/read-only concern.
 
 | Slice | Outcome | State |
 | --- | --- | --- |
-| M2-S6A-1 | Shared pure phase/attention/outcome projection, path-specific facts, bounded read API and mapping/API tests | PLANNED_NOT_STARTED |
-| M2-S6A-2 | Project/Room Board/List, filters, safe deep links, freshness, accessibility and navigation-continuity tests | PLANNED_NOT_STARTED |
-| M2-S6A-3 | Integrated regression, local macOS qualification, measured usability/performance observations and operating docs | PLANNED_NOT_STARTED |
+| M2-S6A-1 | Shared pure phase/attention/outcome projection, path-specific facts, bounded read API and mapping/API tests | COMPLETE |
+| M2-S6A-2 | Project/Room Board/List, filters, safe deep links, freshness, accessibility and navigation-continuity tests | COMPLETE |
+| M2-S6A-3 | Integrated regression, local macOS qualification, measured usability/performance observations and operating docs | COMPLETE |
 
 V0 excludes Backlog drafts, manual priority/order, drag-to-mutate, inline/bulk
 writes, assignment, dependency scheduling, external tracker sync and a new model

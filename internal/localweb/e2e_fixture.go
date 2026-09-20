@@ -44,7 +44,9 @@ func decodeStartRunInput(request *http.Request) (startRunInput, error) {
 // preserves a Pi-bound Charter/Snapshot while replacing only execution with the
 // deterministic Fake used by the Playwright verification fixtures.
 func NewE2E(ctx context.Context, databasePath, webRoot string, logger *log.Logger) (*Server, error) {
-	server, err := New(withVerifierSandboxLifecycle(ctx, &e2eVerifierSandboxFactory{}), databasePath, webRoot, logger)
+	// Project/Room board fixtures need the same durable data-root identity as
+	// task-first Projects, while retaining the diagnostic execution surface.
+	server, err := newServer(withVerifierSandboxLifecycle(ctx, &e2eVerifierSandboxFactory{}), databasePath, webRoot, logger, ProductOptions{DataRoot: filepath.Dir(databasePath)}, false)
 	if err != nil {
 		return nil, err
 	}
@@ -66,6 +68,8 @@ func NewE2E(ctx context.Context, databasePath, webRoot string, logger *log.Logge
 	}
 	server.registry.Set(adapter)
 	runtime := newFakeSupervisor()
+	// Diagnostic Fake runs may remain live while this distinct Pi target starts.
+	runtime.identityNamespace = "e2e-pi-"
 	target, err := execution.NewExecutionTarget(agentpi.AdapterID, domain.DockerExecutionProvider)
 	if err != nil {
 		server.Close()

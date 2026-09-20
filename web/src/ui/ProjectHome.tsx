@@ -11,6 +11,7 @@ type ProjectHomeProps = {
   project: ProjectView
   onChange: (project: ProjectView) => void
   onOpenRoom: (room: ProjectRoomView) => void
+  onTasks?: () => void
   onResume?: (url: string) => void
 }
 
@@ -106,7 +107,7 @@ function RoomResourceEditor({ room, repositories }: { room: ProjectRoomView; rep
   </div>
 }
 
-export function ProjectHome({ project, onChange, onOpenRoom, onResume }: ProjectHomeProps) {
+export function ProjectHome({ project, onChange, onOpenRoom, onResume, onTasks }: ProjectHomeProps) {
   const { t } = useI18n()
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
@@ -248,6 +249,7 @@ export function ProjectHome({ project, onChange, onOpenRoom, onResume }: Project
         {project.state === 'archived' && <p className="warning-banner" role="status">{t('This Project is archived. Rooms and history remain readable; restore the Project to start new work.')}</p>}
       </div>
       <div className="project-home-actions">
+        {onTasks && <button type="button" className="btn-secondary" onClick={onTasks}>{t('Tasks')}</button>}
         {project.state === 'active' ? <>
           <ActionButton type="button" className="btn-primary" disabled={busy !== ''} disabledReason={'Wait for the current operation to finish.'} onClick={() => setCreatingRoom(true)}>{t('＋ New topic Room')}</ActionButton>
           <ActionButton type="button" className="btn-secondary" disabled={busy !== ''} disabledReason={'Wait for the current operation to finish.'} onClick={() => void changeProjectState('archive')}>{t('Archive Project')}</ActionButton>

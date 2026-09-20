@@ -40,6 +40,31 @@ func TestResultClosureUnreviewedRetainsEvidenceAndRefusesOldActions(t *testing.T
 	if err != nil || closed.ClosedAt == nil || closed.Entries[0].Status != "closed" || closed.Entries[1].Status != "closed" {
 		t.Fatalf("closed=%#v error=%v", closed, err)
 	}
+	// Closure must be visible immediately, without waiting for archive or
+	// manufacturing a Task.closed/Run.accepted transition.
+	closedTask, boardErr := f.server.store.Reader().GetTask(ctx, run.TaskID())
+	if boardErr != nil {
+		t.Fatal(boardErr)
+	}
+	closedRoom, boardErr := f.server.store.Reader().GetRoom(ctx, closedTask.RoomID())
+	if boardErr != nil {
+		t.Fatal(boardErr)
+	}
+	board, boardErr := s.GetTaskBoard(ctx, closedRoom.ProjectID(), app.TaskBoardQuery{})
+	if boardErr != nil {
+		t.Fatal(boardErr)
+	}
+	if closedTask.State() != domain.TaskStateOpen {
+		t.Fatal("fixture unexpectedly closed Task state")
+	}
+	if board.Total != 2 || board.Counts.Phase["finished"] != 1 || board.Counts.Phase["review"] != 1 {
+		t.Fatalf("closure board counts=%+v", board)
+	}
+	for _, card := range board.Cards {
+		if card.TaskID == closedTask.ID().String() && (card.Outcome == nil || *card.Outcome != "closed" || card.Attention.State != "none") {
+			t.Fatalf("closed result still actionable: %+v", card)
+		}
+	}
 	duplicate, err := f.service(target).CloseResult(ctx, req)
 	if err != nil || !duplicate.ClosedAt.Equal(*closed.ClosedAt) {
 		t.Fatalf("duplicate=%#v error=%v", duplicate, err)
@@ -321,6 +346,26 @@ func TestResultClosureFailedChecksRemainUnverified(t *testing.T) {
 			req.ResultDigest, req.PreviewDigest = v.ResultDigest, v.PreviewDigest
 			if _, err = f.server.service.CloseResult(ctx, req); err != nil {
 				t.Fatal(err)
+			}
+			task, boardErr := f.server.store.Reader().GetTask(ctx, run.TaskID())
+			if boardErr != nil {
+				t.Fatal(boardErr)
+			}
+			room, boardErr := f.server.store.Reader().GetRoom(ctx, task.RoomID())
+			if boardErr != nil {
+				t.Fatal(boardErr)
+			}
+			board, boardErr := f.server.service.GetTaskBoard(ctx, room.ProjectID(), app.TaskBoardQuery{})
+			if boardErr != nil {
+				t.Fatal(boardErr)
+			}
+			if len(board.Cards) != 1 || board.Cards[0].Phase == nil || *board.Cards[0].Phase != "finished" || board.Cards[0].Outcome == nil || *board.Cards[0].Outcome != "closed" {
+				t.Fatalf("closed failed-check result board=%+v", board)
+			}
+			for _, repo := range board.Cards[0].Repositories {
+				if repo.Status != "closed" || repo.Checks == "passed" || repo.Checks == "none" {
+					t.Fatalf("closure erased unverified checks: %+v", repo)
+				}
 			}
 			after, err := f.server.store.Reader().GetResourceResultGroup(ctx, f.attemptID)
 			if err != nil || !reflect.DeepEqual(f.group, after) {

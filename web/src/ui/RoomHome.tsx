@@ -11,12 +11,13 @@ type RoomHomeProps = {
   onArchiveTask: (task: TaskSummary) => void
   onRestoreTask: (task: TaskSummary) => void
   project?: ProjectView | null
+  onTasks?: () => void
   onOpenProject?: () => void
   onArchiveRoom?: () => void
   onRestoreRoom?: () => void
 }
 
-export function RoomHome({ room, tasks, onNewTask, onOpenTask, onArchiveTask, onRestoreTask, project, onOpenProject, onArchiveRoom, onRestoreRoom }: RoomHomeProps) {
+export function RoomHome({ room, tasks, onNewTask, onOpenTask, onArchiveTask, onRestoreTask, project, onTasks, onOpenProject, onArchiveRoom, onRestoreRoom }: RoomHomeProps) {
   const { t } = useI18n()
   const active = tasks.filter((task) => !task.archived)
   const archived = tasks.filter((task) => task.archived)
@@ -41,6 +42,7 @@ export function RoomHome({ room, tasks, onNewTask, onOpenTask, onArchiveTask, on
           {repositorySummary && <p className="room-repository">{repositorySummary}</p>}
         </div>
         <div className="room-home-actions">
+          {onTasks && <button type="button" className="btn-secondary" onClick={onTasks}>{t('Task board')}</button>}
           <ActionButton type="button" className="btn-primary" disabled={readOnly} disabledReason={project?.state === 'archived' ? 'Restore the Project before creating a task.' : room.state === 'archived' ? 'Restore the Room before creating a task.' : unowned ? 'Assign this Room to a Project before creating a task.' : 'Wait for the owning Project to load.'} onClick={onNewTask}>
             {t('＋ New Task')}
           </ActionButton>
