@@ -50,6 +50,22 @@ func TestPrepareAndCollectTwoRepositories(t *testing.T) {
 	assertBytes(t, filepath.Join(source, resources[1].WorkspaceDirectory(), "src", "new.txt"), []byte("new\n"))
 }
 
+func TestDocumentWorkspaceStaysEmpty(t *testing.T) {
+	source, dest, state := t.TempDir(), t.TempDir(), t.TempDir()
+	if err := PrepareDocument(source, dest, state); err != nil {
+		t.Fatal(err)
+	}
+	if err := CollectDocument(source, dest, state); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dest, "answer.md"), []byte("not authoritative"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := CollectDocument(source, dest, state); err == nil {
+		t.Fatal("accepted document workspace output")
+	}
+}
+
 func TestCollectRejectsUnsafeResultsAndSourceDrift(t *testing.T) {
 	for _, tc := range []struct {
 		name   string

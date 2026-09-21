@@ -126,7 +126,7 @@ func (e ResourceEnvelope) Accept(intent DeclaredUserTask, plan UserTaskPlan, sna
 	doc := e.template
 	doc.ContractID = f.ContractID
 	_, digest, _ := e.snapshot.CanonicalJSON()
-	doc.Task = TaskContract{ID: f.TaskID, RoomID: f.RoomID, Title: f.Title, Goal: f.Requirement, ResourceSnapshotDigest: hex.EncodeToString(digest[:])}
+	doc.Task = TaskContract{ID: f.TaskID, RoomID: f.RoomID, Title: f.Title, Goal: f.Requirement, ResourceSnapshotDigest: hex.EncodeToString(digest[:]), OutcomeKind: e.snapshot.OutcomeKind, Materials: append([]domain.TaskMaterial(nil), e.snapshot.Materials...)}
 	for _, r := range e.snapshot.Resources {
 		doc.Task.Resources = append(doc.Task.Resources, ExecutionRepositoryResource{RepoID: r.RepoID, Name: r.Name, Locator: r.WorkspaceDirectory(), TargetIdentityDigest: r.PhysicalIdentity, Role: r.Role, BaseCommit: r.BaseCommit, BaseTree: r.BaseTree, BaseRef: r.BaseRef, Scope: r.Scope, Checks: r.Checks})
 	}
@@ -145,14 +145,26 @@ func (e ResourceEnvelope) Accept(intent DeclaredUserTask, plan UserTaskPlan, sna
 }
 func validateResourceCoreContract(d CoreContractDocument) error {
 	bad := func(s string) error { return fmt.Errorf("%w: v12 %s", ErrInvalidCoreContract, s) }
-	if d.Revision != 12 || !validText(d.ContractID) || !validText(d.Task.Title) || !validText(d.Task.Goal) || d.Task.Repository != (RepositoryTarget{}) || !validLowerHex(d.Task.ResourceSnapshotDigest, 64) || len(d.Task.Resources) == 0 || len(d.Task.Resources) > domain.TaskRepositoryLimit {
+	if d.Revision != 12 || !validText(d.ContractID) || !validText(d.Task.Title) || !validText(d.Task.Goal) || d.Task.Repository != (RepositoryTarget{}) || !validLowerHex(d.Task.ResourceSnapshotDigest, 64) || len(d.Task.Resources) > domain.TaskRepositoryLimit {
 		return bad("identity/resources")
 	}
 	if _, err := domain.ParseTaskID(d.Task.ID); err != nil {
 		return bad("task")
 	}
-	if _, err := domain.ParseRoomID(d.Task.RoomID); err != nil {
+	roomID, err := domain.ParseRoomID(d.Task.RoomID)
+	if err != nil {
 		return bad("Room")
+	}
+	if d.Task.OutcomeKind == "document" {
+		if len(d.Task.Resources) != 0 {
+			return bad("document resources")
+		}
+		fake := domain.TaskResourceSnapshot{SchemaVersion: domain.TaskResourceSchemaV2, TaskID: d.Task.ID, RoomID: d.Task.RoomID, ProjectID: "project_" + roomID.String()[len("room_"):], SelectionSource: "core_validation", OutcomeKind: d.Task.OutcomeKind, Materials: d.Task.Materials, Resources: []domain.TaskRepositoryResource{}}
+		if err := fake.Validate(); err != nil {
+			return bad("document materials")
+		}
+	} else if d.Task.OutcomeKind != "" || len(d.Task.Materials) != 0 || len(d.Task.Resources) == 0 {
+		return bad("identity/resources")
 	}
 	previous := ""
 	writes := map[string]struct{}{}

@@ -64,6 +64,9 @@ func (tx *writeTx) InsertResourceResultGroup(ctx context.Context, g domain.Resou
 	if e = json.Unmarshal(frozen.CanonicalJSON, &snapshot); e != nil {
 		return e
 	}
+	if snapshot.OutcomeKind != g.OutcomeKind || (g.OutcomeKind == "document" && g.Markdown != report.FinalText()) {
+		return storecontract.ErrVerificationConflict
+	}
 	if len(snapshot.Resources) != len(g.Repositories) {
 		return storecontract.ErrVerificationConflict
 	}

@@ -22,6 +22,7 @@ type TaskBoardRepository struct {
 	Name   string `json:"name"`
 }
 type TaskBoardFacts struct {
+	OutcomeKind, DocumentStatus                           string
 	Item                                                  TaskWorkspaceItem
 	TaskID, RoomID, Title, State, Invalid                 string
 	Archived                                              bool

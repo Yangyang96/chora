@@ -319,12 +319,18 @@ func (c isolatedWorkspaceCallbacks) prepare(ctx context.Context, inv execution.I
 	if err = os.Mkdir(stateRoot, 0700); err != nil {
 		return fmt.Errorf("create private import state: %w", err)
 	}
+	if len(resources) == 0 {
+		return isolatedworkspace.PrepareDocument(inv.WorkingRoot(), dest, stateRoot)
+	}
 	return isolatedworkspace.Prepare(ctx, inv.WorkingRoot(), dest, stateRoot, resources)
 }
 func (c isolatedWorkspaceCallbacks) collect(ctx context.Context, inv execution.Invocation, dest string) error {
 	resources, err := c.resources(ctx, inv)
 	if err != nil {
 		return err
+	}
+	if len(resources) == 0 {
+		return isolatedworkspace.CollectDocument(inv.WorkingRoot(), dest, filepath.Join(filepath.Dir(filepath.Dir(dest)), "import-state"))
 	}
 	return isolatedworkspace.Collect(ctx, inv.WorkingRoot(), dest, filepath.Join(filepath.Dir(filepath.Dir(dest)), "import-state"), resources)
 }

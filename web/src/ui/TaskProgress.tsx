@@ -12,6 +12,16 @@ const stages = [
 
 export function workflowSteps(run?: RunView, delivery?: DeliverySummary, preparing = false): Step[] {
   const status = run?.status
+  if (run?.outcomeKind === 'document' || run?.resourceResult?.group.outcomeKind === 'document') {
+    const accepted = run.documentStatus === 'accepted'
+    const reviewing = accepted || ['awaiting_review', 'accepted'].includes(status ?? '')
+    return [
+      { id: 'prepare', label: 'Preparation', state: ['ready', 'draft'].includes(status ?? '') ? 'current' : 'done', detail: 'Supplied project material' },
+      { id: 'research', label: 'Research and drafting', state: reviewing ? 'done' : 'current', detail: status === 'revision_required' ? 'Changes requested' : reviewing ? 'Completed' : 'In progress' },
+      { id: 'review', label: 'Document review', state: accepted ? 'done' : reviewing ? 'current' : 'pending', detail: accepted ? 'Accepted revision saved' : reviewing ? 'Waiting for review' : 'Not started' },
+    ]
+  }
+
   const checkRecovery = status === 'recovery_required' && ['checks_failed', 'checks_incomplete'].includes(run?.terminalReason ?? '')
   const branchDelivery = run?.resourceResult?.repositories?.some((repo) => repo.deliveryMode === 'task_branch')
   const legacy = Boolean(run?.resourceResult?.repositories?.length && !branchDelivery)

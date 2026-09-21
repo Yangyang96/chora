@@ -22,7 +22,7 @@ export type CurrentAction = {
 }
 export type AutomaticRetry = { state: 'pending' | 'retrying' | 'exhausted' | 'blocked'; retriesUsed: number; maxRetries: number; lastFailureReason: string }
 export type RunSummary = { automaticRetry?: AutomaticRetry; terminalReason?: string; patchApplicationState?: string; id: string; taskId: string; status: RunStatus; version: number; attempt: number; createdAt: string; updatedAt: string; startedAt: string; reviewRequestedAt: string; terminalAt: string }
-export type TaskSummary = { resultClosed?: boolean; id: string; title: string; status: string; archived: boolean; lastActivityAt: string; currentPlanRevision: { id: string; revisionNumber: number } | null; latestRun: RunSummary | null; runCount: number; currentAction: CurrentAction; delivery?: import('./taskDeliveryTypes').DeliverySummary }
+export type TaskSummary = { outcomeKind?: string; documentStatus?: string; resultClosed?: boolean; id: string; title: string; status: string; archived: boolean; lastActivityAt: string; currentPlanRevision: { id: string; revisionNumber: number } | null; latestRun: RunSummary | null; runCount: number; currentAction: CurrentAction; delivery?: import('./taskDeliveryTypes').DeliverySummary }
 export type RoomWorkspace = { room: RoomSummary; tasks: TaskSummary[] }
 export type RoomDirectory = { activeRooms: RoomSummary[]; archivedRooms: RoomSummary[] }
 export type RunHistorySummary = RunSummary & { eventCount: number }
@@ -186,6 +186,9 @@ export type ModelProvenance = {
 }
 
 export type RunView = {
+  outcomeKind?: string
+  documentStatus?: string
+  materials?: Array<{ title: string; locator: string; body: string; digest: string }>
   nativeCapabilities?: { projectID: string; observedAt: string; running: boolean; configVersion: number; bridge: { status: string }; skills: Array<{ name: string; status: string }>; servers: Array<{ name: string; status: string }> }
   resultClosed?: boolean
   result?: { id: string; attemptId: string; outcome: string; createdAt: string }

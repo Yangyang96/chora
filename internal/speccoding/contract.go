@@ -86,6 +86,8 @@ type TaskContract struct {
 	Repository             RepositoryTarget              `json:"repository,omitzero"`
 	Resources              []ExecutionRepositoryResource `json:"resources,omitempty"`
 	ResourceSnapshotDigest string                        `json:"resource_snapshot_digest,omitempty"`
+	OutcomeKind            string                        `json:"outcome_kind,omitempty"`
+	Materials              []domain.TaskMaterial         `json:"materials,omitempty"`
 }
 
 type RepositoryTarget struct {
@@ -511,7 +513,7 @@ func validateTechnicalPlan(plan TechnicalPlan, writes map[string]struct{}) error
 	}
 	seen := map[string]struct{}{}
 	for _, step := range plan.Steps {
-		if !validText(step.ID) || !validText(step.Description) || len(step.Files) == 0 || !addUnique(seen, step.ID) {
+		if !validText(step.ID) || !validText(step.Description) || (len(writes) > 0 && len(step.Files) == 0) || !addUnique(seen, step.ID) {
 			return invalid("technical plan step")
 		}
 		for _, file := range step.Files {

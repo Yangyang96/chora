@@ -2,10 +2,62 @@ package domain
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"regexp"
+	"strings"
 	"testing"
 )
+
+func TestDocumentTaskResourceSnapshotRequiresDigestBoundMaterialsAndNoRepositories(t *testing.T) {
+	body := "# Reviewed finding\n"
+	digest := sha256.Sum256([]byte(body))
+	snapshot := TaskResourceSnapshot{SchemaVersion: TaskResourceSchemaV2, TaskID: NewTaskID().String(), ProjectID: NewProjectID().String(), RoomID: NewRoomID().String(), SelectionSource: "test", OutcomeKind: "document", Resources: []TaskRepositoryResource{}, Materials: []TaskMaterial{{Title: "Accepted source", Locator: "document:one", Body: body, Digest: fmt.Sprintf("%x", digest)}}}
+	if err := snapshot.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	bad := snapshot
+	bad.Materials = append([]TaskMaterial(nil), snapshot.Materials...)
+	bad.Materials[0].Digest = strings.Repeat("0", 64)
+	if bad.Validate() == nil {
+		t.Fatal("accepted material digest drift")
+	}
+	bad = snapshot
+	bad.Resources = []TaskRepositoryResource{{}}
+	if bad.Validate() == nil {
+		t.Fatal("accepted repositories in document mode")
+	}
+	snapshot.TaskID = ""
+	snapshot.Resources = nil
+	bound, err := BindTaskResourceBranches(snapshot, NewTaskID(), "Finding")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _, err := bound.CanonicalJSON()
+	if err != nil || !bytes.Contains(raw, []byte(`"resources":[]`)) {
+		t.Fatalf("document resources are not canonical empty array: %s, %v", raw, err)
+	}
+	oversized := snapshot
+	oversized.TaskID = NewTaskID().String()
+	body = strings.Repeat("x", TaskMaterialTotalBodyBytes+1)
+	digest = sha256.Sum256([]byte(body))
+	oversized.Materials = []TaskMaterial{{Title: "Source", Locator: "document:large", Body: body, Digest: fmt.Sprintf("%x", digest)}}
+	if oversized.Validate() == nil {
+		t.Fatal("accepted aggregate material body beyond canonical storage limit")
+	}
+	escaped := snapshot
+	escaped.TaskID = NewTaskID().String()
+	body = strings.Repeat("<", 200_000)
+	digest = sha256.Sum256([]byte(body))
+	escaped.Materials = []TaskMaterial{{Title: "Escaped", Locator: "document:escaped", Body: body, Digest: fmt.Sprintf("%x", digest)}}
+	if escaped.Validate() != nil {
+		t.Fatal("escaped material should pass raw body limit")
+	}
+	if _, _, err := escaped.CanonicalJSON(); err == nil {
+		t.Fatal("accepted escaped canonical JSON beyond SQLite metadata limit")
+	}
+}
 
 func TestTaskResourceBranchBindingAndLegacyCanonicalCompatibility(t *testing.T) {
 	taskID := NewTaskID()

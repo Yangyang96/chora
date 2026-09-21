@@ -20,6 +20,7 @@ const labels: Record<string, string> = {
   commit: 'Committed', push: 'Pushed', pr: 'PR created', merged: 'Merged',
   not_started: 'Not started', checks_none: 'No checks selected', checks_not_applicable: 'Checks not applicable', checks_passed: 'Checks passed', checks_failed: 'Checks failed', checks_unavailable: 'Checks unavailable',
 
+  document_accepted: 'Document accepted', document_review: 'Document review',
   preparing: 'Preparing', working: 'Working', review: 'Review', delivery: 'Delivery', finished: 'Finished',
   reconciliation: 'Needs reconciliation', edit_plan: 'Edit plan', review_plan: 'Review plan', start_run: 'Start Run',
   start_attempt: 'Ready to start', monitor_run: 'View progress', recover_run: 'Recover execution',

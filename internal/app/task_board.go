@@ -364,6 +364,15 @@ func deriveTaskBoardCard(p domain.Project, r domain.Room, f storecontract.TaskBo
 			set("working", "verification_recovery_required", "recover_verification")
 			attention("verification_recovery_required", run.ID().String())
 		case domain.RunStateRevisionRequired:
+			if f.OutcomeKind == "document" && f.DocumentStatus == "pending" && f.ResourceResultID != "" {
+				set("review", "document_review", "review_result")
+				attention("document_review", run.ID().String())
+				break
+			}
+			if f.OutcomeKind == "document" && f.DocumentStatus == "accept" && f.ResourceResultID != "" {
+				outcome("document_accepted")
+				break
+			}
 			if f.ResourceResultID != "" && (f.ResourceReviewKind == "reject" || f.ResourceOutcome == "checks_failed" || f.ResourceOutcome == "checks_incomplete") {
 				set("working", "changes_requested", "retry")
 				attention("changes_requested", f.ResourceResultID)
@@ -407,6 +416,18 @@ func deriveTaskBoardCard(p domain.Project, r domain.Room, f storecontract.TaskBo
 			}
 			outcome("no_change")
 		case domain.RunStateAccepted:
+			if f.OutcomeKind == "document" {
+				if f.ResourceResultID == "" || len(f.Repositories) != 0 {
+					return reconcile("missing_document_evidence")
+				}
+				if f.DocumentStatus == "accept" {
+					outcome("document_accepted")
+				} else {
+					set("review", "document_review", "review_result")
+					attention("document_review", run.ID().String())
+				}
+				break
+			}
 			set("delivery", "pending_apply", "open_delivery")
 			if f.ResourceSnapshot {
 				if f.ResourceResultID == "" || len(f.Repositories) == 0 {

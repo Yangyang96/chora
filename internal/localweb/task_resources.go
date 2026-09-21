@@ -2,6 +2,7 @@ package localweb
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -143,6 +144,12 @@ func (server *Server) createResourceTask(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	var input struct {
+		OutcomeKind string `json:"outcomeKind"`
+		Materials   []struct {
+			Title   string `json:"title"`
+			Locator string `json:"locator"`
+			Body    string `json:"body"`
+		} `json:"materials"`
 		ExecutionSettings     *app.ExecutionSettingsSelection `json:"executionSettings"`
 		Requirement           string                          `json:"requirement"`
 		Title                 string                          `json:"title"`
@@ -155,7 +162,7 @@ func (server *Server) createResourceTask(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	if !server.pathPiEnabled || (input.ExecutionSettings == nil && !currentExecutionEnvironment(input.AgentExecutionProfile)) || room.OwnershipKind() != domain.RoomOwnershipProject || len(input.Resources) == 0 || len(input.Resources) > domain.TaskRepositoryLimit {
+	if !server.pathPiEnabled || (input.ExecutionSettings == nil && !currentExecutionEnvironment(input.AgentExecutionProfile)) || room.OwnershipKind() != domain.RoomOwnershipProject || (input.OutcomeKind == "" && len(input.Resources) == 0) || len(input.Resources) > domain.TaskRepositoryLimit {
 		writeError(w, http.StatusUnprocessableEntity, errors.New("select repositories and explicitly choose an execution mode"))
 		return
 	}
@@ -173,7 +180,20 @@ func (server *Server) createResourceTask(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, errors.New("requirement is required"))
 		return
 	}
-	snapshot, err := server.freezeTaskResources(r.Context(), room, input.Resources)
+	if input.OutcomeKind != "" && input.OutcomeKind != "document" || input.OutcomeKind == "document" && (len(input.Resources) != 0 || len(input.Materials) == 0 || len(input.Materials) > 16) || input.OutcomeKind == "" && len(input.Materials) != 0 {
+		writeError(w, http.StatusBadRequest, errors.New("choose repository resources or explicitly supplied project material"))
+		return
+	}
+	var snapshot domain.TaskResourceSnapshot
+	if input.OutcomeKind == "document" {
+		snapshot = domain.TaskResourceSnapshot{SchemaVersion: domain.TaskResourceSchemaV2, ProjectID: room.ProjectID().String(), RoomID: room.ID().String(), SelectionSource: "user_start", OutcomeKind: "document", Resources: []domain.TaskRepositoryResource{}}
+		for _, m := range input.Materials {
+			digest := sha256.Sum256([]byte(m.Body))
+			snapshot.Materials = append(snapshot.Materials, domain.TaskMaterial{Title: m.Title, Locator: m.Locator, Body: m.Body, Digest: fmt.Sprintf("%x", digest)})
+		}
+	} else {
+		snapshot, err = server.freezeTaskResources(r.Context(), room, input.Resources)
+	}
 	if err != nil {
 		writeProjectError(w, err)
 		return
@@ -202,7 +222,15 @@ func (server *Server) createResourceTask(w http.ResponseWriter, r *http.Request)
 			return
 		}
 	}
-	result, err := server.service.CreateTask(r.Context(), app.CreateTaskRequest{CommandMeta: requestCommandMeta(r, "create-task"), RoomID: roomID, Title: title, ExecutionProfile: app.TaskExecutionProfileRealSpecCoding, AgentExecutionProfile: input.AgentExecutionProfile, ModelBinding: modelBinding, ExecutionSettings: input.ExecutionSettings, ResolveExecutionModel: server.resolveExecutionModel, RevisionIDs: revisionIDs, RealSpecCoding: &app.RealSpecCodingInput{Resources: &snapshot, Requirement: input.Requirement, Constraints: []string{"Operate only in selected task repository worktrees, respecting access roles and limits."}, OutOfScope: []string{"Changes to original checkouts, unselected repositories, automatic Commit/Push or host configuration."}, Criteria: []app.RealSpecCodingCriterion{{Title: "Requested behavior is implemented", Description: input.Requirement}}}})
+	constraints := []string{"Operate only in selected task repository worktrees, respecting access roles and limits."}
+	outOfScope := []string{"Changes to original checkouts, unselected repositories, automatic Commit/Push or host configuration."}
+	criterion := "Requested behavior is implemented"
+	if input.OutcomeKind == "document" {
+		constraints = []string{"Research the supplied software-project material. Return a complete Markdown finding or proposal with source locators, uncertainties and missing evidence. Distinguish proposals from human decisions."}
+		outOfScope = []string{"Repository writes, publication, automatic implementation or access to unselected material. Material source locators are references, not authorization to fetch them."}
+		criterion = "Reviewable sourced finding or project document"
+	}
+	result, err := server.service.CreateTask(r.Context(), app.CreateTaskRequest{CommandMeta: requestCommandMeta(r, "create-task"), RoomID: roomID, Title: title, ExecutionProfile: app.TaskExecutionProfileRealSpecCoding, AgentExecutionProfile: input.AgentExecutionProfile, ModelBinding: modelBinding, ExecutionSettings: input.ExecutionSettings, ResolveExecutionModel: server.resolveExecutionModel, RevisionIDs: revisionIDs, RealSpecCoding: &app.RealSpecCodingInput{Resources: &snapshot, Requirement: input.Requirement, Constraints: constraints, OutOfScope: outOfScope, Criteria: []app.RealSpecCodingCriterion{{Title: criterion, Description: input.Requirement}}}})
 	if err != nil {
 		writeAgentExecutionCommandError(w, err)
 		return

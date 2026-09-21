@@ -33,6 +33,19 @@ func (s *Service) collectResourceTerminal(ctx context.Context, runtime runtimeCo
 	if terminal.Kind != execution.TerminalReviewReady {
 		return terminal, nil, nil
 	}
+	if doc.Task.OutcomeKind == "document" {
+		events, err := s.deps.Store.Reader().ListRunEvents(ctx, runtime.run.ID())
+		if err != nil {
+			return terminal, nil, err
+		}
+		final, markdown, complete := domain.CurrentCompleteAssistantEvidence(events)
+		if !complete {
+			return execution.TerminalResult{Kind: execution.TerminalFailed, FailureReason: "result_contract_invalid"}, nil, nil
+		}
+		g := &domain.ResourceResultGroup{SchemaVersion: "chora.result-group.v2", ID: s.deps.IDs.ResultID().String(), RunID: runtime.run.ID().String(), TaskID: runtime.run.TaskID().String(), AttemptID: runtime.attempt.ID().String(), FinalAssistant: final, ResourceSnapshotDigest: doc.Task.ResourceSnapshotDigest, ContractDigest: hex.EncodeToString(binding.ActiveContractDigest[:]), ContextDigest: hex.EncodeToString(binding.SnapshotDigest[:]), Outcome: "review_ready", OutcomeKind: "document", Markdown: markdown, Repositories: []domain.RepositoryResultChange{}, CreatedAt: s.deps.Clock.Now()}
+		terminal.Outputs, terminal.Checks = nil, nil
+		return terminal, g, nil
+	}
 	if s.deps.ResourcePatchMaterializer == nil {
 		return execution.TerminalResult{Kind: execution.TerminalFailed, FailureReason: "resource_patch_collector_unavailable"}, nil, nil
 	}

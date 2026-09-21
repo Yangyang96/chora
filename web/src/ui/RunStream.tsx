@@ -1,3 +1,4 @@
+import { ProjectDocument } from './ProjectDocument'
 import { ActionButton } from './ActionButton'
 import { useCallback, useEffect, useState } from 'react'
 import { useI18n } from '../i18n'
@@ -117,7 +118,8 @@ export function RunStream({ run, busy, onResultClosed, trustedLocalSelectionRead
   const retryActive = automaticRetryActive(run.automaticRetry)
   const resumePreparedRetry = status === 'ready' && run.automaticRetry?.state === 'blocked'
   const failureStatus = agentFailureStatus(status, run.automaticRetry, run.terminalReason)
-  const applyRequired = Boolean(run.resourceResult || run.verification || run.verifiedReview || run.patchApplication)
+  const documentTask = run.outcomeKind === 'document' || run.resourceResult?.group.outcomeKind === 'document'
+  const applyRequired = !documentTask && Boolean(run.resourceResult || run.verification || run.verifiedReview || run.patchApplication)
   const latestEvent = run.timeline.at(-1)
   const verificationState = run.verificationDisposition?.state
   const verificationNotApplicable = verificationState === 'not_applicable'
@@ -151,7 +153,7 @@ export function RunStream({ run, busy, onResultClosed, trustedLocalSelectionRead
       <div className="stream-head">
         <div className="stream-head-details">
           <strong>
-            {hasClosedResult && status !== 'accepted' ? t('Remaining results closed') : deliveryStatus ? !delivery ? t('Loading delivery status…') : t(deliveryStatus.label, deliveryStatus.values) : failureStatus ? t(failureStatus.label, failureStatus.values) : t(statusTitle(status, run.patchApplication, applyRequired && !branchDelivery, verificationState, run.resourceApply))}
+            {hasClosedResult && status !== 'accepted' ? t('Remaining results closed') : deliveryStatus ? !delivery ? t('Loading delivery status…') : t(deliveryStatus.label, deliveryStatus.values) : failureStatus ? t(failureStatus.label, failureStatus.values) : documentTask && run.documentStatus === 'accepted' ? t('Document accepted') : documentTask && status === 'accepted' ? t('Document needs review') : t(statusTitle(status, run.patchApplication, applyRequired && !branchDelivery, verificationState, run.resourceApply))}
             {status === 'running' || status === 'stopping' ? ` · ${agentName}` : ''}
           </strong>
           <span>
@@ -245,8 +247,8 @@ export function RunStream({ run, busy, onResultClosed, trustedLocalSelectionRead
         </div>
       </section>
 
-      {run.resourceResult && <AppPreview key={run.id} runId={run.id} expectedVersion={run.version} />}
-      {run.resourceResult ? <ResourceResult result={run.resourceResult} /> : <>
+      {run.resourceResult && !documentTask && <AppPreview key={run.id} runId={run.id} expectedVersion={run.version} />}
+      {documentTask ? <ProjectDocument key={run.task.id} run={run} onChanged={onResultClosed} /> : run.resourceResult ? <ResourceResult result={run.resourceResult} /> : <>
         <ChangedFiles patch={run.reviewablePatch} provenanceLabel={run.reviewablePatch ? patchProvenanceLabel : undefined} />
         <section className="workbench-section" aria-labelledby="diff-title">
         <div className="workbench-section-head">
@@ -396,7 +398,7 @@ export function RunStream({ run, busy, onResultClosed, trustedLocalSelectionRead
           )}
 
           {status === 'completed' && <p className="success-banner" role="status">{t('Completed · No changes')}. {t('The task finished without file changes. Check results remain separate; there is nothing to Apply.')}</p>}
-          {run.resourceResult && (status === 'awaiting_review' || status === 'accepted' || status === 'revision_required') && (
+          {run.resourceResult && !documentTask && (status === 'awaiting_review' || status === 'accepted' || status === 'revision_required') && (
             <div className="review-summary">
               <strong>{t('Review each repository result')}</strong>
               <p>{t('Review every repository patch and its final-content check evidence before deciding.')}</p>
@@ -412,7 +414,7 @@ export function RunStream({ run, busy, onResultClosed, trustedLocalSelectionRead
             </div>
           )}
 
-          {status === 'awaiting_review' && !hasClosedResult && (
+          {status === 'awaiting_review' && !hasClosedResult && !documentTask && (
             <ReviewForm comment={comment} busy={busy} plainLanguage={localPi} applyOnAccept={Boolean(run.controls?.canAcceptAndApply)} onComment={setComment} onReview={onReview} onChangeRequirement={onChangeRequirement} />
           )}
 

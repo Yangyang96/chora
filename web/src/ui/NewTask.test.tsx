@@ -57,7 +57,7 @@ test('loads Project defaults and sends only explicit task overrides with the fro
    ? { version: 7, agentExecutionProfile: 'isolated_local', model: { provider: 'openai', modelId: 'gpt-5' } }
    : catalog)
  render(<NewTask projectId="project-1" roomName="Demo" busy={false} initialRequirement="Fix it" isolatedLocal={isolatedReady} onCancel={vi.fn()} onSubmit={onSubmit} onAcknowledgeTrustedLocal={vi.fn()} />)
- await screen.findByText(/Project defaults/)
+ await waitFor(() => expect(screen.getAllByText(/Project defaults/).length).toBeGreaterThan(0))
  // The resource selector is still loading in this focused component test, so submit through the form after its callback is unavailable.
  expect(screen.getAllByText(/openai · gpt-5/).length).toBeGreaterThan(0)
  await userEvent.click(screen.getByLabelText('Override Project defaults for this task'))
@@ -100,4 +100,29 @@ test('keeps an unavailable inherited model visible and blocks task start until e
  await waitFor(() => expect(screen.getByRole('button', { name: 'Start' })).toBeDisabled())
  expect(screen.getByRole('alert')).toHaveTextContent('This saved model is unavailable')
  expect(onSubmit).not.toHaveBeenCalled()
+})
+
+test('submits supplied material without repositories and preserves explicit document revisions', async () => {
+ const onSubmit = vi.fn()
+ mockedApi.mockImplementation(async (path: string) => {
+   if (path.endsWith('/execution-settings')) return { version: 9, agentExecutionProfile: 'isolated_local', model: null }
+   if (path.endsWith('/revisions')) return [{ id: 'doc-3', title: 'Accepted design', body: '# Design', locator: 'chora://project-document/design', revisionNumber: 3, confirmedAt: '2026-09-20T00:00:00Z' }]
+   if (path.endsWith('/task-options')) return { repositories: [], selectedRepoIds: [], nextRepositoryCursor: '' }
+   return catalog
+ })
+ render(<NewTask projectId="project-1" roomId="room-1" roomName="Demo" busy={false} initialRequirement="Research the design" isolatedLocal={isolatedReady} onCancel={vi.fn()} onSubmit={onSubmit} onAcknowledgeTrustedLocal={vi.fn()} />)
+ await waitFor(() => expect(screen.getAllByText(/Project defaults/).length).toBeGreaterThan(0))
+ await userEvent.click(screen.getByLabelText('Work with supplied material only'))
+ await userEvent.type(screen.getByLabelText('Material title'), 'Support notes')
+ await userEvent.type(screen.getByLabelText('Source locator'), 'https://example.test/support')
+ await userEvent.type(screen.getByLabelText('Markdown content'), '# Observations')
+ await userEvent.click(await screen.findByLabelText(/Accepted design/))
+ await waitFor(() => expect(screen.getByRole('button', { name: 'Start' })).toBeEnabled())
+ await userEvent.click(screen.getByRole('button', { name: 'Start' }))
+
+ expect(onSubmit).toHaveBeenCalledWith(
+   'Research the design', 'isolated_local', undefined, [], undefined,
+   { projectVersion: 9 },
+   { outcomeKind: 'document', materials: [{ title: 'Support notes', locator: 'https://example.test/support', body: '# Observations' }], revisionIds: ['doc-3'] },
+ )
 })

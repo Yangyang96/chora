@@ -2,7 +2,7 @@
 
 [简体中文](ROADMAP.zh-CN.md) · [README](README.md)
 
-Status, 2026-09-20: Developer Alpha with public source. Real multi-repository delivery
+Status, 2026-09-21: Developer Alpha with public source. Real multi-repository delivery
 qualification, `M2_S3_PASS` and local DA-1/O5 preparation are complete. Source was
 published on 2026-09-10; versioned prereleases are recorded on the
 [Releases page](https://github.com/Yangyang96/chora/releases). M2 as a whole is
@@ -18,7 +18,8 @@ for Local Connected.
 The accepted next direction is research, design and documentation within software
 Projects, with simpler execution settings. Unrelated general-purpose work is
 outside scope. M2-S8-1 execution terminology is implemented;
-M2-S8-2 reusable execution settings are complete; M2-S9 is PLANNED_NOT_STARTED. See the
+M2-S8-2 reusable execution settings are complete. M2-S9-1 and M2-S9-2 passed
+technical acceptance on 2026-09-21. See the
 [product decision](docs/project-workflows.md).
 
 Project is the long-lived owner of repository resources and topic Rooms. A Task
@@ -44,7 +45,7 @@ Local Connected / No Sandbox. It is not a stable or installed release.
 | M2-S6A | Native Task Board V0: existing Tasks, Project/Room views, attention and evidence-based phase projection | COMPLETE: S6A-1/2/3 passed technical acceptance on 2026-09-19. See the scope and verification summary below. |
 | M2-S7 | Project-scoped native Skills/MCP in Local Connected | Technical acceptance complete on 2026-09-20. |
 | M2-S8 | Two execution environments and reusable Project settings | S8-1 and S8-2 complete on 2026-09-20. |
-| M2-S9 | Research, design and documentation within software Projects | PLANNED_NOT_STARTED; follows S8. |
+| M2-S9 | Research, design and documentation within software Projects | S9-1 and S9-2 passed technical acceptance on 2026-09-21. |
 | DA-1 / O5 v2 | Exact local candidate, public checks, licenses/SBOM, secret scans and release materials | Local candidate preparation passed; final user acceptance and publication actions are recorded separately. |
 
 Technical acceptance was frozen on 2026-09-09, followed by identity and publication
@@ -108,8 +109,8 @@ onboarding and actual model provenance/native configuration guidance. S3-2 cover
 source updates, compatibility, backup and recovery. S3-3 qualifies the integrated
 public journey and maintained CI. All four slices passed technical acceptance.
 
-M2-S8 execution settings are complete. The next personal-workspace work is M2-S9 project
-collaboration. S7 native Skills/MCP and S6A Task Board V0 are complete. S6 local
+M2-S8 execution settings are complete. M2-S9 project collaboration passed technical
+acceptance on 2026-09-21. S7 native Skills/MCP and S6A Task Board V0 are complete. S6 local
 implementation is complete; formal macOS distribution remains a separate release
 track. These priorities add no new first-Alpha acceptance gate.
 
@@ -138,8 +139,8 @@ task. New slice IDs preserve earlier milestone IDs and evidence.
 | --- | --- | --- | --- |
 | Complete | M2-S8-1: execution terminology | Existing local and isolated Pi paths. | **Local execution · No Sandbox** and **Isolated execution** consistently describe new-Task choices. Focused API/UI tests and browser E2E cover selection, acknowledgement and disclosure. Technical IDs, commands, paths and policy identifiers stay unchanged. |
 | Complete | M2-S8-2: reusable Project execution settings | S8-1 terminology is validated. | Project defaults, deliberate Task overrides and an accurate effective-settings summary work through execution and restart. |
-| After S8 | M2-S9-1: project research and proposal review | S8 execution settings are usable; select one concrete project question. | A repository-optional Task produces a sourced finding/proposal, supports feedback and review, and reopens without fabricated code delivery. |
-| Then | M2-S9-2: document revision and implementation handoff | S9-1 result, review and provenance contract is proved. | Revise and accept a project design/document, then explicitly bind that accepted revision to a later coding Task. |
+| Complete | M2-S9-1: project research and proposal review | S8 execution settings are usable; select one concrete project question. | A repository-optional Task produces a sourced finding/proposal, supports feedback and review, and reopens without fabricated code delivery. |
+| Complete | M2-S9-2: document revision and implementation handoff | S9-1 result, review and provenance contract is proved. | Revise and accept a project design/document, then explicitly bind that accepted revision to a later coding Task. |
 | Later | M3 team collaboration and delegation | Prioritize after the personal S9 journey; qualify identity, membership and concurrency before delegation. | Shared ownership, review, handoff, aggregation and conflict handling. |
 | On demonstrated need | M4 background/remote execution | A bounded scenario needs work away from the foreground. | Explicit placement, cancellation, recovery, budgets and notifications. |
 
@@ -189,6 +190,14 @@ their Room unless explicitly referenced or shared. Repository-backed document ed
 retain repository checks and delivery; accepting a Room artifact authorizes neither
 repository writes nor publication.
 
+The implemented flow accepts one to sixteen explicitly pasted materials whose
+combined frozen snapshot remains within the persisted metadata bound. A complete
+Agent Markdown result is limited to 64 KiB. Saving, revising and accepting are
+separate explicit actions. Acceptance creates an exact Room revision; a later Task
+in the same Room must select that accepted revision explicitly. Existing Tasks do
+not update when the document changes, and no document action creates SCM delivery,
+publication authority or a follow-on implementation Task.
+
 Completion per sub-slice: useful end-to-end work, feedback/retry and restart/reopen
 with honest provenance and missing-evidence states. Include API/persistence tests,
 relevant browser E2E and a real Pi project journey. Extend Task Board projections
@@ -196,6 +205,14 @@ for non-code results without inventing SCM delivery phases. Regress coding
 Diff/check/Review/SCM; resource scope, execution authority and accepted history
 cannot expand silently. General office work, real-time multi-user editors,
 a workflow engine and new context infrastructure remain outside S9.
+
+S9-1 and S9-2 passed technical acceptance on Apple Silicon macOS on 2026-09-21.
+API/persistence and browser tests cover revision review, stale-source rejection,
+explicit selection and frozen handoff. Real Local Pi completed two sourced-Markdown
+executions, including rejection, feedback and a successful retry. A later coding Task produced a real repository diff from the
+explicitly selected accepted revision; a later document acceptance and service
+restart preserved its exact frozen input. Isolated execution has self-contained automated coverage only;
+real-model isolated qualification has not been performed.
 
 M2-S5-1 acceptance covers both completed sub-slices. Agent proposals, system observations
 and user entries have distinct provenance. Records persist source evidence,

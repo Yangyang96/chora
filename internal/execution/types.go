@@ -21,6 +21,8 @@ const LocalConnectedExecutionPromptPrefix = "Chora Local Connected execution pol
 
 const TaskResourcesExecutionPromptPrefix = "Chora Local Connected task policy: the current directory is a Task workspace, with one Git worktree per selected repo_id child directory in task.resources. This is No Sandbox; Pi native permissions apply. Work only in selected repository worktrees, respect role reference (no modifications), scope and protected directories. Never alter original checkouts, stage, commit, push, access credentials or change host/Git configuration. Do not copy ignored dependencies or credentials. Inspect relevant code and committed configuration as needed; no whole-repository enumeration is required. For auto check policy, choose relevant existing checks, report what was selected and why; use explicit cd into the repo_id/directory before each command so evidence is attributable. Run each check as the sole tool call in its turn; parallel tool batches cannot establish check-content evidence. Execute each selected check as one separate ordinary command with explicit cd repo_id/directory prefix; do not append output redirection, echo, exit-code printing, pipes, semicolons, or additional shell steps. Pi reports tool success even when numeric exit code is unavailable, which is acceptable; never add a shell wrapper to fabricate or expose an exit code. For named checks run the specified commands in their directories. For none do not run checks or claim verification. Environment preparation is separate, only explicitly authorized preparation may run; explain missing dependencies and proposed setup through native permissions. Report failures, missing checks, unknown cwd and stale checks honestly; rerun checks after changing tested contents. Finish with an explicit complete summary of each repository. For every auto-check repository, include a final fenced block tagged chora-check-selection containing JSON: {\"repositories\":[{\"repoId\":\"repo_...\",\"checks\":[{\"name\":\"Relevant tests\",\"command\":\"npm test\",\"workingDirectory\":\".\"}],\"noApplicableChecks\":false,\"explanation\":\"Why these checks apply\"}]}. List selected checks, including failures or checks not run; do not claim the block proves execution. Use actual ordinary command text and repository-relative workingDirectory. If no checks apply, give checks:[], noApplicableChecks:true and a concrete explanation; missing dependencies or failed checks do not mean no applicable checks. All-empty completed work needs no artificial patch. Chora collects grouped immutable ordinary-text changes after completion and requires human Apply.\n\nFrozen Execution Input:\n"
 
+const DocumentExecutionPromptPrefix = "Chora document task policy: produce a trustworthy Markdown finding from only the frozen Context Snapshot, task requirement, and task.materials. The current directory is an empty task-owned workspace and is not a repository. Do not inspect the filesystem, run shell commands, modify files, access credentials, or invent external evidence. Clearly distinguish supplied facts, analysis, and unknowns. The complete final assistant response is the reviewable Markdown artifact; its claims remain agent-authored until a human accepts them.\n\nFrozen Execution Input:\n"
+
 // IsolatedTaskResourcesExecutionPromptPrefix preserves the multi-repository task
 // instructions while describing the actual Docker boundary and delivery flow.
 var IsolatedTaskResourcesExecutionPromptPrefix = strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(
@@ -34,6 +36,9 @@ func WrapIsolatedExecutionPrompt(snapshot, contract []byte, commands []string) (
 	prompt, err := WrapLocalConnectedExecutionPrompt(snapshot, contract, commands)
 	if err != nil {
 		return "", err
+	}
+	if strings.HasPrefix(prompt, DocumentExecutionPromptPrefix) {
+		return prompt, nil
 	}
 	if !strings.HasPrefix(prompt, TaskResourcesExecutionPromptPrefix) {
 		return "", errors.New("isolated execution requires a multi-repository contract")
@@ -73,9 +78,15 @@ func WrapLocalConnectedExecutionPrompt(snapshot, contract []byte, commands []str
 	}
 	var identity struct {
 		SchemaVersion string `json:"schema_version"`
+		Task          struct {
+			OutcomeKind string `json:"outcome_kind"`
+		} `json:"task"`
 	}
 	_ = json.Unmarshal(contract, &identity)
 	if identity.SchemaVersion == "chora.spec-coding-core.v12" {
+		if identity.Task.OutcomeKind == "document" {
+			return DocumentExecutionPromptPrefix + string(encoded), nil
+		}
 		return TaskResourcesExecutionPromptPrefix + string(encoded), nil
 	}
 	return LocalConnectedExecutionPromptPrefix + string(encoded), nil

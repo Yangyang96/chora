@@ -53,6 +53,46 @@ type importJournal struct {
 	Repositories   []journalRepo `json:"repositories"`
 }
 
+type documentManifest struct {
+	Version    string `json:"version"`
+	SourceRoot string `json:"sourceRoot"`
+}
+
+// PrepareDocument creates an empty, repository-free isolated workspace. It has
+// a separate manifest so an empty repository vector can never weaken Prepare.
+func PrepareDocument(sourceRoot, destRoot, stateRoot string) error {
+	if err := safeDirectoryRoot(sourceRoot); err != nil {
+		return err
+	}
+	if err := emptyDirectory(destRoot); err != nil {
+		return fmt.Errorf("destination is unsafe: %w", err)
+	}
+	if err := emptyDirectory(stateRoot); err != nil {
+		return fmt.Errorf("state directory is unsafe: %w", err)
+	}
+	return writeJSONExclusive(filepath.Join(stateRoot, "document-manifest.json"), documentManifest{Version: "chora.isolated-document.v1", SourceRoot: sourceRoot})
+}
+
+// CollectDocument rejects filesystem output; the complete assistant response
+// is collected through the existing trusted runtime stream instead.
+func CollectDocument(sourceRoot, destRoot, stateRoot string) error {
+	var m documentManifest
+	if err := readJSONRegular(filepath.Join(stateRoot, "document-manifest.json"), &m); err != nil || m.Version != "chora.isolated-document.v1" || m.SourceRoot != sourceRoot {
+		return errors.New("isolated document state is unavailable or invalid")
+	}
+	if err := safeDirectoryRoot(sourceRoot); err != nil {
+		return err
+	}
+	entries, err := scanTree(destRoot, false)
+	if err != nil {
+		return err
+	}
+	if len(entries) != 0 {
+		return errors.New("isolated document task wrote workspace files")
+	}
+	return nil
+}
+
 // ReadonlyRelativeMountPaths returns the repository-local Git metadata and all
 // reference repository paths which a supervisor must mount read-only.
 func ReadonlyRelativeMountPaths(resources []domain.TaskRepositoryResource) []string {

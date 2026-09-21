@@ -22,6 +22,8 @@ type ResourceResultGroup struct {
 	ContractDigest         string                   `json:"contractDigest"`
 	ContextDigest          string                   `json:"contextDigest"`
 	Outcome                string                   `json:"outcome"`
+	OutcomeKind            string                   `json:"outcomeKind,omitempty"`
+	Markdown               string                   `json:"markdown,omitempty"`
 	Repositories           []RepositoryResultChange `json:"repositories"`
 	CreatedAt              time.Time                `json:"createdAt"`
 }
@@ -79,7 +81,7 @@ func (g ResourceResultGroup) CanonicalJSON() ([]byte, [32]byte, error) {
 	bad := func() ([]byte, [32]byte, error) {
 		return nil, [32]byte{}, fmt.Errorf("%w: resource Result group", ErrInvalidArgument)
 	}
-	if g.SchemaVersion != "chora.result-group.v2" || g.CreatedAt.IsZero() || len(g.Repositories) == 0 || len(g.Repositories) > TaskRepositoryLimit {
+	if g.SchemaVersion != "chora.result-group.v2" || g.CreatedAt.IsZero() || len(g.Repositories) > TaskRepositoryLimit {
 		return bad()
 	}
 	if _, e := ParseResultID(g.ID); e != nil {
@@ -98,6 +100,17 @@ func (g ResourceResultGroup) CanonicalJSON() ([]byte, [32]byte, error) {
 		return bad()
 	}
 	if _, err := ParseEventID(g.FinalAssistant.EventID); err != nil || !g.FinalAssistant.Complete || g.FinalAssistant.Sequence <= 0 || !resourceHex(g.FinalAssistant.TextDigest, 64) {
+		return bad()
+	}
+	if g.OutcomeKind == "document" {
+		if len(g.Repositories) != 0 || strings.TrimSpace(g.Markdown) == "" || len(g.Markdown) > 64*1024 || g.Outcome != "review_ready" {
+			return bad()
+		}
+		digest := sha256.Sum256([]byte(g.Markdown))
+		if g.FinalAssistant.TextDigest != fmt.Sprintf("%x", digest) {
+			return bad()
+		}
+	} else if g.OutcomeKind != "" || g.Markdown != "" || len(g.Repositories) == 0 {
 		return bad()
 	}
 	if !resourceHex(g.ResourceSnapshotDigest, 64) || !resourceHex(g.ContractDigest, 64) || !resourceHex(g.ContextDigest, 64) {

@@ -2,11 +2,42 @@ package speccoding
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"fmt"
 	"github.com/Yangyang96/chora/internal/domain"
 	"sort"
 	"strings"
 	"testing"
 )
+
+func TestDocumentCoreContractRejectsMalformedRoomAndMixedRepositories(t *testing.T) {
+	taskID, roomID := domain.NewTaskID(), domain.NewRoomID()
+	body := "accepted material"
+	digest := sha256.Sum256([]byte(body))
+	snapshot := domain.TaskResourceSnapshot{SchemaVersion: domain.TaskResourceSchemaV2, TaskID: taskID.String(), RoomID: roomID.String(), ProjectID: domain.NewProjectID().String(), SelectionSource: "test", OutcomeKind: "document", Resources: []domain.TaskRepositoryResource{}, Materials: []domain.TaskMaterial{{Title: "Source", Locator: "document:source", Body: body, Digest: fmt.Sprintf("%x", digest)}}}
+	envelope, err := NewResourceEnvelope("/logical/document", snapshot, "0.84.2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	intent, err := envelope.Declare(UserTaskDeclaration{ContractID: "user-" + taskID.String(), TaskID: taskID, RoomID: roomID, WorkspaceRoot: "/logical/document", Title: "Finding", Requirement: "Produce finding", Constraints: []string{"Use supplied material"}, OutOfScope: []string{"Repositories"}, Criteria: []UserAcceptanceCriterion{{ID: domain.NewCriterionID(), Title: "Reviewable", Description: "Markdown finding"}}, Resources: &snapshot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	contract, err := envelope.Accept(intent, intent.InitialPlan(), domain.NewContextSnapshotID(), strings.Repeat("d", 64))
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := contract.Document()
+	doc.Task.RoomID = "x"
+	if _, err := NewCoreContract(doc); err == nil {
+		t.Fatal("accepted malformed document Room ID")
+	}
+	doc = contract.Document()
+	doc.Task.Resources = []ExecutionRepositoryResource{{RepoID: domain.NewRepositoryID().String()}}
+	if _, err := NewCoreContract(doc); err == nil {
+		t.Fatal("accepted document contract with repositories")
+	}
+}
 
 func TestResourceEnvelopeRoundTripMultiRepositoryWithoutGlobalBase(t *testing.T) {
 	taskID, roomID := domain.NewTaskID(), domain.NewRoomID()

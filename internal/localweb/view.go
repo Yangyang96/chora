@@ -21,6 +21,9 @@ import (
 )
 
 type runView struct {
+	OutcomeKind        string                          `json:"outcomeKind,omitempty"`
+	Materials          []domain.TaskMaterial           `json:"materials,omitempty"`
+	DocumentStatus     string                          `json:"documentStatus,omitempty"`
 	NativeCapabilities *nativecapabilities.Observation `json:"nativeCapabilities,omitempty"`
 
 	ResultClosed            bool                        `json:"resultClosed,omitempty"`
@@ -352,6 +355,8 @@ type currentActionView struct {
 }
 
 type taskSummaryView struct {
+	OutcomeKind           string                   `json:"outcomeKind,omitempty"`
+	DocumentStatus        string                   `json:"documentStatus,omitempty"`
 	ResultClosed          bool                     `json:"resultClosed,omitempty"`
 	Delivery              *app.TaskDeliverySummary `json:"delivery,omitempty"`
 	ID                    string                   `json:"id"`
@@ -985,6 +990,23 @@ func (server *Server) enrichRoomWorkspaceAgentExecution(ctx context.Context, wor
 			return err
 		}
 		view.Tasks[index].LatestRun.AgentExecution = executionView
+		if record, lookupErr := server.store.Reader().GetTaskResourceSnapshot(ctx, summary.Task.ID()); lookupErr == nil {
+			var snapshot domain.TaskResourceSnapshot
+			if err := json.Unmarshal(record.CanonicalJSON, &snapshot); err != nil {
+				return err
+			}
+			view.Tasks[index].OutcomeKind = snapshot.OutcomeKind
+			if snapshot.OutcomeKind == "document" {
+				document, err := server.service.GetProjectDocument(ctx, summary.Task.ID())
+				if err != nil {
+					return err
+				}
+				view.Tasks[index].DocumentStatus = document.Status
+			}
+		} else if !errors.Is(lookupErr, storecontract.ErrNotFound) {
+			return lookupErr
+		}
+
 		delivery, deliveryErr := server.service.LoadTaskDeliverySummary(ctx, *summary.LatestRun)
 		if deliveryErr != nil {
 			// Missing evidence must not make an accepted task look delivered, or
@@ -1019,6 +1041,18 @@ func (server *Server) enrichRoomWorkspaceAgentExecution(ctx context.Context, wor
 			return err
 		}
 		view.Tasks[index].ResultClosed = len(closures) > 0
+		if view.Tasks[index].OutcomeKind == "document" && (summary.LatestRun.State() == domain.RunStateAccepted || summary.LatestRun.State() == domain.RunStateRevisionRequired && (view.Tasks[index].DocumentStatus == "accepted" || view.Tasks[index].DocumentStatus == "pending")) {
+			view.Tasks[index].CurrentAction = currentActionView{
+				Kind:   app.CurrentActionViewTerminal,
+				Target: currentActionTargetView{RoomID: summary.Task.RoomID().String(), TaskID: summary.Task.ID().String(), RunID: summary.LatestRun.ID().String(), ExpectedVersion: summary.LatestRun.Version()},
+				URL:    "/rooms/" + summary.Task.RoomID().String() + "/tasks/" + summary.Task.ID().String() + "/runs/" + summary.LatestRun.ID().String(),
+				Reason: "Open the exact project document revision and its review history.",
+			}
+			if view.Tasks[index].DocumentStatus != "accepted" {
+				view.Tasks[index].CurrentAction.Kind = app.CurrentActionReviewResult
+			}
+		}
+
 		if len(closures) > 0 && summary.LatestRun.State() != domain.RunStateAccepted {
 			view.Tasks[index].CurrentAction.Kind = app.CurrentActionViewTerminal
 			view.Tasks[index].CurrentAction.Reason = "Remaining result eligibility is closed; files and history are retained until explicit cleanup."
@@ -1804,6 +1838,22 @@ func (server *Server) runView(ctx context.Context, runID domain.RunID) (runView,
 		return runView{}, errors.New("terminal Run result evidence is unavailable")
 	}
 	view.Controls.CanSwitchAgentExecutionProfile = charter.AdapterID() == agentpi.AdapterID && view.Controls.CanRetry
+	if record, err := server.store.Reader().GetTaskResourceSnapshot(ctx, run.TaskID()); err == nil {
+		var snapshot domain.TaskResourceSnapshot
+		if err := json.Unmarshal(record.CanonicalJSON, &snapshot); err != nil {
+			return runView{}, err
+		}
+		view.OutcomeKind, view.Materials = snapshot.OutcomeKind, snapshot.Materials
+		if snapshot.OutcomeKind == "document" {
+			document, err := server.service.GetProjectDocument(ctx, run.TaskID())
+			if err != nil {
+				return runView{}, err
+			}
+			view.DocumentStatus = document.Status
+		}
+	} else if !errors.Is(err, storecontract.ErrNotFound) {
+		return runView{}, err
+	}
 	if err := server.attachResourceResult(ctx, run, &view); err != nil {
 		return runView{}, err
 	}
@@ -1821,6 +1871,10 @@ func (server *Server) runView(ctx context.Context, runID domain.RunID) (runView,
 		}
 	} else if !errors.Is(closureErr, storecontract.ErrNotFound) && !errors.Is(closureErr, app.ErrResultClosureBlocked) && !errors.Is(closureErr, app.ErrReviewEvidenceUnavailable) && !errors.Is(closureErr, app.ErrInvalidCommand) {
 		return runView{}, closureErr
+	}
+	if view.OutcomeKind == "document" && view.DocumentStatus == "accepted" {
+		view.Controls.CanRetry = false
+		view.Controls.CanSwitchAgentExecutionProfile = false
 	}
 	return view, nil
 }

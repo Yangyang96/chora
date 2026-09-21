@@ -141,6 +141,7 @@ type Store interface {
 }
 
 type Reader interface {
+	ProjectDocumentReader
 	ExecutionSettingsReader
 	TaskBoardReader
 	ResultClosureReader
@@ -232,6 +233,7 @@ type Reader interface {
 }
 
 type WriteTx interface {
+	ProjectDocumentWriter
 	ExecutionSettingsWriter
 	ResultClosureWriter
 	DeliveryWriter

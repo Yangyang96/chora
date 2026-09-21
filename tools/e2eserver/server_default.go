@@ -12,6 +12,7 @@ import (
 )
 
 const ossAlphaClosureScenario = "oss-alpha-closure"
+const projectDocumentScenario = "project-document"
 
 type roomServer interface {
 	Close() error

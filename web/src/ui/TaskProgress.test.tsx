@@ -74,3 +74,11 @@ test('legacy acceptance before any Apply operation never waits for branch delive
   expect(steps.map((step) => step.id)).toEqual(['prepare', 'develop', 'checks', 'review', 'apply'])
   expect(steps.at(-1)?.detail).toBe('Waiting to apply')
 })
+
+test('document results show review without fabricated SCM delivery', () => {
+  const run = { status: 'accepted', outcomeKind: 'document', documentStatus: 'accepted' } as RunView
+  const steps = workflowSteps(run)
+  expect(steps.map(step => step.id)).toEqual(['prepare', 'research', 'review'])
+  expect(steps[2]).toMatchObject({ state: 'done', detail: 'Accepted revision saved' })
+  expect(workflowSteps({ ...run, documentStatus: 'pending' })[2].state).toBe('current')
+})

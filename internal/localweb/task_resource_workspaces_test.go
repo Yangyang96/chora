@@ -2,7 +2,9 @@ package localweb
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -16,6 +18,53 @@ import (
 	storecontract "github.com/Yangyang96/chora/internal/store"
 	"github.com/Yangyang96/chora/internal/store/sqlite"
 )
+
+func TestDocumentWorkspaceRejectsUnexpectedFilesOnEnsureAndResolve(t *testing.T) {
+	fixture := newTaskResourceWorkspaceFixture(t)
+	manager, err := newTaskResourceWorkspaceManager(fixture.db, fixture.dataRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = manager.Ensure(context.Background(), fixture.task.ID()); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(manager.(*taskResourceWorkspaceManager).documentRoot(fixture.task.ID()), "notes.md"), []byte("stale"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err = manager.Ensure(context.Background(), fixture.task.ID()); err == nil {
+		t.Fatal("Ensure accepted unexpected document workspace file")
+	}
+	if _, err = manager.ResolveExecutionRoot(context.Background(), fixture.task.ID()); err == nil {
+		t.Fatal("Resolve accepted unexpected document workspace file")
+	}
+}
+
+func TestDocumentWorkspaceRejectsSymlinkedOwnerMarker(t *testing.T) {
+	data := t.TempDir()
+	data, err := filepath.EvalSymlinks(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := &taskResourceWorkspaceManager{dataRoot: data, workspaceRoot: filepath.Join(data, "task-workspaces")}
+	taskID := domain.NewTaskID()
+	if err := manager.ensureDocumentRoot(taskID); err != nil {
+		t.Fatal(err)
+	}
+	owner := filepath.Join(manager.documentRoot(taskID), ".chora-task")
+	if err := os.Remove(owner); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(data, "forged-owner")
+	if err := os.WriteFile(target, []byte(taskID.String()+"\ndocument"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, owner); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.proveDocumentRoot(taskID); err == nil {
+		t.Fatal("accepted symlinked document owner marker")
+	}
+}
 
 func TestTaskResourceWorkspaceManagerPreparesIndependentRepositoriesAndRestarts(t *testing.T) {
 	first := newTaskResourceTestRepository(t, true)
@@ -241,6 +290,13 @@ func newTaskResourceWorkspaceFixtureMode(t *testing.T, taskBranches bool, reposi
 	snapshot := domain.TaskResourceSnapshot{
 		SchemaVersion: domain.TaskResourceSchemaV2, ProjectID: room.ProjectID().String(),
 		RoomID: room.ID().String(), SelectionSource: "room_explicit", Resources: resources,
+	}
+	if len(repositories) == 0 {
+		body := "frozen material"
+		digest := sha256.Sum256([]byte(body))
+		snapshot.OutcomeKind = "document"
+		snapshot.Materials = []domain.TaskMaterial{{Title: "Source", Locator: "document:source", Body: body, Digest: fmt.Sprintf("%x", digest)}}
+		snapshot.Resources = make([]domain.TaskRepositoryResource, 0)
 	}
 	if taskBranches {
 		for index := range snapshot.Resources {

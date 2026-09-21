@@ -706,6 +706,9 @@ func deterministicInitialPlan(intent frozenUserTask) UserTaskPlan {
 
 func deterministicInitialPlanContent(intent frozenUserTask) domain.TechnicalPlanContent {
 	if intent.Resources != nil {
+		if intent.Resources.OutcomeKind == "document" {
+			return domain.TechnicalPlanContent{TechnicalSteps: []string{"Read the frozen supplied materials and identify supported findings, uncertainties, and missing evidence.", "Develop the requested finding or proposal without fetching external context or changing repositories.", "Return the complete sourced Markdown artifact for human review."}, Decisions: []string{"Treat supplied materials as frozen inputs and keep agent conclusions non-authoritative until human acceptance."}, Risks: []string{"The supplied material may be incomplete; preserve uncertainties and avoid unsupported claims."}, Unknowns: []string{"Human review will decide whether the resulting finding is accepted as a frozen project document."}}
+		}
 		return domain.TechnicalPlanContent{TechnicalSteps: []string{"Inspect the selected repositories and relevant modules.", "Implement the requirement within the frozen repository roles and optional limits.", "Select and report checks under each frozen policy, then produce grouped reviewable changes."}, Decisions: []string{"Use one Local Connected Pi attempt; original checkouts stay unchanged until human Apply."}, Risks: []string{"Checks may be unavailable or fail; report evidence and unknowns explicitly."}, Unknowns: []string{"Relevant files and applicable checks will be identified during the task."}}
 	}
 	return domain.TechnicalPlanContent{
@@ -727,7 +730,8 @@ func planFromContent(intent frozenUserTask, content domain.TechnicalPlanContent)
 			scopes = append(scopes, r.RepoID)
 		}
 	}
-	if len(scopes) == 0 || !validPlanTexts(content.TechnicalSteps) || !validPlanTexts(content.Decisions) || !validPlanTexts(content.Risks) || !validPlanTexts(content.Unknowns) {
+	document := intent.Resources != nil && intent.Resources.OutcomeKind == "document"
+	if (!document && len(scopes) == 0) || !validPlanTexts(content.TechnicalSteps) || !validPlanTexts(content.Decisions) || !validPlanTexts(content.Risks) || !validPlanTexts(content.Unknowns) {
 		return UserTaskPlan{}, unsupported("Technical Plan content")
 	}
 	plan := UserTaskPlan{
@@ -735,6 +739,9 @@ func planFromContent(intent frozenUserTask, content domain.TechnicalPlanContent)
 		Decisions:     make([]Decision, len(content.Decisions)),
 		Risks:         make([]Risk, len(content.Risks)),
 		Unknowns:      make([]Unknown, len(content.Unknowns)),
+	}
+	if document {
+		plan.TechnicalPlan.Summary = "Produce " + intent.Title + " from the frozen supplied materials."
 	}
 	for index, description := range content.TechnicalSteps {
 		plan.TechnicalPlan.Steps[index] = PlanStep{ID: "plan-" + strconv.Itoa(index+1), Description: description, Files: cloneStrings(scopes)}

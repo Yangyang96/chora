@@ -66,3 +66,12 @@ test('shows current startup failure when an automatic retry could not launch', (
   item.latestRun!.automaticRetry = { state: 'blocked', retriesUsed: 1, maxRetries: 2, lastFailureReason: 'runtime_output_limit_exceeded' }
   expect(taskDisplayStatus(item).detail).toBe('Agent could not start')
 })
+
+
+test.each([
+  ['pending', 'Document needs review', 'Review result'],
+  ['accepted', 'Document accepted', 'View result'],
+] as const)('uses latest document %s after an earlier Run rejection', (documentStatus, label, action) => {
+  const item = { ...task('revision_required'), outcomeKind: 'document', documentStatus }
+  expect(taskDisplayStatus(item)).toMatchObject({ label, action })
+})

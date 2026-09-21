@@ -11,6 +11,7 @@ import (
 )
 
 const ossAlphaClosureScenario = "oss-alpha-closure"
+const projectDocumentScenario = "project-document"
 
 type roomServer interface {
 	Close() error
@@ -20,6 +21,9 @@ type roomServer interface {
 func newRoomServer(ctx context.Context, databasePath, webRoot, scenario string, logger *log.Logger) (roomServer, error) {
 	if scenario == ossAlphaClosureScenario {
 		return newOSSAlphaClosureServer(ctx, databasePath, webRoot, logger)
+	}
+	if scenario == projectDocumentScenario {
+		return localweb.NewE2EProjectDocument(ctx, databasePath, webRoot, logger)
 	}
 	return localweb.NewE2E(ctx, databasePath, webRoot, logger)
 }

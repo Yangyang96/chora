@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 type RepositoryID struct{ idValue }
@@ -83,7 +84,15 @@ type TaskResourceSnapshot struct {
 	RoomID          string                   `json:"roomId"`
 	SelectionSource string                   `json:"selectionSource"`
 	Resources       []TaskRepositoryResource `json:"resources"`
+	OutcomeKind     string                   `json:"outcomeKind,omitempty"`
+	Materials       []TaskMaterial           `json:"materials,omitempty"`
 	BranchType      string                   `json:"branchType,omitempty"`
+}
+type TaskMaterial struct {
+	Title   string `json:"title"`
+	Locator string `json:"locator"`
+	Body    string `json:"body"`
+	Digest  string `json:"digest"`
 }
 type TaskRepositoryResource struct {
 	RepoID             string              `json:"repoId"`
@@ -127,6 +136,12 @@ type TaskCheckPolicy struct {
 
 const TaskResourceSchemaV2 = "chora.task-resources.v2"
 const TaskResourceDeliveryTaskBranch = "task_branch"
+const (
+	TaskMaterialLimit          = 16
+	TaskMaterialTotalBodyBytes = 512 << 10
+	TaskMaterialTitleRunes     = 256
+	TaskMaterialLocatorBytes   = 1024
+)
 
 // BindTaskResourceBranches fills Task identity and branch names only after the
 // server has allocated the stable Task ID. Callers must never accept TaskBranch
@@ -137,7 +152,11 @@ func BindTaskResourceBranches(snapshot TaskResourceSnapshot, taskID TaskID, task
 	}
 	snapshot.TaskID = taskID.String()
 	snapshot.BranchType = taskBranchType(taskTitle)
-	snapshot.Resources = append([]TaskRepositoryResource(nil), snapshot.Resources...)
+	if snapshot.OutcomeKind == "document" {
+		snapshot.Resources = make([]TaskRepositoryResource, 0)
+	} else {
+		snapshot.Resources = append([]TaskRepositoryResource(nil), snapshot.Resources...)
+	}
 	for index := range snapshot.Resources {
 		resource := &snapshot.Resources[index]
 		resource.WorkspaceName = ShortWorkspaceName(resource.RepoID)
@@ -206,11 +225,32 @@ func (s TaskResourceSnapshot) CanonicalJSON() ([]byte, [32]byte, error) {
 		return nil, [32]byte{}, err
 	}
 	b, err := json.Marshal(s)
+	if err != nil || len(b) > RepositoryMetadataBytes {
+		return nil, [32]byte{}, fmt.Errorf("%w: Task resource snapshot canonical size", ErrInvalidArgument)
+	}
 	return b, sha256.Sum256(b), err
 }
 func (s TaskResourceSnapshot) Validate() error {
 	bad := func() error { return fmt.Errorf("%w: Task resource snapshot", ErrInvalidArgument) }
-	if s.SchemaVersion != TaskResourceSchemaV2 || len(s.Resources) == 0 || len(s.Resources) > TaskRepositoryLimit || s.SelectionSource == "" {
+	if s.SchemaVersion != TaskResourceSchemaV2 || len(s.Resources) > TaskRepositoryLimit || s.SelectionSource == "" {
+		return bad()
+	}
+	if s.OutcomeKind == "document" {
+		if len(s.Resources) != 0 || len(s.Materials) == 0 || len(s.Materials) > TaskMaterialLimit {
+			return bad()
+		}
+		seen := map[string]bool{}
+		totalBodyBytes := 0
+		for _, material := range s.Materials {
+			title, locator, body := strings.TrimSpace(material.Title), strings.TrimSpace(material.Locator), material.Body
+			digest := sha256.Sum256([]byte(body))
+			totalBodyBytes += len(body)
+			if title == "" || utf8.RuneCountInString(title) > TaskMaterialTitleRunes || !utf8.ValidString(title) || strings.ContainsRune(title, '\x00') || locator == "" || len(locator) > TaskMaterialLocatorBytes || !utf8.ValidString(locator) || seen[locator] || strings.ContainsAny(locator, "\x00\r\n") || strings.TrimSpace(body) == "" || !utf8.ValidString(body) || strings.ContainsRune(body, '\x00') || totalBodyBytes > TaskMaterialTotalBodyBytes || material.Digest != fmt.Sprintf("%x", digest) {
+				return bad()
+			}
+			seen[locator] = true
+		}
+	} else if s.OutcomeKind != "" || len(s.Resources) == 0 || len(s.Materials) != 0 {
 		return bad()
 	}
 	if _, err := ParseTaskID(s.TaskID); err != nil {

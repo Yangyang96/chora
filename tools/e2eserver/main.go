@@ -28,8 +28,8 @@ func run(args []string) int {
 	webRoot := flags.String("web", "", "test Web UI root")
 	port := flags.Int("port", 0, "test loopback port")
 	scenario := flags.String("scenario", "", "explicit test-only scenario")
-	if err := flags.Parse(args); err != nil || flags.NArg() != 0 || *databasePath == "" || *webRoot == "" || *port < 1 || *port > 65535 || (*scenario != "" && *scenario != ossAlphaClosureScenario) {
-		fmt.Fprintln(os.Stderr, "usage: e2eserver --db PATH --web PATH --port PORT [--scenario oss-alpha-closure]")
+	if err := flags.Parse(args); err != nil || flags.NArg() != 0 || *databasePath == "" || *webRoot == "" || *port < 1 || *port > 65535 || (*scenario != "" && *scenario != ossAlphaClosureScenario && *scenario != projectDocumentScenario) {
+		fmt.Fprintln(os.Stderr, "usage: e2eserver --db PATH --web PATH --port PORT [--scenario oss-alpha-closure|project-document]")
 		return 2
 	}
 

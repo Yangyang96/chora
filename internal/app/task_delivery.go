@@ -173,6 +173,9 @@ func (s *Service) LoadTaskDelivery(ctx context.Context, runID domain.RunID) (Tas
 	if e != nil {
 		return TaskDeliveryView{}, e
 	}
+	if review.Group.OutcomeKind == "document" {
+		return TaskDeliveryView{}, taskdelivery.ErrUnsupported
+	}
 	snapshot, e := s.deliverySnapshot(ctx, run.TaskID())
 	if e != nil {
 		return TaskDeliveryView{}, e

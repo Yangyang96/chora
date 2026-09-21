@@ -33,6 +33,7 @@ export type ResourceResultRepositoryView = {
 export type ResourceResultView = {
   repositories?: Array<{ repoId: string; name: string; baseRef: string; deliveryMode?: 'task_branch'; taskBranch?: string; worktreePath?: string }>
   group: {
+    outcomeKind?: string; markdown?: string
     schemaVersion: string; id: string; runId: string; taskId: string; attemptId: string; agentReportId: string
     resourceSnapshotDigest: string; contractDigest: string; contextDigest: string; outcome: string
     finalAssistant?: { eventId: string; sequence: number; textDigest: string; complete: boolean }; repositories: ResourceResultRepositoryView[]; createdAt: string

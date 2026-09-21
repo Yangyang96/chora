@@ -94,6 +94,9 @@ func (manager *taskResourceWorkspaceManager) Ensure(ctx context.Context, taskID 
 	if err != nil {
 		return err
 	}
+	if snapshot.OutcomeKind == "document" {
+		return manager.ensureDocumentRoot(taskID)
+	}
 	rows, err := manager.planRows(metadataCtx, taskID, snapshot)
 	if err != nil {
 		return err
@@ -168,6 +171,13 @@ func (manager *taskResourceWorkspaceManager) resolveRoot(ctx context.Context, ta
 	if err != nil {
 		return "", err
 	}
+	if snapshot.OutcomeKind == "document" {
+		root := manager.documentRoot(taskID)
+		if err := manager.proveDocumentRoot(taskID); err != nil {
+			return "", err
+		}
+		return root, nil
+	}
 	rows, err := manager.store.Reader().ListTaskRepositoryWorktrees(ctx, taskID)
 	if err != nil {
 		return "", err
@@ -209,6 +219,58 @@ func (manager *taskResourceWorkspaceManager) resolveRoot(ctx context.Context, ta
 		return "", errTaskResourceWorkspacesCleaned
 	}
 	return manager.taskRoot(taskID, snapshot.Resources[0]), nil
+}
+
+func (manager *taskResourceWorkspaceManager) documentRoot(taskID domain.TaskID) string {
+	return filepath.Join(manager.workspaceRoot, taskID.String()+"-document")
+}
+
+func (manager *taskResourceWorkspaceManager) ensureDocumentRoot(taskID domain.TaskID) error {
+	if err := ensureRealDirectory(manager.workspaceRoot); err != nil {
+		return fmt.Errorf("%w: task workspace parent: %v", errTaskResourceWorkspaceNotProven, err)
+	}
+	root := manager.documentRoot(taskID)
+	if err := os.Mkdir(root, 0o700); err == nil {
+		if err := os.WriteFile(filepath.Join(root, ".chora-task"), []byte(taskID.String()+"\ndocument"), 0o600); err != nil {
+			return err
+		}
+	} else if !errors.Is(err, os.ErrExist) {
+		return err
+	}
+	return manager.proveDocumentRoot(taskID)
+}
+
+func (manager *taskResourceWorkspaceManager) proveDocumentRoot(taskID domain.TaskID) error {
+	root := manager.documentRoot(taskID)
+	info, err := os.Lstat(root)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("%w: document Task root is unavailable or unsafe", errTaskResourceWorkspaceNotProven)
+	}
+	canonical, err := filepath.EvalSymlinks(root)
+	if err != nil || canonical != root || filepath.Dir(root) != manager.workspaceRoot {
+		return fmt.Errorf("%w: document Task root escaped configured storage", errTaskResourceWorkspaceNotProven)
+	}
+	ownerPath := filepath.Join(root, ".chora-task")
+	ownerInfo, err := os.Lstat(ownerPath)
+	expected := taskID.String() + "\ndocument"
+	if err != nil || !ownerInfo.Mode().IsRegular() || ownerInfo.Mode()&os.ModeSymlink != 0 || ownerInfo.Size() != int64(len(expected)) {
+		return fmt.Errorf("%w: document Task root ownership changed", errTaskResourceWorkspaceNotProven)
+	}
+	fd, err := unix.Open(ownerPath, unix.O_RDONLY|unix.O_NOFOLLOW, 0)
+	if err != nil {
+		return fmt.Errorf("%w: document Task root ownership changed", errTaskResourceWorkspaceNotProven)
+	}
+	file := os.NewFile(uintptr(fd), ownerPath)
+	owner, readErr := io.ReadAll(io.LimitReader(file, int64(len(expected)+1)))
+	closeErr := file.Close()
+	if readErr != nil || closeErr != nil || string(owner) != expected {
+		return fmt.Errorf("%w: document Task root ownership changed", errTaskResourceWorkspaceNotProven)
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil || len(entries) != 1 || entries[0].Name() != ".chora-task" {
+		return fmt.Errorf("%w: document Task root contains unexpected entries", errTaskResourceWorkspaceNotProven)
+	}
+	return nil
 }
 
 func (manager *taskResourceWorkspaceManager) provenResourceCleanup(ctx context.Context, taskID domain.TaskID, resource domain.TaskRepositoryResource, row domain.TaskRepositoryWorktree, operations []storecontract.DeliveryOperation) (bool, error) {

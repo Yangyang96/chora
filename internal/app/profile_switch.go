@@ -72,6 +72,13 @@ func (s *Service) PrepareProfileSwitch(ctx context.Context, request PrepareProfi
 		if err != nil {
 			return err
 		}
+		document, err := loadProjectDocumentView(ctx, tx, task.ID())
+		if err != nil {
+			return err
+		}
+		if document.Status == "accepted" {
+			return fmt.Errorf("%w: accepted Project document forbids Agent execution profile switch", ErrInvalidCommand)
+		}
 		planBinding, charter, snapshot, err := loadBoundRunContext(ctx, tx, run, task)
 		if err != nil {
 			return err

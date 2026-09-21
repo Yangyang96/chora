@@ -167,6 +167,9 @@ func (s *Service) ApplyResourceResult(ctx context.Context, req ResourceApplyRequ
 	if e = json.Unmarshal(record.CanonicalJSON, &snapshot); e != nil {
 		return ResourceApplyView{}, e
 	}
+	if snapshot.OutcomeKind == "document" {
+		return ResourceApplyView{}, fmt.Errorf("%w: document results cannot be applied to repositories", ErrInvalidCommand)
+	}
 	// Sort physical identities, including shared resources across Projects. A
 	// process-wide coordination mutex only protects lock acquisition ordering.
 	keys := []string{}

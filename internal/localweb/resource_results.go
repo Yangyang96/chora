@@ -101,6 +101,11 @@ func (server *Server) attachResourceResult(ctx context.Context, run domain.Agent
 			break
 		}
 	}
+	if loaded.Group.OutcomeKind == "document" {
+		view.Controls.CanApplyPatch = false
+		view.Controls.CanAcceptAndApply = false
+		return nil
+	}
 	view.Controls.CanApplyPatch = run.State() == domain.RunStateAccepted && server.service.ResourceApplyAvailable()
 	if !server.deliveryCommandsEnabled {
 		for _, repository := range loaded.Repositories {

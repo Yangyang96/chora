@@ -82,6 +82,15 @@ func (s *Service) prepare(ctx context.Context, meta CommandMeta, runID domain.Ru
 		if err != nil {
 			return err
 		}
+		if retry != nil {
+			document, documentErr := loadProjectDocumentView(ctx, tx, task.ID())
+			if documentErr != nil {
+				return documentErr
+			}
+			if document.Status == "accepted" {
+				return fmt.Errorf("%w: accepted Project document forbids Agent retry", ErrInvalidCommand)
+			}
+		}
 		if err := s.requireWorkbenchRoom(ctx, tx, task.RoomID()); err != nil {
 			return err
 		}

@@ -992,6 +992,9 @@ func (server *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/tasks/{taskID}/plan/revisions/{revisionID}/reviews", server.reviewTechnicalPlanRevision)
 	mux.HandleFunc("POST /api/tasks/{taskID}/plan/revisions/{revisionID}/activate", server.activateTechnicalPlanRevision)
 	mux.HandleFunc("GET /api/rooms/{roomID}/revisions", server.getRoomRevisions)
+	mux.HandleFunc("GET /api/tasks/{taskID}/document", server.getProjectDocument)
+	mux.HandleFunc("POST /api/tasks/{taskID}/document", server.saveProjectDocument)
+	mux.HandleFunc("POST /api/tasks/{taskID}/document/reviews", server.reviewProjectDocument)
 	mux.HandleFunc("POST /api/tasks/{taskID}/runs", server.startRun)
 	mux.HandleFunc("GET /api/runs/{runID}", server.getRun)
 	mux.HandleFunc("GET /api/runs/{runID}/patch", server.getReviewPatch)
@@ -3100,6 +3103,11 @@ func (server *Server) retryRun(writer http.ResponseWriter, request *http.Request
 				return
 			}
 		}
+		productionFake, err = server.e2eVerifiedRetryAdapter(task.Criteria(), run.ID())
+		if err != nil {
+			writeError(writer, http.StatusInternalServerError, err)
+			return
+		}
 	} else {
 		writeError(writer, http.StatusConflict, fmt.Errorf("run adapter %q is disabled", charter.AdapterID()))
 		return
@@ -3134,7 +3142,20 @@ func (server *Server) retryRun(writer http.ResponseWriter, request *http.Request
 		writeMutationError(writer, http.StatusInternalServerError, err)
 		return
 	}
-	if charter.AdapterID() == "fake" {
+	if productionFake != nil {
+		fakeRuntime := server.fakeSupervisor
+		if charter.AdapterID() != "fake" {
+			server.supervisor.mu.RLock()
+			routed, ok := server.supervisor.byAdapter[charter.AdapterID()].(*fakeSupervisor)
+			server.supervisor.mu.RUnlock()
+			if !ok {
+				writeError(writer, http.StatusInternalServerError, errors.New("fixture retry runtime is not a Fake supervisor"))
+				return
+			}
+			fakeRuntime = routed
+		}
+		go server.completeFakeRunOn(started.Run.ID(), started.Session.ID, productionFake, fakeRuntime)
+	} else if charter.AdapterID() == "fake" {
 		go server.completeFakeRun(started.Run.ID(), started.Session.ID, productionFake)
 	} else if started.Session.Identity.Valid() {
 		server.startRuntimeMonitor(charter.AdapterID(), started.Run.ID(), started.Session.ID, started.Session.Identity)

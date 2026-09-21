@@ -94,6 +94,12 @@ func (s *Service) loadResourceReview(ctx context.Context, reader storecontract.R
 	if e = json.Unmarshal(record.CanonicalJSON, &snapshot); e != nil {
 		return ResourceReviewView{}, e
 	}
+	if snapshot.OutcomeKind == "document" {
+		if g.OutcomeKind != "document" || len(snapshot.Resources) != 0 || len(g.Repositories) != 0 {
+			return ResourceReviewView{}, ErrReviewEvidenceUnavailable
+		}
+		return ResourceReviewView{Group: g, Digest: hex.EncodeToString(d[:])}, nil
+	}
 	if len(snapshot.Resources) != len(g.Repositories) || s.deps.ResourcePatchMaterializer == nil {
 		return ResourceReviewView{}, ErrReviewEvidenceUnavailable
 	}

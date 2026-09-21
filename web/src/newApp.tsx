@@ -24,6 +24,7 @@ import { TaskProgress } from './ui/TaskProgress'
 import { Sidebar } from './ui/Sidebar'
 import { AgentExecutionDisclosure, TRUSTED_LOCAL_DISCLOSURE_POLICY } from './ui/AgentExecutionProfile'
 import './ui/ui.css'
+import type { TaskContextSelection } from './projectDocumentTypes'
 
 type Route = { kind: 'directory' } | { kind: 'project'; projectID: string; tasks?: boolean } | { kind: 'room'; roomID: string; tasks?: boolean } | { kind: 'task'; roomID: string; taskID: string } | { kind: 'run'; roomID: string; taskID: string; runID: string }
 
@@ -443,7 +444,7 @@ function NewAppContent() {
     }
   }
 
-  async function createTask(requirement: string, agentExecutionProfile: AgentExecutionProfile, projectSettingsVersion?: number, resources?: TaskResourceSelection[], modelBinding?: ModelBinding, executionSettings?: import('./types').TaskExecutionSettingsInput) {
+  async function createTask(requirement: string, agentExecutionProfile: AgentExecutionProfile, projectSettingsVersion?: number, resources?: TaskResourceSelection[], modelBinding?: ModelBinding, executionSettings?: import('./types').TaskExecutionSettingsInput, context?: TaskContextSelection) {
     const briefLocator = roomID ? `room://${roomID}/brief` : ''
     const revisions = roomDetail?.revisions ?? []
     const currentBrief = [...revisions].reverse().find((revision) => revision.locator === briefLocator)
@@ -458,10 +459,12 @@ function NewAppContent() {
     setBusy(true)
     setError('')
     try {
-      const created = await api<TaskRef>(resources ? `/api/v2/rooms/${encodeURIComponent(roomID)}/tasks` : `/api/rooms/${encodeURIComponent(roomID)}/tasks`, {
+      const useV2 = resources !== undefined || context?.outcomeKind === 'document'
+      const selectedRevisionIds = [...new Set([currentBrief.id, ...(context?.revisionIds ?? [])])]
+      const created = await api<TaskRef>(useV2 ? `/api/v2/rooms/${encodeURIComponent(roomID)}/tasks` : `/api/rooms/${encodeURIComponent(roomID)}/tasks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': commandKey('create-task') },
-        body: JSON.stringify(resources ? { requirement, title: requirement.slice(0,96), resources, revisionIds: [currentBrief.id], executionSettings } : {
+        body: JSON.stringify(useV2 ? { requirement, title: requirement.slice(0,96), resources: resources ?? [], revisionIds: selectedRevisionIds, executionSettings, ...(context?.outcomeKind ? { outcomeKind: context.outcomeKind, materials: context.materials } : {}) } : {
           title: requirement.slice(0, 96),
           goal: requirement,
           criteria: ['Requirement satisfied'],
@@ -472,7 +475,7 @@ function NewAppContent() {
         signal: controller.signal,
       })
       const resourceTask = created as ResourceTaskRef
-      if (resources) {
+      if (resources && resources.length > 0) {
         setResourcePreparation((progress) => progress ? {
           ...progress,
           taskID: created.id,

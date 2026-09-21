@@ -2,8 +2,9 @@
 
 **English** | [简体中文](project-workflows.zh-CN.md)
 
-Accepted product direction, 2026-09-20. S8 execution terminology and reusable Project defaults are implemented;
-S9 remains planned.
+Accepted product direction, 2026-09-20. S8 execution terminology and reusable Project defaults are implemented.
+S9-1 project research/review and S9-2 document revision/handoff passed technical
+acceptance on 2026-09-21.
 [The roadmap](../ROADMAP.md#next-personal-workspace-slices) owns their delivery
 order, scope and completion criteria.
 
@@ -20,10 +21,8 @@ revision or a code change. These are examples, not a mandatory task-type form.
 Repository changes use the existing check, Review and delivery contracts. A
 research or design outcome should not require a fabricated Diff, Commit or PR.
 
-Project -> Room -> Task ownership stays intact. A Project may already exist
-without repositories, but current Task creation still requires repository scope.
-Repository-optional Tasks and non-code completion are planned in M2-S9. The first
-slice uses explicitly supplied project material and existing authorized Provider
+Project -> Room -> Task ownership stays intact. A Project and a document Task may
+exist without repositories. The implemented first slice uses explicitly supplied project material and existing authorized Provider
 capabilities; it does not require a new document connector, editor suite or
 Contexere implementation.
 
@@ -103,9 +102,9 @@ does not install tools, copy credentials or grant resource access.
 isolated execution does not load host capabilities. Its model/credential limits
 remain those in the [isolated execution guide](isolated-local.md).
 
-## The first project collaboration journey
+## Project research and document handoff
 
-The next workflow to prove is:
+The implemented workflow is:
 
 ```text
 Project question + explicitly selected material
@@ -115,7 +114,7 @@ Project question + explicitly selected material
 -> explicit reference from a later implementation Task
 ```
 
-M2-S9 first proves this journey for a single user with the existing Agent. It
+M2-S9 implements this journey for a single user with the existing Agent. It
 reuses Task, Result, Artifact, Decision, Review and context-selection mechanisms
 where they fit. It does not create a parallel issue, approval or knowledge engine.
 Missing evidence remains unknown; an Agent proposal is distinct from a human
@@ -132,3 +131,30 @@ both workflows without inventing code-delivery phases for a document result.
 Team authority and delegation remain M3; background and remote work remain M4.
 Formal macOS distribution is a separate release track. None of these is required
 to prove the next personal project workflow.
+
+Create a document Task by pasting one to sixteen pieces of project material. Each
+piece has a title, a source locator and Markdown content; Chora records the exact
+content and digest and does not fetch the locator. Source locators are limited to
+1 KiB each, and material bodies to 512 KiB total. The canonical frozen Task
+snapshot, including JSON escaping, must fit the 1 MiB metadata limit. The Agent's complete Markdown
+response is bounded to 64 KiB. It remains a proposal until the user explicitly
+saves it as a revision and accepts that exact revision. A rejection records
+feedback and permits a fresh Agent Attempt; a human may also save another bounded,
+immutable revision before review.
+
+Acceptance adds the exact revision to the owning Room. A later Task in the same
+Room may explicitly select that accepted revision as context. Selection freezes
+the chosen bytes and provenance: later edits do not update an existing Task, and
+acceptance never creates or starts an implementation Task automatically. Document
+Tasks have no Diff, Apply, Commit, Push or PR phase, and acceptance grants no SCM
+or publication authority.
+
+Implementation covers persistence, restart-safe revision/review state, Task Board
+projection, local and isolated execution paths, browser UI and explicit handoff.
+Technical acceptance passed on Apple Silicon macOS on 2026-09-21. API and browser
+tests cover feedback, revision, exact acceptance and explicit frozen handoff.
+Real Local Pi produced sourced Markdown twice, including rejection, feedback and
+successful retry. A later coding Task used accepted revision 2 to produce a real
+repository diff; accepting revision 3 and restarting the service preserved its
+exact frozen input. Isolated execution has self-contained automated coverage;
+real-model isolated qualification has not been performed.

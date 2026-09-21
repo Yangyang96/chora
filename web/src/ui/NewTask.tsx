@@ -12,6 +12,8 @@ import { AgentExecutionDisclosure, AgentExecutionProfileSelector, TRUSTED_LOCAL_
 import type { PiDiscoveryFetch } from './PiDiscovery'
 import { IsolatedLocal } from './IsolatedLocal'
 import { ModelSelector } from './ModelSelector'
+import { TaskMaterials } from './TaskMaterials'
+import type { TaskContextSelection, TaskMaterialInput } from '../projectDocumentTypes'
 
 type NewTaskProps = {
   projectId?: string
@@ -26,7 +28,7 @@ type NewTaskProps = {
   isolatedLocal?: IsolatedLocalView
   onPrepareIsolatedLocal?: () => Promise<void> | void
   onCancel: () => void
-	onSubmit: (requirement: string, agentExecutionProfile: AgentExecutionProfile, projectSettingsVersion?: number, resources?: TaskResourceSelection[], modelBinding?: ModelBinding, executionSettings?: TaskExecutionSettingsInput) => void
+	onSubmit: (requirement: string, agentExecutionProfile: AgentExecutionProfile, projectSettingsVersion?: number, resources?: TaskResourceSelection[], modelBinding?: ModelBinding, executionSettings?: TaskExecutionSettingsInput, context?: TaskContextSelection) => void
   onAcknowledgeTrustedLocal: () => Promise<boolean>
 }
 
@@ -45,6 +47,10 @@ export function NewTask({ projectId, roomId, roomName, busy, preparationPending 
   const [modelValid, setModelValid] = useState(true)
   const [localAcknowledged, setLocalAcknowledged] = useState(false)
   const [disclosureRequest, setDisclosureRequest] = useState(0)
+  const [suppliedOnly, setSuppliedOnly] = useState(false)
+  const [materials, setMaterials] = useState<TaskMaterialInput[]>([])
+  const [revisionIds, setRevisionIds] = useState<string[]>([])
+  const [materialBlocker, setMaterialBlocker] = useState('')
   const localWorkbench = piDiscovery !== undefined
   const agentExecutionProfile = selectedProfile ?? projectExecution?.agentExecutionProfile ?? 'isolated_local'
   const trustedLocalUnavailable = agentExecutionProfile === 'trusted_local' && (piDiscovery?.phase !== 'loaded' || (piDiscovery.discovery.state !== 'ready' && piDiscovery.discovery.state !== 'unavailable'))
@@ -67,7 +73,8 @@ export function NewTask({ projectId, roomId, roomName, busy, preparationPending 
     !requirement.trim() ? t('Enter the task requirement.') : '',
     isolatedLocalUnavailable ? t('Prepare Isolated execution and restart Chora if requested before starting.') : '',
     trustedLocalUnavailable ? t('Open the Pi readiness details and resolve the reported issue.') : '',
-    usesTaskResources && (!resources || resources.length === 0) ? resourceBlocker || t('Loading repositories…') : '',
+    usesTaskResources && !suppliedOnly && (!resources || resources.length === 0) ? resourceBlocker || t('Loading repositories…') : '',
+    usesTaskResources && suppliedOnly && materialBlocker ? materialBlocker : '',
     projectId && !projectExecution ? executionError || t('Loading Project execution defaults…') : '',
     !modelValid ? t('Choose a supported model or the runtime default.') : '',
     agentExecutionProfile === 'trusted_local' && !trustedLocalAcknowledged ? t('Acknowledge Local execution host access before starting.') : '',
@@ -79,10 +86,11 @@ export function NewTask({ projectId, roomId, roomName, busy, preparationPending 
     if (!requirement.trim()) return
     if (disclosurePending || unavailable || !agentExecutionProfile || !modelValid || (projectId && !projectExecution)) return
     if (agentExecutionProfile === 'trusted_local' && !trustedLocalAcknowledged) return
-    if (usesTaskResources && (!resources || resources.length === 0)) return
+    if (usesTaskResources && !suppliedOnly && (!resources || resources.length === 0)) return
+    if (usesTaskResources && suppliedOnly && (materialBlocker || materials.length === 0)) return
     if (projectId && !roomId && settingsVersion === undefined) return
     if (!projectId && !modelBinding) { onSubmit(requirement.trim(), agentExecutionProfile); return }
-    if (projectId && roomId && projectExecution) onSubmit(requirement.trim(), agentExecutionProfile, undefined, resources, undefined, { projectVersion: projectExecution.version, ...(overrideExecution ? { agentExecutionProfile: agentExecutionProfile as 'trusted_local' | 'isolated_local', model: modelIdentity } : {}) })
+    if (projectId && roomId && projectExecution) onSubmit(requirement.trim(), agentExecutionProfile, undefined, suppliedOnly ? [] : resources, undefined, { projectVersion: projectExecution.version, ...(overrideExecution ? { agentExecutionProfile: agentExecutionProfile as 'trusted_local' | 'isolated_local', model: modelIdentity } : {}) }, { ...(suppliedOnly ? { outcomeKind: 'document' as const, materials } : {}), revisionIds })
     else if (projectId) onSubmit(requirement.trim(), agentExecutionProfile, settingsVersion, undefined, modelBinding)
     else onSubmit(requirement.trim(), agentExecutionProfile, undefined, undefined, modelBinding)
   }
@@ -92,13 +100,15 @@ export function NewTask({ projectId, roomId, roomName, busy, preparationPending 
       <div className="panel-context">
         {t('New task in {room}', { room: roomName })}
       </div>
-      {localWorkbench && <p className="section-note">{t('New tasks start from the current branch’s committed HEAD. Uncommitted and untracked changes stay in the original checkout and are not copied. Commit them externally first if the task needs them.')}</p>}
+      {localWorkbench && !suppliedOnly && <p className="section-note">{t('New tasks start from the current branch’s committed HEAD. Uncommitted and untracked changes stay in the original checkout and are not copied. Commit them externally first if the task needs them.')}</p>}
       <label>
-        {t('What should Chora build?')}
+        {t(suppliedOnly ? 'What should Chora investigate or document?' : 'What should Chora build?')}
         <textarea value={requirement} onChange={(event) => setRequirement(event.target.value)} placeholder={t('Describe the requirement…')} autoFocus required />
       </label>
+      {projectId && roomId && <label><input type="checkbox" checked={suppliedOnly} disabled={busy} onChange={(event) => { setSuppliedOnly(event.target.checked); setResources(undefined); setResourceBlocker('') }} />{t('Work with supplied material only')}</label>}
+      {projectId && roomId && <TaskMaterials roomId={roomId} enabled={suppliedOnly} busy={busy} onMaterialsChange={setMaterials} onRevisionIdsChange={setRevisionIds} onBlockedChange={setMaterialBlocker} />}
       {projectId && roomId
-        ? <TaskResources projectId={projectId} roomId={roomId} busy={busy} onReady={setResources} onBlockedChange={setResourceBlocker} />
+        ? !suppliedOnly && <TaskResources projectId={projectId} roomId={roomId} busy={busy} onReady={setResources} onBlockedChange={setResourceBlocker} />
         : projectId && <ProjectSettings projectId={projectId} readOnly onReady={setSettingsVersion} />}
       {projectId && executionError && <p role="alert" className="error-banner">{executionError}</p>}
       {projectId && projectExecution && <div className="section-note">
@@ -129,7 +139,7 @@ export function NewTask({ projectId, roomId, roomName, busy, preparationPending 
         <ActionButton type="button" className="btn-secondary" disabled={(busy && !preparationPending) || disclosurePending} disabledReason={disclosurePending ? 'Finish the Local execution acknowledgement first.' : 'Wait for the current operation to finish.'} onClick={onCancel}>
           {preparationPending ? t('Cancel preparation') : t('Cancel')}
         </ActionButton>
-        <ActionButton type="submit" className="btn-primary" disabled={busy || disclosurePending || unavailable || !modelValid || !agentExecutionProfile || !requirement.trim() || (agentExecutionProfile === 'trusted_local' && !trustedLocalAcknowledged) || (usesTaskResources ? !resources || resources.length === 0 || !projectExecution : !!projectId && settingsVersion === undefined)} disabledReason={startDisabledReason}>
+        <ActionButton type="submit" className="btn-primary" disabled={busy || disclosurePending || unavailable || !modelValid || !agentExecutionProfile || !requirement.trim() || (agentExecutionProfile === 'trusted_local' && !trustedLocalAcknowledged) || (usesTaskResources ? (!suppliedOnly && (!resources || resources.length === 0)) || (suppliedOnly && (Boolean(materialBlocker) || materials.length === 0)) || !projectExecution : !!projectId && settingsVersion === undefined)} disabledReason={startDisabledReason}>
           {busy ? t('Starting…') : t('Start')}
         </ActionButton>
       </div>

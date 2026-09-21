@@ -216,3 +216,19 @@ func TestLocalConnectedPromptPreservesFrozenInputsAndExplicitCommands(t *testing
 		t.Fatal("accepted trailing Local Connected prompt")
 	}
 }
+
+func TestDocumentPromptUsesRepositoryFreePolicyInBothEnvironments(t *testing.T) {
+	snapshot := []byte(`{"snapshot":true}`)
+	contract := []byte(`{"schema_version":"chora.spec-coding-core.v12","task":{"outcome_kind":"document"}}`)
+	local, err := WrapLocalConnectedExecutionPrompt(snapshot, contract, nil)
+	if err != nil || !strings.HasPrefix(local, DocumentExecutionPromptPrefix) {
+		t.Fatalf("local document prompt = %q, %v", local, err)
+	}
+	isolated, err := WrapIsolatedExecutionPrompt(snapshot, contract, nil)
+	if err != nil || isolated != local {
+		t.Fatalf("isolated document prompt differs: %v", err)
+	}
+	if strings.Contains(local, "Git worktree") || strings.Contains(local, "repository root") {
+		t.Fatal("document prompt granted repository authority")
+	}
+}

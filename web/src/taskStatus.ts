@@ -83,6 +83,10 @@ export function taskDisplayStatus(task: TaskSummary): TaskDisplayStatus {
 
   if (task.resultClosed && run.status !== 'accepted') return { label: 'Remaining results closed', action: 'View history', tone: 'muted' }
 
+  if (task.outcomeKind === 'document' && task.documentStatus === 'accepted' && ['accepted', 'revision_required'].includes(run.status)) return { label: 'Document accepted', action: 'View result', tone: 'success' }
+
+  if (task.outcomeKind === 'document' && task.documentStatus === 'pending' && ['accepted', 'revision_required'].includes(run.status)) return { label: 'Document needs review', action: 'Review result', tone: 'attention' }
+
   const failure = agentFailureStatus(run.status, run.automaticRetry, run.terminalReason)
   if (failure) return failure
 
@@ -104,6 +108,7 @@ export function taskDisplayStatus(task: TaskSummary): TaskDisplayStatus {
     case 'completed':
       return { label: 'Completed · No changes', action, tone: 'success' }
     case 'accepted':
+      if (task.outcomeKind === 'document') return task.documentStatus === 'accepted' ? { label: 'Document accepted', action: 'View result', tone: 'success' } : { label: 'Document needs review', action: 'Review result', tone: 'attention' }
       if (task.delivery) return deliveryDisplayStatus(task.delivery)
       if (run.patchApplicationState === 'applied') return { label: 'Applied', action, tone: 'success' }
       if (run.patchApplicationState === 'applying') return { label: 'Applying', action, tone: 'working' }

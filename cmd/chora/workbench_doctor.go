@@ -26,7 +26,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const workbenchSchemaVersion = 44
+const workbenchSchemaVersion = 45
 
 var diagnosticVersionPattern = regexp.MustCompile(`(?:^|[^0-9A-Za-z_])(?:go|v)?(\d{1,4})\.(\d{1,4})(?:\.(\d{1,4}))?\b`)
 
