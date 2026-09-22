@@ -341,3 +341,10 @@ func (server *Server) e2eDelegationRunAdapter(criteria []domain.AcceptanceCriter
 	}
 	return server.e2eStartRunAdapter(startRunInput{PatchFixture: "project-document"}, criteria, id, "pi", true)
 }
+
+func (server *Server) e2ePlanningDelegationRunAdapter(criteria []domain.AcceptanceCriterion, id domain.RunID) (*agentfake.Adapter, error) {
+	if server.piStatus.Reason != "build-tagged E2E Pi identity verified" {
+		return nil, nil
+	}
+	return server.e2eStartRunAdapter(startRunInput{PatchFixture: "delegation-plan"}, criteria, id, "pi", true)
+}

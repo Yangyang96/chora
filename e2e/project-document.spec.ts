@@ -113,7 +113,7 @@ test('material-only proposal is reviewed, persisted, and explicitly selected by 
   expect(codingInput.requirement).toBe('Implement the accepted compatibility proposal')
   expect(codingInput.revisionIds).toContain(acceptedContextRevisionID)
   expect(codingInput.resources.length).toBeGreaterThan(0)
-  await expect(page).toHaveURL(/\/tasks\/task_[^/]+(?:\/runs\/run_[^/]+)?$/, { timeout: 120_000 })
+  await expect(page).toHaveURL(/\/tasks\/task_[^/]+\/runs\/run_[^/]+$/, { timeout: 120_000 })
   const codingTaskID = new URL(page.url()).pathname.match(/task_[^/]+/)?.[0]
   expect(codingTaskID).toMatch(/^task_/)
   const codingTask = await getJSON<{ selection: { selected: Array<{ revisionId: string; digest: string }> } }>(request, `/api/tasks/${codingTaskID}`)
@@ -134,6 +134,12 @@ test('material-only proposal is reviewed, persisted, and explicitly selected by 
   const after = await getJSON<{ selection: { selected: Array<{ revisionId: string; digest: string }> } }>(request, `/api/tasks/${codingTaskID}`)
   expect(after.selection.selected.find(value => value.revisionId === acceptedContextRevisionID)?.digest).toBe(frozen?.digest)
   expect(after.selection.selected).toHaveLength(codingTask.selection.selected.length)
+  // The document fixture owns one fake Pi runtime. Finish the coding Run
+  // before another test can replace its runtime sink with a delegation child.
+  await expect.poll(async () => {
+    const workspace = await getJSON<{ tasks: Array<{ id: string; latestRun?: { status: string } }> }>(request, `/api/rooms/${project.defaultRoomId}/workspace`)
+    return workspace.tasks.find(task => task.id === codingTaskID)?.latestRun?.status
+  }).not.toBe('running')
   await page.unrouteAll({ behavior: 'wait' })
 })
 
@@ -257,4 +263,46 @@ test('Agent-proposed assignments require explicit source-bound start and survive
   await page.setViewportSize({ width: 390, height: 844 })
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
   await page.unrouteAll({ behavior: 'wait' })
+})
+
+test('one research-delegation start plans and executes without another authorization click', async ({ page, request }) => {
+  const acknowledgement = await request.post('/api/agent-execution/trusted-local-acknowledgements', { headers: { 'Idempotency-Key': 'automatic-plan-ack' }, data: { policyVersion: 'chora.trusted-local-disclosure.v1' } })
+  expect(acknowledgement.ok()).toBeTruthy()
+  const created = await request.post('/api/v2/projects', { data: { name: 'Single-start research delegation' } })
+  expect(created.status()).toBe(201)
+  const project = await created.json()
+  const starts: string[] = []
+  page.on('request', req => { if (req.method() === 'POST' && (/\/delegation\/planning$/.test(req.url()) || /\/runs$/.test(req.url()) || /\/delegation$/.test(req.url()))) starts.push(new URL(req.url()).pathname) })
+  await page.goto(`/rooms/${project.defaultRoomId}`)
+  await page.getByRole('button', { name: '＋ New Task', exact: true }).first().click()
+  await page.getByLabel('Plan and delegate research', { exact: true }).check()
+  await page.getByLabel('What should Chora investigate or document?').fill('Compare compatibility options and restart risks')
+  await page.getByLabel('Material title').fill('Design')
+  await page.getByLabel('Source locator').fill('supplied:design')
+  await page.getByLabel('Markdown content').fill('Preserve existing clients. Server restart must not duplicate work. The deployment sequence is unknown.')
+  await page.getByLabel('Override Project defaults for this task').check()
+  await page.getByRole('radio', { name: 'Local execution · No Sandbox', exact: true }).check()
+  const disclosure = page.getByRole('dialog', { name: 'Local execution · No Sandbox', exact: true })
+  if (await disclosure.isVisible()) await disclosure.getByRole('button', { name: 'Acknowledge and use local execution', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Start research delegation', exact: true })).toBeEnabled()
+  await page.getByRole('button', { name: 'Start research delegation', exact: true }).click()
+  await expect(page).toHaveURL(/\/tasks\/task_[^/]+$/, { timeout: 120_000 })
+  const taskID = new URL(page.url()).pathname.split('/').at(-1)!
+  const endpoint = `/api/tasks/${taskID}/delegation`
+  const panel = page.getByRole('region', { name: 'Agent delegation', exact: true })
+  await expect(panel.getByText('All assignments finished execution. Review their evidence and results before accepting them.', { exact: true })).toBeVisible({ timeout: 120_000 })
+  expect(starts).toEqual([`${endpoint}/planning`])
+  const finished = await getJSON<{ planning: { state: string; runId: string }; source: { runId: string }; children: Array<{ taskId: string }> }>(request, endpoint)
+  expect(finished.planning.state).toBe('imported')
+  expect(finished.source.runId).toBe(finished.planning.runId)
+  expect(finished.children).toHaveLength(2)
+  for (const id of [taskID, ...finished.children.map(child => child.taskId)]) {
+    expect(await getJSON(request, `/api/tasks/${id}/document`)).toMatchObject({ version: 0, reviews: [] })
+  }
+  await expect(panel.getByRole('button', { name: 'Start delegation', exact: true })).toHaveCount(0)
+  await expect(panel.getByRole('button', { name: 'Start research delegation', exact: true })).toHaveCount(0)
+  await page.reload()
+  expect(await getJSON(request, endpoint)).toEqual(finished)
+  await panel.getByRole('button', { name: 'Open planning run', exact: true }).click()
+  await expect(page).toHaveURL(new RegExp(`/runs/${finished.planning.runId}$`))
 })

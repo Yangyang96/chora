@@ -158,8 +158,15 @@ func (server *Server) launchDelegationPlanning(ctx context.Context, p domain.Del
 	if server.product && (!server.verifierStatus.Enabled || server.verifier == nil) {
 		return errors.New("independent verifier is unavailable")
 	}
+	task, err := server.store.Reader().GetTask(ctx, p.ParentTaskID)
+	if err != nil {
+		return err
+	}
+	fixture, err := server.e2ePlanningDelegationRunAdapter(task.Criteria(), run.ID())
+	if err != nil {
+		return err
+	}
 	var prepared app.PrepareRunResult
-	var err error
 	if run.State() == domain.RunStateDraft {
 		prepared, err = server.prepareAndBindManagedAttempt(ctx, func(c context.Context) (app.PrepareRunResult, error) {
 			return server.service.PrepareRun(c, app.PrepareRunRequest{CommandMeta: planningMeta(p, "prepare"), RunID: run.ID(), ExpectedVersion: run.Version()})
@@ -187,7 +194,15 @@ func (server *Server) launchDelegationPlanning(ctx context.Context, p domain.Del
 	if started.Session == nil || !started.Session.Identity.Valid() || started.Run.State() != domain.RunStateRunning {
 		return errors.New("planning launch requires reconciliation")
 	}
-	if fake, ok := server.automaticRetryFakeAdapter(); ok {
+	if fixture != nil {
+		server.supervisor.mu.RLock()
+		runtime, ok := server.supervisor.byAdapter["pi"].(*fakeSupervisor)
+		server.supervisor.mu.RUnlock()
+		if !ok {
+			return errors.New("planning fixture runtime is unavailable")
+		}
+		go server.completeFakeRunOn(started.Run.ID(), started.Session.ID, fixture, runtime)
+	} else if fake, ok := server.automaticRetryFakeAdapter(); ok {
 		go server.completeFakeRunOn(started.Run.ID(), started.Session.ID, fake.adapter, fake.runtime)
 	} else {
 		server.startRuntimeMonitor("pi", started.Run.ID(), started.Session.ID, started.Session.Identity)
