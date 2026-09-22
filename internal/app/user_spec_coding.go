@@ -194,7 +194,7 @@ func (s *Service) acceptRealSpecCodingResources(
 		expectedOutput = "reviewable patch or successful no-change result; report checks separately"
 	}
 	charter, err := domain.NewRunCharter(domain.RunCharterParams{
-		ID: charterID, TaskID: task.ID(), TaskGoal: task.Goal(), Criteria: task.Criteria(), ContextRevisionIDs: selection.SelectedRevisionIDs(),
+		SynthesisOnly: selection.SynthesisOnly(), ID: charterID, TaskID: task.ID(), TaskGoal: task.Goal(), Criteria: task.Criteria(), ContextRevisionIDs: selection.SelectedRevisionIDs(),
 		WorkspaceRoot: room.WorkspaceRoot(), AdapterID: "pi", SandboxMode: sandboxModeForAgentExecutionProfile(profile), ExpectedOutput: expectedOutput,
 		ResponsibleHuman: responsibleHuman, CapabilityEnvelope: envelope.CapabilityEnvelope(), AgentExecutionProfileBinding: profile, Initiator: review.Reviewer(), CreatedAt: now,
 		ModelBinding: task.ModelBinding(),

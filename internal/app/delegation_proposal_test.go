@@ -366,3 +366,10 @@ func TestDelegationFrozenSourceRemainsCurrentAfterReview(t *testing.T) {
 func (p *proposalTestPort) GetDelegationPlanning(context.Context, domain.TaskID) (domain.DelegationPlanningIntent, error) {
 	return domain.DelegationPlanningIntent{}, storecontract.ErrNotFound
 }
+
+func (p *proposalTestPort) GetDelegationSynthesis(context.Context, domain.TaskID) (domain.DelegationSynthesis, error) {
+	return domain.DelegationSynthesis{}, storecontract.ErrNotFound
+}
+func (p *proposalTestPort) GetSynthesisForTask(context.Context, domain.TaskID) (domain.DelegationSynthesis, error) {
+	return domain.DelegationSynthesis{}, storecontract.ErrNotFound
+}

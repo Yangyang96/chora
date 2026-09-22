@@ -51,7 +51,7 @@ func validAssemblyRequest(request AssembleRequest) bool {
 	}
 	taskCriteria := request.Task.Criteria()
 	charterCriteria := request.Charter.Criteria()
-	if len(charterCriteria) == 0 || !criteriaEqual(taskCriteria, charterCriteria) || len(request.Charter.ContextRevisionIDs()) == 0 {
+	if len(charterCriteria) == 0 || !criteriaEqual(taskCriteria, charterCriteria) || (len(request.Charter.ContextRevisionIDs()) == 0 && !request.Charter.SynthesisOnly()) {
 		return false
 	}
 	if request.Delta == nil {
@@ -62,10 +62,10 @@ func validAssemblyRequest(request AssembleRequest) bool {
 
 func validSelection(request AssembleRequest) bool {
 	if request.Selection == nil {
-		return true
+		return !request.Charter.SynthesisOnly()
 	}
 	selection := *request.Selection
-	if selection.TaskID() != request.Task.ID() || selection.RoomID() != request.Task.RoomID() {
+	if selection.SynthesisOnly() != request.Charter.SynthesisOnly() || selection.TaskID() != request.Task.ID() || selection.RoomID() != request.Task.RoomID() {
 		return false
 	}
 	selected := selection.SelectedRevisionIDs()
@@ -143,7 +143,7 @@ func buildDocument(request AssembleRequest, revisions []domain.RoomContextRevisi
 	if request.Selection != nil {
 		document.SchemaVersion = schemaVersion
 		selection := *request.Selection
-		manifest := canonicalSelectionManifest{TaskID: selection.TaskID().String(), RoomID: selection.RoomID().String(), CreatedAt: selection.CreatedAt().UTC().Format(time.RFC3339Nano), Selected: []canonicalSelectionItem{}, Excluded: []canonicalSelectionItem{}}
+		manifest := canonicalSelectionManifest{SynthesisOnly: selection.SynthesisOnly(), TaskID: selection.TaskID().String(), RoomID: selection.RoomID().String(), CreatedAt: selection.CreatedAt().UTC().Format(time.RFC3339Nano), Selected: []canonicalSelectionItem{}, Excluded: []canonicalSelectionItem{}}
 		for _, item := range selection.Selected() {
 			manifest.Selected = append(manifest.Selected, canonicalSelectionItem{RevisionID: item.RevisionID.String(), Digest: fmt.Sprintf("%x", item.Digest), Provenance: item.Provenance})
 		}

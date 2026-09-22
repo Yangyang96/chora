@@ -106,6 +106,12 @@ func (tx *writeTx) InsertCharter(ctx context.Context, charter domain.RunCharter)
 	if err != nil {
 		return mapWriteError(err)
 	}
+	if charter.SynthesisOnly() {
+		_, err := tx.tx.ExecContext(ctx, `INSERT INTO synthesis_run_charters(charter_id,task_id) VALUES(?,?)`, charter.ID().String(), charter.TaskID().String())
+		if err != nil {
+			return mapWriteError(err)
+		}
+	}
 	for i, c := range charter.Criteria() {
 		if _, err := tx.tx.ExecContext(ctx, `INSERT INTO charter_criteria(charter_id,criterion_id,position,title,description) VALUES(?,?,?,?,?)`, charter.ID().String(), c.ID().String(), i, c.Title(), c.Description()); err != nil {
 			return mapWriteError(err)
@@ -161,7 +167,8 @@ func (reader *reader) GetCharter(ctx context.Context, id domain.CharterID) (doma
 	var idText, taskText, goal, root, adapter, sandbox, output, human, initiator, created string
 	var profileText, runtimeSource, executionProvider, capabilityPolicy, trustDisclosure string
 	var modelBinding sql.NullString
-	err := reader.q.QueryRowContext(ctx, `SELECT id,task_id,task_goal,workspace_root,adapter_id,sandbox_mode,expected_output,responsible_human,initiator,created_at,agent_execution_profile,agent_runtime_source,agent_execution_provider,agent_capability_policy,agent_trust_disclosure_policy,model_binding FROM run_charters WHERE id=?`, id.String()).Scan(&idText, &taskText, &goal, &root, &adapter, &sandbox, &output, &human, &initiator, &created, &profileText, &runtimeSource, &executionProvider, &capabilityPolicy, &trustDisclosure, &modelBinding)
+	var synthesisOnly bool
+	err := reader.q.QueryRowContext(ctx, `SELECT id,task_id,task_goal,workspace_root,adapter_id,sandbox_mode,expected_output,responsible_human,initiator,created_at,agent_execution_profile,agent_runtime_source,agent_execution_provider,agent_capability_policy,agent_trust_disclosure_policy,model_binding,EXISTS(SELECT 1 FROM synthesis_run_charters WHERE charter_id=run_charters.id) FROM run_charters WHERE id=?`, id.String()).Scan(&idText, &taskText, &goal, &root, &adapter, &sandbox, &output, &human, &initiator, &created, &profileText, &runtimeSource, &executionProvider, &capabilityPolicy, &trustDisclosure, &modelBinding, &synthesisOnly)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.RunCharter{}, storecontract.ErrNotFound
 	}
@@ -309,7 +316,7 @@ func (reader *reader) GetCharter(ctx context.Context, id domain.CharterID) (doma
 	if err != nil {
 		return domain.RunCharter{}, err
 	}
-	return domain.NewRunCharter(domain.RunCharterParams{ID: parsedID, TaskID: taskID, TaskGoal: goal, Criteria: criteria, ContextRevisionIDs: revisions, ConfirmedSensitiveRevisionIDs: confirmed, SensitiveExclusions: exclusions, WorkspaceRoot: root, AdapterID: adapter, SandboxMode: sandbox, ExpectedOutput: output, ResponsibleHuman: human, CapabilityEnvelope: caps, AgentExecutionProfileBinding: profile, ModelBinding: binding, Initiator: initiator, CreatedAt: createdAt})
+	return domain.NewRunCharter(domain.RunCharterParams{SynthesisOnly: synthesisOnly, ID: parsedID, TaskID: taskID, TaskGoal: goal, Criteria: criteria, ContextRevisionIDs: revisions, ConfirmedSensitiveRevisionIDs: confirmed, SensitiveExclusions: exclusions, WorkspaceRoot: root, AdapterID: adapter, SandboxMode: sandbox, ExpectedOutput: output, ResponsibleHuman: human, CapabilityEnvelope: caps, AgentExecutionProfileBinding: profile, ModelBinding: binding, Initiator: initiator, CreatedAt: createdAt})
 }
 
 func (tx *writeTx) CloseTaskForAcceptedRun(ctx context.Context, taskID domain.TaskID, runID domain.RunID, acceptedVersion uint64) error {

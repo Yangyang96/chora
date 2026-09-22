@@ -75,6 +75,13 @@ func (s *Service) prepare(ctx context.Context, meta CommandMeta, runID domain.Ru
 		if err != nil {
 			return err
 		}
+		synthesis, e := synthesisForRun(ctx, tx, run)
+		if e != nil {
+			return e
+		}
+		if synthesis != nil && (retry != nil || synthesis.AttemptID.Valid()) {
+			return fmt.Errorf("%w: synthesis permits one Attempt only", ErrInvalidCommand)
+		}
 		planning, e := planningForRun(ctx, tx, run)
 		if e != nil {
 			return e
@@ -204,6 +211,11 @@ func (s *Service) prepare(ctx context.Context, meta CommandMeta, runID domain.Ru
 		}
 		if err := tx.InsertAttempt(ctx, attempt); err != nil {
 			return err
+		}
+		if synthesis != nil {
+			if e := tx.BindSynthesisAttempt(ctx, run.TaskID(), attempt.ID()); e != nil {
+				return e
+			}
 		}
 		if planning != nil {
 			bound, e := planning.BindAttempt(attempt.ID(), now)
@@ -390,6 +402,11 @@ func (s *Service) StartAttempt(ctx context.Context, request StartAttemptRequest)
 		attempt, err := tx.GetCurrentAttempt(ctx, request.RunID)
 		if err != nil {
 			return err
+		}
+		if synthesis, e := synthesisForRun(ctx, tx, run); e != nil {
+			return e
+		} else if synthesis != nil && (synthesis.AttemptID != attempt.ID() || attempt.Sequence() != 1) {
+			return ErrUnauthorizedCommand
 		}
 		if planning, e := planningForRun(ctx, tx, run); e != nil {
 			return e

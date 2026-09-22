@@ -19,7 +19,7 @@ func TestDelegationProposalMigrationRejectsUnledgeredTable(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if _, err = db.db.ExecContext(ctx, `DROP TABLE delegation_planning_intents; DELETE FROM schema_migrations WHERE version>=47`); err != nil {
+	if _, err = db.db.ExecContext(ctx, `DROP TRIGGER synthesis_no_charter_context; DROP TRIGGER synthesis_no_selected_context; DROP TRIGGER synthesis_no_excluded_context; DROP TABLE synthesis_run_charters; DROP TABLE synthesis_context_selections; DROP TABLE delegation_synthesis; DROP TABLE delegation_planning_intents; DELETE FROM schema_migrations WHERE version>=47`); err != nil {
 		t.Fatal(err)
 	}
 	if err = migrate(ctx, db.db); err == nil || !strings.Contains(err.Error(), "already exists") {

@@ -9,6 +9,7 @@ import (
 type CapabilityEnvelope map[string]bool
 
 type RunCharterParams struct {
+	SynthesisOnly                 bool
 	ModelBinding                  ModelBinding
 	ID                            CharterID
 	TaskID                        TaskID
@@ -29,6 +30,7 @@ type RunCharterParams struct {
 }
 
 type RunCharter struct {
+	synthesisOnly                 bool
 	modelBinding                  ModelBinding
 	id                            CharterID
 	taskID                        TaskID
@@ -49,11 +51,11 @@ type RunCharter struct {
 }
 
 func NewRunCharter(params RunCharterParams) (RunCharter, error) {
-	if !params.ID.Valid() || !params.TaskID.Valid() || strings.TrimSpace(params.TaskGoal) == "" || len(params.Criteria) == 0 || !validCriteria(params.Criteria) || len(params.ContextRevisionIDs) == 0 || !allContextRevisionIDsValid(params.ContextRevisionIDs) || !allContextRevisionIDsValid(params.ConfirmedSensitiveRevisionIDs) || !canonicalAbsolutePath(params.WorkspaceRoot) || strings.TrimSpace(params.AdapterID) == "" || strings.TrimSpace(params.SandboxMode) == "" || !allContextEntryIDsValid(params.SensitiveExclusions) || strings.TrimSpace(params.ExpectedOutput) == "" || strings.TrimSpace(params.ResponsibleHuman) == "" || len(params.CapabilityEnvelope) == 0 || !validAgentExecutionProfileBinding(params.AdapterID, params.AgentExecutionProfileBinding) || strings.TrimSpace(params.Initiator) == "" || params.CreatedAt.IsZero() {
+	if !params.ID.Valid() || !params.TaskID.Valid() || strings.TrimSpace(params.TaskGoal) == "" || len(params.Criteria) == 0 || !validCriteria(params.Criteria) || (!params.SynthesisOnly && len(params.ContextRevisionIDs) == 0) || (params.SynthesisOnly && (len(params.ContextRevisionIDs) != 0 || len(params.ConfirmedSensitiveRevisionIDs) != 0 || len(params.SensitiveExclusions) != 0)) || !allContextRevisionIDsValid(params.ContextRevisionIDs) || !allContextRevisionIDsValid(params.ConfirmedSensitiveRevisionIDs) || !canonicalAbsolutePath(params.WorkspaceRoot) || strings.TrimSpace(params.AdapterID) == "" || strings.TrimSpace(params.SandboxMode) == "" || !allContextEntryIDsValid(params.SensitiveExclusions) || strings.TrimSpace(params.ExpectedOutput) == "" || strings.TrimSpace(params.ResponsibleHuman) == "" || len(params.CapabilityEnvelope) == 0 || !validAgentExecutionProfileBinding(params.AdapterID, params.AgentExecutionProfileBinding) || strings.TrimSpace(params.Initiator) == "" || params.CreatedAt.IsZero() {
 		return RunCharter{}, fmt.Errorf("%w: invalid run charter", ErrInvalidArgument)
 	}
 	return RunCharter{
-		modelBinding: params.ModelBinding, id: params.ID, taskID: params.TaskID, taskGoal: params.TaskGoal, criteria: cloneCriteria(params.Criteria),
+		synthesisOnly: params.SynthesisOnly, modelBinding: params.ModelBinding, id: params.ID, taskID: params.TaskID, taskGoal: params.TaskGoal, criteria: cloneCriteria(params.Criteria),
 		contextRevisionIDs: append([]ContextRevisionID(nil), params.ContextRevisionIDs...), workspaceRoot: params.WorkspaceRoot,
 		confirmedSensitiveRevisionIDs: uniqueContextRevisionIDs(params.ConfirmedSensitiveRevisionIDs),
 		adapterID:                     params.AdapterID, sandboxMode: params.SandboxMode, sensitiveExclusions: append([]ContextEntryID(nil), params.SensitiveExclusions...),
@@ -61,6 +63,8 @@ func NewRunCharter(params RunCharterParams) (RunCharter, error) {
 		initiator: params.Initiator, createdAt: params.CreatedAt,
 	}, nil
 }
+
+func (charter RunCharter) SynthesisOnly() bool { return charter.synthesisOnly }
 
 func (charter RunCharter) ID() CharterID                   { return charter.id }
 func (charter RunCharter) TaskID() TaskID                  { return charter.taskID }

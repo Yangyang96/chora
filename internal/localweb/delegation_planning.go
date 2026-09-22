@@ -21,7 +21,9 @@ func (server *Server) startDelegationPlanning(w http.ResponseWriter, r *http.Req
 		writeProjectError(w, err)
 		return
 	}
-	var input struct{}
+	var input struct {
+		Synthesize bool `json:"synthesize"`
+	}
 	if err = decodeJSON(r, &input); err != nil {
 		writeError(w, 400, err)
 		return
@@ -30,7 +32,7 @@ func (server *Server) startDelegationPlanning(w http.ResponseWriter, r *http.Req
 	if !ok {
 		return
 	}
-	v, err := server.service.StartDelegationPlanning(r.Context(), app.StartDelegationPlanningRequest{CommandMeta: meta, ParentTaskID: id})
+	v, err := server.service.StartDelegationPlanning(r.Context(), app.StartDelegationPlanningRequest{Synthesize: input.Synthesize, CommandMeta: meta, ParentTaskID: id})
 	if err != nil {
 		writePlanningDelegationError(w, err)
 		return

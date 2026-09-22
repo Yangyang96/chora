@@ -257,11 +257,12 @@ type canonicalRetryDelta struct {
 }
 
 type canonicalSelectionManifest struct {
-	TaskID    string                   `json:"task_id"`
-	RoomID    string                   `json:"room_id"`
-	CreatedAt string                   `json:"created_at"`
-	Selected  []canonicalSelectionItem `json:"selected"`
-	Excluded  []canonicalSelectionItem `json:"excluded"`
+	SynthesisOnly bool                     `json:"synthesis_only,omitempty"`
+	TaskID        string                   `json:"task_id"`
+	RoomID        string                   `json:"room_id"`
+	CreatedAt     string                   `json:"created_at"`
+	Selected      []canonicalSelectionItem `json:"selected"`
+	Excluded      []canonicalSelectionItem `json:"excluded"`
 }
 
 type canonicalSelectionItem struct {
@@ -272,7 +273,7 @@ type canonicalSelectionItem struct {
 }
 
 func selectionMatches(selection domain.TaskRevisionSelection, canonical *canonicalSelectionManifest) bool {
-	if canonical == nil || canonical.TaskID != selection.TaskID().String() || canonical.RoomID != selection.RoomID().String() || canonical.CreatedAt != selection.CreatedAt().UTC().Format(time.RFC3339Nano) {
+	if canonical == nil || canonical.SynthesisOnly != selection.SynthesisOnly() || canonical.TaskID != selection.TaskID().String() || canonical.RoomID != selection.RoomID().String() || canonical.CreatedAt != selection.CreatedAt().UTC().Format(time.RFC3339Nano) {
 		return false
 	}
 	selected := selection.Selected()

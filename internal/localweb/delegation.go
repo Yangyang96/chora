@@ -50,6 +50,7 @@ func (server *Server) startDelegation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var input struct {
+		Synthesize           bool                          `json:"synthesize"`
 		Assignments          []domain.DelegationAssignment `json:"assignments"`
 		SourceAttemptID      string                        `json:"sourceAttemptId"`
 		ExpectedResultDigest string                        `json:"expectedResultDigest"`
@@ -70,7 +71,7 @@ func (server *Server) startDelegation(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	v, err := server.service.StartDelegation(r.Context(), app.StartDelegationRequest{CommandMeta: meta, ParentTaskID: id, Assignments: input.Assignments, SourceAttemptID: sourceAttempt, ExpectedResultDigest: input.ExpectedResultDigest})
+	v, err := server.service.StartDelegation(r.Context(), app.StartDelegationRequest{Synthesize: input.Synthesize, CommandMeta: meta, ParentTaskID: id, Assignments: input.Assignments, SourceAttemptID: sourceAttempt, ExpectedResultDigest: input.ExpectedResultDigest})
 	if err != nil {
 		if errors.Is(err, app.ErrReviewEvidenceUnavailable) {
 			writeError(w, http.StatusConflict, err)
@@ -235,6 +236,11 @@ func (server *Server) advanceDelegation(ctx context.Context, d domain.TaskDelega
 		}
 	}
 	if len(children) == len(d.Assignments) {
+		if item, e := server.store.Reader().GetDelegationSynthesis(ctx, d.ParentTaskID); e == nil {
+			return server.advanceDelegationSynthesis(ctx, d, item)
+		} else if !errors.Is(e, storecontract.ErrNotFound) {
+			return e
+		}
 		return server.setDelegationState(ctx, d, domain.DelegationAwaitingReview, "")
 	}
 	// Creation and parent linkage commit together. Deterministic command identity
@@ -377,6 +383,13 @@ func (server *Server) launchDelegationChild(ctx context.Context, d domain.TaskDe
 	return nil
 }
 func (server *Server) stopDelegationChildren(ctx context.Context, d domain.TaskDelegation, children []domain.DelegationChild) error {
+	if item, e := server.store.Reader().GetDelegationSynthesis(ctx, d.ParentTaskID); e == nil {
+		if item.TaskID.Valid() {
+			children = append(children, domain.DelegationChild{ParentTaskID: d.ParentTaskID, TaskID: item.TaskID, RunID: item.RunID, Position: -1})
+		}
+	} else if !errors.Is(e, storecontract.ErrNotFound) {
+		return e
+	}
 	for _, child := range children {
 		if !child.RunID.Valid() {
 			continue
@@ -398,6 +411,13 @@ func (server *Server) stopDelegationChildren(ctx context.Context, d domain.TaskD
 		case domain.RunStateVerificationRecoveryRequired:
 			return errors.New("child verification requires recovery before stop can be confirmed")
 		default:
+			if run.State() == domain.RunStateRecoveryRequired {
+				if e := server.service.CancelUnstartedDelegationChild(ctx, d.ParentTaskID, child.TaskID); e == nil {
+					continue
+				} else if !errors.Is(e, storecontract.ErrVersionConflict) {
+					return e
+				}
+			}
 			stopped, e := server.service.RequestCancel(ctx, app.StopRequest{CommandMeta: delegationMeta(d, fmt.Sprintf("stop-%s-%d", run.ID(), run.Version())), RunID: run.ID(), ExpectedVersion: run.Version(), Reason: "Parent delegation stopped", AllowRetry: false})
 			if e != nil {
 				return e

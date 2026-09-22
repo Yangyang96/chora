@@ -19,12 +19,13 @@ type DelegationPlanningView struct {
 	Reason  string                         `json:"reason,omitempty"`
 }
 type StartDelegationPlanningRequest struct {
+	Synthesize bool
 	CommandMeta
 	ParentTaskID domain.TaskID
 }
 
 func (s *Service) StartDelegationPlanning(ctx context.Context, req StartDelegationPlanningRequest) (DelegationView, error) {
-	_, err := s.CreateRun(ctx, CreateRunRequest{CommandMeta: req.CommandMeta, TaskID: req.ParentTaskID, delegationPlanning: true})
+	_, err := s.CreateRun(ctx, CreateRunRequest{CommandMeta: req.CommandMeta, TaskID: req.ParentTaskID, delegationPlanning: true, synthesize: req.Synthesize})
 	if err != nil {
 		return DelegationView{}, err
 	}

@@ -258,6 +258,11 @@ func (s *Service) CreateTask(ctx context.Context, request CreateTaskRequest) (Cr
 			if e != nil {
 				return e
 			}
+			if request.delegation.SynthesisInputs != nil {
+				if e = validateSynthesisInputs(ctx, tx, request.delegation.ParentTaskID, request.delegation.SynthesisInputs); e != nil {
+					return e
+				}
+			}
 			if d.State != domain.DelegationRunning {
 				return storecontract.ErrVersionConflict
 			}
@@ -376,7 +381,15 @@ func (s *Service) CreateTask(ctx context.Context, request CreateTaskRequest) (Cr
 		if err != nil {
 			return err
 		}
-		selection, err := buildTaskSelection(task, request.RevisionIDs, available, now)
+		var selection domain.TaskRevisionSelection
+		if request.delegation != nil && request.delegation.SynthesisInputs != nil {
+			if len(request.RevisionIDs) != 0 {
+				return fmt.Errorf("%w: synthesis cannot select context", ErrInvalidCommand)
+			}
+			selection, err = domain.NewSynthesisRevisionSelection(task.ID(), task.RoomID(), now)
+		} else {
+			selection, err = buildTaskSelection(task, request.RevisionIDs, available, now)
+		}
 		if err != nil {
 			return err
 		}
@@ -425,6 +438,11 @@ func (s *Service) CreateTask(ctx context.Context, request CreateTaskRequest) (Cr
 				return err
 			}
 		}
+		if request.delegation != nil && request.delegation.SynthesisInputs != nil {
+			if err := tx.BindSynthesisTask(ctx, request.delegation.ParentTaskID, task.ID(), request.delegation.SynthesisInputs); err != nil {
+				return err
+			}
+		}
 		if err := tx.InsertTaskRevisionSelection(ctx, selection); err != nil {
 			return err
 		}
@@ -454,7 +472,7 @@ func (s *Service) CreateTask(ctx context.Context, request CreateTaskRequest) (Cr
 				plannedWorktree = &binding
 			}
 		}
-		if request.delegation != nil {
+		if request.delegation != nil && request.delegation.SynthesisInputs == nil {
 			if err := tx.InsertDelegationChild(ctx, domain.DelegationChild{ParentTaskID: request.delegation.ParentTaskID, Position: request.delegation.Position, TaskID: task.ID(), CreatedAt: now}); err != nil {
 				return err
 			}
@@ -838,9 +856,15 @@ func (s *Service) CreateRun(ctx context.Context, request CreateRunRequest) (Crea
 		return CreateRunResult{}, err
 	}
 	now := s.deps.Clock.Now()
-	semantic := request.RevisionID.String()
+	var semantic any = request.RevisionID.String()
 	if request.delegationPlanning {
 		semantic = domain.DelegationProposalSchemaV1
+		if request.synthesize {
+			semantic = struct {
+				Schema     string
+				Synthesize bool
+			}{domain.DelegationProposalSchemaV1, true}
+		}
 	}
 	key, err := s.commandKey(request.CommandMeta, action, request.TaskID.String(), 0, semantic, now)
 	if err != nil {
@@ -947,6 +971,17 @@ func (s *Service) CreateRun(ctx context.Context, request CreateRunRequest) (Crea
 				return e
 			}
 		}
+		synthesis, synthesisErr := tx.GetSynthesisForTask(ctx, request.TaskID)
+		if synthesisErr == nil {
+			if synthesis.RunID.Valid() {
+				return storecontract.ErrVersionConflict
+			}
+			if e := tx.BindSynthesisRun(ctx, request.TaskID, run.ID()); e != nil {
+				return e
+			}
+		} else if !errors.Is(synthesisErr, storecontract.ErrNotFound) {
+			return synthesisErr
+		}
 		if _, childErr := tx.GetDelegationChild(ctx, request.TaskID); childErr == nil {
 			if err := tx.BindDelegationChildRun(ctx, request.TaskID, run.ID()); err != nil {
 				return err
@@ -958,7 +993,12 @@ func (s *Service) CreateRun(ctx context.Context, request CreateRunRequest) (Crea
 		if err := tx.InsertTechnicalPlanRunBinding(ctx, binding); err != nil {
 			return err
 		}
-		if charter.AdapterID() == "pi" && !request.delegationPlanning {
+		if request.delegationPlanning && request.synthesize {
+			if e := tx.InsertDelegationSynthesis(ctx, domain.DelegationSynthesis{ParentTaskID: request.TaskID, ActorID: request.ActorID, SessionID: request.SessionID, CreatedAt: now}); e != nil {
+				return e
+			}
+		}
+		if charter.AdapterID() == "pi" && !request.delegationPlanning && synthesisErr != nil {
 			payload := automaticRetryEvent{Type: automaticRetryEnabledEvent, RunID: run.ID().String(), MaxRetries: AutomaticRetryMaxRetries}
 			if _, err := tx.AppendRunEvent(ctx, run.ID(), storecontract.EventDraft{ID: s.deps.IDs.EventID(), Type: automaticRetryEnabledEvent, Source: "app", OccurredAt: now, RecordedAt: now, NormalizedJSON: responseBody(payload)}); err != nil {
 				return err

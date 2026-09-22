@@ -275,14 +275,16 @@ type RevisionExclusion struct {
 }
 
 type TaskRevisionSelection struct {
-	taskID    TaskID
-	roomID    RoomID
-	selected  []RevisionSelectionItem
-	excluded  []RevisionExclusion
-	createdAt time.Time
+	synthesisOnly bool
+	taskID        TaskID
+	roomID        RoomID
+	selected      []RevisionSelectionItem
+	excluded      []RevisionExclusion
+	createdAt     time.Time
 }
 
 type canonicalTaskRevisionSelection struct {
+	SynthesisOnly bool                         `json:"synthesis_only,omitempty"`
 	SchemaVersion string                       `json:"schema_version"`
 	TaskID        string                       `json:"task_id"`
 	RoomID        string                       `json:"room_id"`
@@ -328,6 +330,16 @@ func NewTaskRevisionSelection(taskID TaskID, roomID RoomID, selected []RevisionS
 	return TaskRevisionSelection{taskID: taskID, roomID: roomID, selected: append([]RevisionSelectionItem(nil), selected...), excluded: excludedCopy, createdAt: createdAt}, nil
 }
 
+// NewSynthesisRevisionSelection represents deliberately empty context for a
+// source-bound synthesis. Persistence must prove authorized synthesis lineage.
+func NewSynthesisRevisionSelection(taskID TaskID, roomID RoomID, createdAt time.Time) (TaskRevisionSelection, error) {
+	if !taskID.Valid() || !roomID.Valid() || createdAt.IsZero() {
+		return TaskRevisionSelection{}, fmt.Errorf("%w: invalid synthesis selection", ErrInvalidArgument)
+	}
+	return TaskRevisionSelection{taskID: taskID, roomID: roomID, createdAt: createdAt, synthesisOnly: true}, nil
+}
+func (selection TaskRevisionSelection) SynthesisOnly() bool { return selection.synthesisOnly }
+
 func validSelectionItem(item RevisionSelectionItem) bool {
 	return item.RevisionID.Valid() && item.Digest != ([32]byte{}) && item.Provenance.Valid()
 }
@@ -345,7 +357,7 @@ func (selection TaskRevisionSelection) CreatedAt() time.Time { return selection.
 // CanonicalJSON freezes the complete selection manifest used by technical plan
 // revisions. Slice order is significant because it is also the assembly order.
 func (selection TaskRevisionSelection) CanonicalJSON() []byte {
-	document := canonicalTaskRevisionSelection{
+	document := canonicalTaskRevisionSelection{SynthesisOnly: selection.synthesisOnly,
 		SchemaVersion: "chora.task-revision-selection/v1",
 		TaskID:        selection.taskID.String(), RoomID: selection.roomID.String(),
 		CreatedAt: selection.createdAt.UTC().Format(time.RFC3339Nano),

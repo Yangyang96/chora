@@ -230,6 +230,7 @@ type ReviewTechnicalPlanRevisionResult struct {
 
 type CreateRunRequest struct {
 	delegationPlanning bool
+	synthesize         bool
 	CommandMeta
 	TaskID     domain.TaskID
 	RevisionID domain.TechnicalPlanRevisionID

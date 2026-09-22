@@ -24,6 +24,7 @@ type DelegationChildView struct {
 	URL          string `json:"url,omitempty"`
 }
 type DelegationView struct {
+	Synthesis    *DelegationSynthesisView      `json:"synthesis,omitempty"`
 	Planning     *DelegationPlanningView       `json:"planning,omitempty"`
 	Source       *DelegationProposalSourceView `json:"source,omitempty"`
 	ParentTaskID string                        `json:"parentTaskId"`
@@ -36,6 +37,7 @@ type DelegationView struct {
 	Eligible     bool                          `json:"eligible"`
 }
 type StartDelegationRequest struct {
+	Synthesize bool
 	CommandMeta
 	ParentTaskID         domain.TaskID
 	Assignments          []domain.DelegationAssignment
@@ -64,12 +66,24 @@ func (s *Service) GetDelegation(ctx context.Context, id domain.TaskID) (Delegati
 	} else if !errors.Is(e, storecontract.ErrNotFound) {
 		return v, e
 	}
+	if item, e := r.GetSynthesisForTask(ctx, id); e == nil {
+		v.State = "child"
+		v.ParentTaskID = item.ParentTaskID.String()
+		v.ParentURL = fmt.Sprintf("/rooms/%s/tasks/%s", task.RoomID(), item.ParentTaskID)
+		return v, nil
+	} else if !errors.Is(e, storecontract.ErrNotFound) {
+		return v, e
+	}
 	_, _, eligibilityErr := delegationParent(ctx, r, id)
 	v.Eligible = eligibilityErr == nil
 	if p, e := r.GetDelegationPlanning(ctx, id); e == nil {
 		v.Planning = &DelegationPlanningView{State: p.State, Version: p.Version, RunID: p.RunID.String(), Reason: p.Reason}
 	} else if !errors.Is(e, storecontract.ErrNotFound) {
 		return v, e
+	}
+	v.Synthesis, err = s.synthesisView(ctx, r, id, task.RoomID())
+	if err != nil {
+		return v, err
 	}
 	d, err := r.GetTaskDelegation(ctx, id)
 	if errors.Is(err, storecontract.ErrNotFound) {
@@ -174,6 +188,12 @@ func delegationParent(ctx context.Context, r storecontract.Reader, id domain.Tas
 		}
 		return task, domain.TaskResourceSnapshot{}, fmt.Errorf("%w: recursive delegation is unavailable", ErrInvalidCommand)
 	}
+	if _, e := r.GetSynthesisForTask(ctx, id); !errors.Is(e, storecontract.ErrNotFound) {
+		if e != nil {
+			return task, domain.TaskResourceSnapshot{}, e
+		}
+		return task, domain.TaskResourceSnapshot{}, fmt.Errorf("%w: synthesis cannot delegate", ErrInvalidCommand)
+	}
 	record, err := r.GetTaskResourceSnapshot(ctx, id)
 	if err != nil {
 		return task, domain.TaskResourceSnapshot{}, err
@@ -219,6 +239,12 @@ func (s *Service) StartDelegation(ctx context.Context, req StartDelegationReques
 		}
 		semantic = struct{ SourceAttemptID, ExpectedResultDigest string }{req.SourceAttemptID.String(), req.ExpectedResultDigest}
 	}
+	if req.Synthesize {
+		semantic = struct {
+			Request    any
+			Synthesize bool
+		}{semantic, true}
+	}
 	key, err := s.commandKey(req.CommandMeta, "start_delegation", req.ParentTaskID.String(), 0, semantic, now)
 	if err != nil {
 		return DelegationView{}, err
@@ -263,6 +289,11 @@ func (s *Service) StartDelegation(ctx context.Context, req StartDelegationReques
 		d := domain.TaskDelegation{ParentTaskID: req.ParentTaskID, Version: 1, State: domain.DelegationRunning, Assignments: assignments, ActorID: req.ActorID, SessionID: req.SessionID, CreatedAt: now, UpdatedAt: now}
 		if e = tx.InsertTaskDelegation(ctx, d); e != nil {
 			return e
+		}
+		if req.Synthesize {
+			if e = tx.InsertDelegationSynthesis(ctx, domain.DelegationSynthesis{ParentTaskID: req.ParentTaskID, ActorID: req.ActorID, SessionID: req.SessionID, CreatedAt: now}); e != nil {
+				return e
+			}
 		}
 		if sourceMode {
 			if e = tx.InsertDelegationProposalSource(ctx, source); e != nil {
@@ -326,9 +357,10 @@ func (s *Service) ChangeDelegation(ctx context.Context, req ChangeDelegationRequ
 // Only this service-owned path can attach child lineage and frozen settings.
 // HTTP Task creation never accepts these fields.
 type delegatedTaskCreation struct {
-	ParentTaskID domain.TaskID
-	Position     int
-	Settings     domain.TaskExecutionSettings
+	SynthesisInputs []domain.DelegationSynthesisInput
+	ParentTaskID    domain.TaskID
+	Position        int
+	Settings        domain.TaskExecutionSettings
 }
 
 func (s *Service) CreateDelegationChild(ctx context.Context, parentID domain.TaskID, position int) (CreateTaskResult, error) {
@@ -370,7 +402,12 @@ func (s *Service) CreateDelegationChild(ctx context.Context, parentID domain.Tas
 func (s *Service) ValidateDelegatedPlan(ctx context.Context, taskID domain.TaskID, revisionID domain.TechnicalPlanRevisionID) error {
 	r := s.deps.Store.Reader()
 	if _, err := r.GetDelegationChild(ctx, taskID); err != nil {
-		return err
+		if !errors.Is(err, storecontract.ErrNotFound) {
+			return err
+		}
+		if _, err = r.GetSynthesisForTask(ctx, taskID); err != nil {
+			return err
+		}
 	}
 	intent, err := s.restoreRealSpecCodingIntent(ctx, r, taskID)
 	if err != nil {
@@ -391,7 +428,13 @@ func (s *Service) ValidateDelegatedPlan(ctx context.Context, taskID domain.TaskI
 // from missing in-memory supervisor state.
 func (s *Service) CancelUnstartedDelegationChild(ctx context.Context, parentID, taskID domain.TaskID) error {
 	child, err := s.deps.Store.Reader().GetDelegationChild(ctx, taskID)
-	if err != nil {
+	if errors.Is(err, storecontract.ErrNotFound) {
+		item, e := s.deps.Store.Reader().GetSynthesisForTask(ctx, taskID)
+		if e != nil {
+			return e
+		}
+		child = domain.DelegationChild{ParentTaskID: item.ParentTaskID, TaskID: item.TaskID, RunID: item.RunID}
+	} else if err != nil {
 		return err
 	}
 	if child.ParentTaskID != parentID || !child.RunID.Valid() {
@@ -424,7 +467,7 @@ func (s *Service) cancelUnstartedDelegationRun(ctx context.Context, runID domain
 		if e != nil {
 			return e
 		}
-		if planning && run.State() == domain.RunStateRecoveryRequired {
+		if run.State() == domain.RunStateRecoveryRequired {
 			attempt, e := tx.GetCurrentAttempt(ctx, run.ID())
 			if e != nil {
 				return e
@@ -443,7 +486,7 @@ func (s *Service) cancelUnstartedDelegationRun(ctx context.Context, runID domain
 			if e = tx.SaveRunCAS(ctx, run.Version(), next); e != nil {
 				return e
 			}
-			_, e = tx.AppendRunEvent(ctx, run.ID(), storecontract.EventDraft{ID: s.deps.IDs.EventID(), Type: "run.cancelled", Source: "app", OccurredAt: s.deps.Clock.Now(), RecordedAt: s.deps.Clock.Now(), NormalizedJSON: responseBody(map[string]any{"type": "run.cancelled", "run_id": run.ID().String(), "attempt_id": attempt.ID().String(), "reason": "Planning delegation stopped after runtime finalization", "retry_allowed": false})})
+			_, e = tx.AppendRunEvent(ctx, run.ID(), storecontract.EventDraft{ID: s.deps.IDs.EventID(), Type: "run.cancelled", Source: "app", OccurredAt: s.deps.Clock.Now(), RecordedAt: s.deps.Clock.Now(), NormalizedJSON: responseBody(map[string]any{"type": "run.cancelled", "run_id": run.ID().String(), "attempt_id": attempt.ID().String(), "reason": "Delegation stopped after runtime finalization", "retry_allowed": false})})
 			return e
 		}
 		if run.State() != domain.RunStateDraft && run.State() != domain.RunStateReady {

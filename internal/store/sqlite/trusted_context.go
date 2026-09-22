@@ -265,6 +265,13 @@ func (tx *writeTx) InsertTaskRevisionSelection(ctx context.Context, selection do
 	if err := tx.requireActiveRoomForTask(ctx, selection.TaskID()); err != nil {
 		return err
 	}
+	if selection.SynthesisOnly() {
+		if len(selection.Selected()) != 0 || len(selection.Excluded()) != 0 {
+			return storecontract.ErrVersionConflict
+		}
+		_, err := tx.tx.ExecContext(ctx, `INSERT INTO synthesis_context_selections(task_id,room_id,created_at) VALUES(?,?,?)`, selection.TaskID().String(), selection.RoomID().String(), timeText(selection.CreatedAt()))
+		return mapWriteError(err)
+	}
 	for position, item := range selection.Selected() {
 		provenance, err := json.Marshal(item.Provenance)
 		if err != nil {
@@ -330,7 +337,22 @@ func (reader *reader) GetTaskRevisionSelection(ctx context.Context, taskID domai
 		return domain.TaskRevisionSelection{}, err
 	}
 	if len(selected) == 0 {
-		return domain.TaskRevisionSelection{}, storecontract.ErrNotFound
+		err := reader.q.QueryRowContext(ctx, `SELECT room_id,created_at FROM synthesis_context_selections WHERE task_id=?`, taskID.String()).Scan(&roomText, &created)
+		if errors.Is(err, sql.ErrNoRows) {
+			return domain.TaskRevisionSelection{}, storecontract.ErrNotFound
+		}
+		if err != nil {
+			return domain.TaskRevisionSelection{}, err
+		}
+		roomID, err := domain.ParseRoomID(roomText)
+		if err != nil {
+			return domain.TaskRevisionSelection{}, err
+		}
+		at, err := parseTime(created)
+		if err != nil {
+			return domain.TaskRevisionSelection{}, err
+		}
+		return domain.NewSynthesisRevisionSelection(taskID, roomID, at)
 	}
 	exRows, err := reader.q.QueryContext(ctx, `SELECT room_id,revision_id,digest,provenance_json,reason,selected_at FROM task_revision_exclusions WHERE task_id=? ORDER BY position`, taskID.String())
 	if err != nil {

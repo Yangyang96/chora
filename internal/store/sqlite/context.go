@@ -206,9 +206,10 @@ func (reader *reader) loadSnapshotSelection(ctx context.Context, snapshotID stri
 	var envelope struct {
 		SchemaVersion string `json:"schema_version"`
 		Selection     *struct {
-			TaskID    string `json:"task_id"`
-			RoomID    string `json:"room_id"`
-			CreatedAt string `json:"created_at"`
+			SynthesisOnly bool   `json:"synthesis_only"`
+			TaskID        string `json:"task_id"`
+			RoomID        string `json:"room_id"`
+			CreatedAt     string `json:"created_at"`
 		} `json:"selection"`
 	}
 	if err := json.Unmarshal(canonical, &envelope); err != nil {
@@ -257,6 +258,22 @@ func (reader *reader) loadSnapshotSelection(ctx context.Context, snapshotID stri
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
+	}
+	if envelope.Selection.SynthesisOnly {
+		if len(selected) != 0 || len(excluded) != 0 {
+			return nil, errors.New("non-empty synthesis context")
+		}
+		if err := rows.Close(); err != nil {
+			return nil, err
+		}
+		frozen, err := reader.GetTaskRevisionSelection(ctx, taskID)
+		if err != nil {
+			return nil, err
+		}
+		if !frozen.SynthesisOnly() || frozen.RoomID() != roomID || !frozen.CreatedAt().Equal(createdAt) {
+			return nil, errors.New("synthesis context lineage mismatch")
+		}
+		return &frozen, nil
 	}
 	selection, err := domain.NewTaskRevisionSelection(taskID, roomID, selected, excluded, createdAt)
 	if err != nil {

@@ -151,7 +151,7 @@ func TestV38DeliveryCleanupUpgradePreservesPendingAndTerminalIntents(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = raw.Exec(`DROP TABLE delegation_planning_intents; DROP TABLE delegation_proposal_sources; DROP TABLE task_delegation_children; DROP TABLE task_delegations; DROP TABLE task_execution_settings; DROP TABLE project_execution_settings; DROP TABLE result_closures; CREATE TEMP TABLE retained AS SELECT * FROM task_delivery_operations; DROP TABLE task_delivery_operations;` + string(old) + `; INSERT INTO task_delivery_operations SELECT * FROM retained; DELETE FROM schema_migrations WHERE version>=39;`); err != nil {
+	if _, err = raw.Exec(`DROP TRIGGER synthesis_no_charter_context; DROP TRIGGER synthesis_no_selected_context; DROP TRIGGER synthesis_no_excluded_context; DROP TABLE synthesis_run_charters; DROP TABLE synthesis_context_selections; DROP TABLE delegation_synthesis; DROP TABLE delegation_planning_intents; DROP TABLE delegation_proposal_sources; DROP TABLE task_delegation_children; DROP TABLE task_delegations; DROP TABLE task_execution_settings; DROP TABLE project_execution_settings; DROP TABLE result_closures; CREATE TEMP TABLE retained AS SELECT * FROM task_delivery_operations; DROP TABLE task_delivery_operations;` + string(old) + `; INSERT INTO task_delivery_operations SELECT * FROM retained; DELETE FROM schema_migrations WHERE version>=39;`); err != nil {
 		t.Fatal(err)
 	}
 	raw.Close()
