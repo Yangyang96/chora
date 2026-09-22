@@ -2000,10 +2000,12 @@
 /* Choice controls stay beside their labels inside the nested Task form. */
 .task-resources { display: grid; gap: 12px; min-width: 0; }
 .task-resource-card { padding: 18px; gap: 16px; min-width: 0; max-width: none; }
+.panel label.task-choice,
 .task-resource-card label:has(> input:is([type='checkbox'], [type='radio'])) {
   flex-direction: row; align-items: flex-start; gap: 8px; line-height: 20px; min-width: 0;
   font-weight: 400;
 }
+.panel .task-choice > input[type='checkbox'],
 .task-resource-card input:is([type='checkbox'], [type='radio']) {
   flex: 0 0 auto; width: 16px; height: 16px; margin: 2px 0 0; padding: 0;
 }

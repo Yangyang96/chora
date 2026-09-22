@@ -105,7 +105,7 @@ export function NewTask({ projectId, roomId, roomName, busy, preparationPending 
         {t(suppliedOnly ? 'What should Chora investigate or document?' : 'What should Chora build?')}
         <textarea value={requirement} onChange={(event) => setRequirement(event.target.value)} placeholder={t('Describe the requirement…')} autoFocus required />
       </label>
-      {projectId && roomId && <label><input type="checkbox" checked={suppliedOnly} disabled={busy} onChange={(event) => { setSuppliedOnly(event.target.checked); setResources(undefined); setResourceBlocker('') }} />{t('Work with supplied material only')}</label>}
+      {projectId && roomId && <label className="task-choice"><input type="checkbox" checked={suppliedOnly} disabled={busy} onChange={(event) => { setSuppliedOnly(event.target.checked); setResources(undefined); setResourceBlocker('') }} />{t('Work with supplied material only')}</label>}
       {projectId && roomId && <TaskMaterials roomId={roomId} enabled={suppliedOnly} busy={busy} onMaterialsChange={setMaterials} onRevisionIdsChange={setRevisionIds} onBlockedChange={setMaterialBlocker} />}
       {projectId && roomId
         ? !suppliedOnly && <TaskResources projectId={projectId} roomId={roomId} busy={busy} onReady={setResources} onBlockedChange={setResourceBlocker} />
@@ -113,7 +113,7 @@ export function NewTask({ projectId, roomId, roomName, busy, preparationPending 
       {projectId && executionError && <p role="alert" className="error-banner">{executionError}</p>}
       {projectId && projectExecution && <div className="section-note">
         <strong>{t('Effective execution')}</strong>: {agentExecutionProfile === 'trusted_local' ? t('Local execution · No Sandbox') : t('Isolated execution')} · {modelIdentity ? `${modelIdentity.provider} · ${modelIdentity.modelId}` : t('runtime default')} · {overrideExecution ? t('task override') : t('Project defaults')}
-        <label><input type="checkbox" checked={overrideExecution} onChange={(event) => { const checked = event.target.checked; setOverrideExecution(checked); setSelectedProfile(undefined); setModelIdentity(projectExecution.model); setModelValid(projectExecution.model === null) }} />{t('Override Project defaults for this task')}</label>
+        <label className="task-choice"><input type="checkbox" checked={overrideExecution} onChange={(event) => { const checked = event.target.checked; setOverrideExecution(checked); setSelectedProfile(undefined); setModelIdentity(projectExecution.model); setModelValid(projectExecution.model === null) }} />{t('Override Project defaults for this task')}</label>
       </div>}
       <AgentExecutionProfileSelector
         value={agentExecutionProfile}
