@@ -336,6 +336,12 @@ func TestSynthesisReviewRejectionPreservesRawSourceIdentity(t *testing.T) {
 			if err != nil || rejected.State() != domain.RunStateRevisionRequired {
 				t.Fatalf("normal review did not reject Run: %v %v", rejected.State(), err)
 			}
+			var rejectedView runView
+			requestJSON(t, server.Handler(), http.MethodGet, "/api/runs/"+runID.String(), nil, 200, &rejectedView)
+			wantRetry := target == "child"
+			if rejectedView.Controls.CanRetry != wantRetry || rejectedView.Controls.CanSwitchAgentExecutionProfile != wantRetry {
+				t.Fatalf("review retry controls changed authority: target=%s controls=%#v", target, rejectedView.Controls)
+			}
 			after := planningView(t, server, parent.ID)
 			if after.State != "needs_attention" || after.Synthesis == nil || !after.Synthesis.Current || after.Synthesis.ResultID != before.Synthesis.ResultID || after.Synthesis.Markdown != before.Synthesis.Markdown {
 				t.Fatalf("review changed raw source projection: %#v", after)

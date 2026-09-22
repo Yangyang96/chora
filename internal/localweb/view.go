@@ -1876,6 +1876,24 @@ func (server *Server) runView(ctx context.Context, runID domain.RunID) (runView,
 		view.Controls.CanRetry = false
 		view.Controls.CanSwitchAgentExecutionProfile = false
 	}
+	// Bound planning and synthesis Runs have a one-Attempt authorization.
+	// Apply this after generic recovery/review controls so they cannot advertise
+	// a retry or profile switch that the application must reject.
+	oneShot := false
+	if planning, err := server.store.Reader().GetDelegationPlanning(ctx, run.TaskID()); err == nil {
+		oneShot = planning.RunID == run.ID()
+	} else if !errors.Is(err, storecontract.ErrNotFound) {
+		return runView{}, err
+	}
+	if synthesis, err := server.store.Reader().GetSynthesisForTask(ctx, run.TaskID()); err == nil {
+		oneShot = oneShot || synthesis.RunID == run.ID()
+	} else if !errors.Is(err, storecontract.ErrNotFound) {
+		return runView{}, err
+	}
+	if oneShot {
+		view.Controls.CanRetry = false
+		view.Controls.CanSwitchAgentExecutionProfile = false
+	}
 	return view, nil
 }
 

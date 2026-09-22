@@ -308,7 +308,10 @@ func TestPlanningDelegationFailedAttemptNeverRetriesAndCanStop(t *testing.T) {
 	if err := runtime.Exit(); err != nil {
 		t.Fatal(err)
 	}
-	waitForRunState(t, server.Handler(), view.Planning.RunID, "recovery_required")
+	failed := waitForRunState(t, server.Handler(), view.Planning.RunID, "recovery_required")
+	if failed.Controls.CanRetry || failed.Controls.CanSwitchAgentExecutionProfile {
+		t.Fatalf("one-shot planner exposes retry controls: %#v", failed.Controls)
+	}
 	server.dispatchAutomaticRetries(ctx)
 	view = planningView(t, server, parent.ID)
 	if view.Planning.State != domain.DelegationPlanningBlocked {
