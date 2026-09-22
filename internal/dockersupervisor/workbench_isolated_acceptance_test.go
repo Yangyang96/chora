@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -141,7 +142,15 @@ func TestRealWorkbenchCancelIsolationAndZeroResidue(t *testing.T) {
 		if mount.Type == "volume" && mount.Name == record.workspaceVolume && mount.Destination == "/workspace" && mount.RW {
 			continue
 		}
-		if mount.Type != "bind" || mount.RW || !pathWithin(record.root, mount.Source) {
+		withinRoot := pathWithin(record.root, mount.Source)
+		if runtime.GOOS == "darwin" {
+			canonicalRoot, err := filepath.EvalSymlinks(record.root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			withinRoot = withinRoot || pathWithin(canonicalRoot, mount.Source) || pathWithin("/host_mnt"+canonicalRoot, mount.Source)
+		}
+		if mount.Type != "bind" || mount.RW || !withinRoot {
 			t.Fatalf("unsafe mount: %#v", mount)
 		}
 	}

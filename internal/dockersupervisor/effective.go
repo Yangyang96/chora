@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -317,7 +318,16 @@ func exactMounts(container effectiveContainer, expected map[string]effectiveMoun
 		if mount.Type == "volume" {
 			actualSource = mount.Name
 		}
-		if !ok || mount.Type != wantType || filepath.Clean(actualSource) != want.Source || mount.RW != want.RW {
+		sourceMatches := filepath.Clean(actualSource) == want.Source
+		if mount.Type == "bind" && wantType == "bind" && !sourceMatches && runtime.GOOS == "darwin" {
+			// Docker Desktop may report the VM file-sharing path after start.
+			// Resolve only the trusted host source; never strip arbitrary prefixes
+			// or resolve the daemon-reported path on the host.
+			canonical, err := filepath.EvalSymlinks(want.Source)
+			sourceMatches = err == nil && filepath.IsAbs(canonical) &&
+				(filepath.Clean(actualSource) == canonical || filepath.Clean(actualSource) == "/host_mnt"+canonical)
+		}
+		if !ok || mount.Type != wantType || !sourceMatches || mount.RW != want.RW {
 			return false
 		}
 	}
