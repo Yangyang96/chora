@@ -268,10 +268,13 @@ research/document assignments. Children inherit frozen parent input and executio
 settings, execute sequentially, and retain normal Task/Run/result identities.
 The parent collects sourced results for human review; no result is automatically
 accepted and no SCM delivery is authorized. Stop, restart and duplicate-command
-handling are part of this slice. Implementation and qualification are in progress.
+handling are part of this slice. A follow-on source-bound proposal import lets the
+parent Agent suggest fixed assignments; explicit start revalidates the current
+result and freezes its provenance without accepting it. Implementation and
+qualification are in progress.
 
 This is a bounded starting point within M3. Multi-human membership/revocation,
-Agent-selected decomposition, parallel execution and coding integration are not
+single-start automatic planning, parallel execution and coding integration are not
 claimed complete. M4 remains demand-gated.
 
 ## Later outcomes and demand gates

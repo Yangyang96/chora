@@ -9,6 +9,17 @@ type I18n = { locale: Locale; setLocale: (locale: Locale) => void; t: (english: 
 const storageKey = 'chora.locale'
 
 const zhCN: Record<string, string> = {
+  "Define assignments manually": "手动定义分工",
+  "Agent-proposed plan": "Agent 建议的分工计划",
+  "Load fixed assignments from this Task’s latest completed Agent result. Loading a plan does not start work or accept the result.": "从本任务最新完成的 Agent 结果中读取固定分工。读取计划不会启动执行，也不会接受结果。",
+  "Load Agent plan": "读取 Agent 计划",
+  "No valid Agent plan is available in the current result.": "当前结果中没有可用的 Agent 分工计划。",
+  "Starting authorizes these fixed assignments with the parent’s frozen material and settings. Final result acceptance remains yours.": "启动后，这些固定分工将使用父任务冻结的材料和设置执行。最终结果仍由你验收。",
+  "Start proposed delegation": "按此计划启动委派",
+  "The parent result has changed. This delegation keeps its original plan and source.": "父任务结果已变化。本次委派仍保留原先的计划和来源。",
+  "Plan source": "计划来源",
+  "Plan digest": "计划摘要",
+
   "Delegated finding": "委派研究结果",
   "Agent delegation": "Agent 委派",
   "Open parent task": "打开父任务",

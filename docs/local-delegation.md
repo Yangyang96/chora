@@ -31,6 +31,40 @@ automatic retries after its initial Attempt. Children cannot delegate again.
 Starting additional independent delegations is a separate user action; this is
 not a machine-wide concurrency or token-spending budget.
 
+## Use a plan proposed by the parent Agent
+
+A research Agent can propose the assignments instead of requiring you to type
+all of them. Ask the parent Task to include exactly one standalone block with
+this format in its complete final Markdown result:
+
+````text
+```chora-delegation-plan
+{"schemaVersion":"chora.delegation-plan.v1","assignments":[{"role":"Researcher","title":"Compare options","requirement":"Compare the supplied options; cite sources and mark unknowns."}]}
+```
+````
+
+While that parent Task is still open, choose **Load Agent plan**. Review the
+assignments and **Plan source**, then choose **Start proposed delegation** to
+explicitly authorize execution. Loading or generating a proposal never starts
+children, saves an accepted document, or constitutes human result acceptance.
+This is a proposal-and-start workflow; a single parent launch does not yet
+implicitly authorize automatic planning followed by child execution.
+
+The server imports only the latest Run's current, review-ready document result.
+It checks the complete assistant event, Agent report, result and text digests,
+and rejects a stale source at start. The plan must contain one to four distinct
+roles and fit within 32 KiB. Unknown fields, duplicate JSON keys, multiple plan
+blocks, trailing JSON and invalid text are rejected. The format cannot select
+resources, execution environments, models, credentials or further delegation.
+Invalid proposals create no children and trigger no automatic repair or replanning.
+
+Starting freezes the source Run, Attempt, result, report and assistant event,
+along with result, text and plan digests. The browser sends the source identity
+and expected result digest; the server reloads and validates the assignments.
+Later parent retries or result changes do not replace the imported plan, and the
+collection shows when its source is no longer current. Stop and restart retain
+the original frozen plan and the same child execution limits.
+
 ## Results and review
 
 The parent shows each child's current state and a link to its normal execution
@@ -65,7 +99,7 @@ a new delegation.
 ## Current boundary
 
 This is the first local M3 slice, not complete team collaboration. Multi-human
-identity/membership/revocation, Agent-selected plans, recursive delegation,
+identity/membership/revocation, single-start automatic planning, recursive delegation,
 parallel child execution, coding assignments and code integration remain future
 work. Remote placement, a general background queue, notifications and token/cost
 budgets remain demand-gated M4 work. The existing service owns these local Runs;

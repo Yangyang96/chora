@@ -3,10 +3,13 @@ import { api, commandKey } from '../api'
 import { useI18n } from '../i18n'
 
 type Assignment = { role: string; title: string; requirement: string }
+type ProposalSource = { runId: string; attemptId: string; resultId: string; resultDigest: string; planDigest: string; current: boolean }
+type Proposal = { available: boolean; reason?: string; assignments: Assignment[]; source?: ProposalSource }
 type Delegation = {
   parentTaskId: string; version: number; state: string; reason?: string; eligible: boolean; parentUrl?: string
   assignments: Assignment[]
   children: { position: number; role: string; title: string; taskId?: string; runId?: string; state: string; url?: string; resultId?: string; resultDigest?: string; markdown?: string }[]
+  source?: ProposalSource
 }
 
 export function TaskDelegation({ taskId, onNavigate }: { taskId: string; onNavigate: (url: string) => void }) {
@@ -14,10 +17,16 @@ export function TaskDelegation({ taskId, onNavigate }: { taskId: string; onNavig
   const [view, setView] = useState<Delegation | null>(null)
   const [assignments, setAssignments] = useState<Assignment[]>([{ role: '', title: '', requirement: '' }])
   const [error, setError] = useState('')
+  const [loadError, setLoadError] = useState('')
+  const [proposal, setProposal] = useState<Proposal | null>(null)
+  const [proposalLoading, setProposalLoading] = useState(false)
+  const [proposalError, setProposalError] = useState('')
+  const proposalRequest = useRef<AbortController | null>(null)
   const [busy, setBusy] = useState(false)
   const [refresh, setRefresh] = useState(0)
   const epoch = useRef(0)
   const endpoint = `/api/tasks/${encodeURIComponent(taskId)}/delegation`
+  useEffect(() => () => proposalRequest.current?.abort(), [endpoint])
   useEffect(() => {
     const controller = new AbortController()
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -25,9 +34,9 @@ export function TaskDelegation({ taskId, onNavigate }: { taskId: string; onNavig
     async function load() {
       try {
         const next = await api<Delegation>(endpoint, { signal: controller.signal })
-        if (!controller.signal.aborted && generation === epoch.current) { setView(next); setError('') }
+        if (!controller.signal.aborted && generation === epoch.current) { setView(next); setLoadError('') }
       } catch (e) {
-        if (!controller.signal.aborted && generation === epoch.current) setError(e instanceof Error ? e.message : String(e))
+        if (!controller.signal.aborted && generation === epoch.current) setLoadError(e instanceof Error ? e.message : String(e))
       } finally {
         if (!controller.signal.aborted && generation === epoch.current) timer = setTimeout(() => void load(), 2000)
       }
@@ -36,13 +45,30 @@ export function TaskDelegation({ taskId, onNavigate }: { taskId: string; onNavig
     return () => { controller.abort(); clearTimeout(timer); ++epoch.current }
   }, [endpoint, refresh, busy])
 
-  async function mutate(action: 'start' | 'stop' | 'resume') {
+  async function loadProposal() {
+    proposalRequest.current?.abort()
+    const controller = new AbortController()
+    proposalRequest.current = controller
+    setProposal(null); setProposalLoading(true); setProposalError(''); setError('')
+    try {
+      const next = await api<Proposal>(`${endpoint}/proposal`, { signal: controller.signal })
+      if (!controller.signal.aborted) setProposal(next)
+    } catch (e) {
+      if (!controller.signal.aborted) setProposalError(e instanceof Error ? e.message : String(e))
+    } finally {
+      if (!controller.signal.aborted) setProposalLoading(false)
+    }
+  }
+  async function mutate(action: 'start' | 'start_proposal' | 'stop' | 'resume') {
+    if (action === 'start_proposal' && (!proposal?.available || !proposal.source?.current)) return
+    proposalRequest.current?.abort()
+    setProposalLoading(false)
     ++epoch.current
     setBusy(true); setError('')
     try {
-      const next = await api<Delegation>(action === 'start' ? endpoint : `${endpoint}/${action}`, {
+      const next = await api<Delegation>(action === 'start' || action === 'start_proposal' ? endpoint : `${endpoint}/${action}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': commandKey(`delegation-${action}`) },
-        body: JSON.stringify(action === 'start' ? { assignments } : { expectedVersion: view?.version }),
+        body: JSON.stringify(action === 'start' ? { assignments } : action === 'start_proposal' ? { sourceAttemptId: proposal!.source!.attemptId, expectedResultDigest: proposal!.source!.resultDigest } : { expectedVersion: view?.version }),
       })
       setView(next)
     } catch (e) { setError(e instanceof Error ? e.message : String(e)) }
@@ -57,9 +83,25 @@ export function TaskDelegation({ taskId, onNavigate }: { taskId: string; onNavig
   return <section className="panel" aria-label={t('Agent delegation')}>
     <h2>{t('Agent delegation')}</h2>
     <p>{t('Define up to four research assignments. Start authorizes sequential Agent execution with this task’s frozen material and settings. You review each result; nothing is accepted or delivered automatically.')}</p>
-    {error && <p role="alert">{error}</p>}
+    {(error || loadError) && <p role="alert">{error || loadError}</p>}
     {!view && <p role="status">{t('Loading…')}</p>}
-    {view?.state === 'not_started' && <form onSubmit={event => { event.preventDefault(); if (valid && !busy) void mutate('start') }}>
+    {view?.state === 'not_started' && <>
+      <section aria-label={t('Agent-proposed plan')}>
+        <h3>{t('Agent-proposed plan')}</h3>
+        <p>{t('Load fixed assignments from this Task’s latest completed Agent result. Loading a plan does not start work or accept the result.')}</p>
+        <button type="button" disabled={busy || proposalLoading} onClick={() => void loadProposal()}>{t('Load Agent plan')}</button>
+        {proposalLoading && <p role="status">{t('Loading…')}</p>}
+        {proposalError && <p role="alert">{proposalError}</p>}
+        {proposal && !proposal.available && <p role="status">{proposal.reason || t('No valid Agent plan is available in the current result.')}</p>}
+        {proposal?.available && proposal.source && <>
+          <ol>{proposal.assignments.map((assignment, index) => <li key={index}><strong>{assignment.role}</strong> · {assignment.title}<p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{assignment.requirement}</p></li>)}</ol>
+          <PlanSource source={proposal.source} />
+          <p>{t('Starting authorizes these fixed assignments with the parent’s frozen material and settings. Final result acceptance remains yours.')}</p>
+          <button type="button" className="btn-primary" disabled={busy || proposalLoading || !proposal.source.current} onClick={() => void mutate('start_proposal')}>{t('Start proposed delegation')}</button>
+        </>}
+      </section>
+      <h3>{t('Define assignments manually')}</h3>
+      <form onSubmit={event => { event.preventDefault(); if (valid && !busy) void mutate('start') }}>
       {assignments.map((assignment, index) => <fieldset key={index} disabled={busy}>
         <legend>{t('Assignment')} {index + 1}</legend>
         <label>{t('Agent role')}<input aria-label={`${t('Agent role')} ${index + 1}`} value={assignment.role} maxLength={80} required onChange={e => edit(index, 'role', e.target.value)} /></label>
@@ -71,10 +113,11 @@ export function TaskDelegation({ taskId, onNavigate }: { taskId: string; onNavig
         <button type="button" disabled={busy || assignments.length >= 4} onClick={() => setAssignments(items => [...items, { role: '', title: '', requirement: '' }])}>{t('Add assignment')}</button>
         <button type="submit" className="btn-primary" disabled={busy || !valid}>{t('Start delegation')}</button>
       </div>
-    </form>}
+    </form></>}
     {view && view.state !== 'not_started' && <>
       <p role="status">{t('Delegation status')}: {t(view.state)}</p>
       {view.reason && <p>{view.reason}</p>}
+      {view.source && <><PlanSource source={view.source} />{!view.source.current && <p role="status">{t('The parent result has changed. This delegation keeps its original plan and source.')}</p>}</>}
       <ol>{view.children.map(child => <li key={child.position}>
         <strong>{child.role}</strong> · {child.title} · {t(child.state)}{' '}
         {child.url && <button type="button" onClick={() => onNavigate(child.url!)}>{t('Open child task')}</button>}
@@ -85,4 +128,13 @@ export function TaskDelegation({ taskId, onNavigate }: { taskId: string; onNavig
       {view.state === 'blocked' && view.eligible && <button type="button" disabled={busy} onClick={() => void mutate('resume')}>{t('Resume delegation')}</button>}
     </>}
   </section>
+}
+
+function PlanSource({ source }: { source: ProposalSource }) {
+  const { t } = useI18n()
+  return <details><summary>{t('Plan source')}</summary><dl style={{ overflowWrap: 'anywhere' }}>
+    <dt>{t('Source result')}</dt><dd>{source.resultId}</dd>
+    <dt>{t('Result digest')}</dt><dd>{source.resultDigest}</dd>
+    <dt>{t('Plan digest')}</dt><dd>{source.planDigest}</dd>
+  </dl></details>
 }
