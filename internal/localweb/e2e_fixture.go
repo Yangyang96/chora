@@ -36,8 +36,8 @@ func decodeStartRunInput(request *http.Request) (startRunInput, error) {
 	if err := decodeOptionalJSON(request, &input); err != nil {
 		return startRunInput{}, err
 	}
-	if input.PatchFixture != "" && input.PatchFixture != "g2-m3-authoritative" && input.PatchFixture != "project-document" {
-		return startRunInput{}, errors.New("patchFixture must be g2-m3-authoritative or project-document")
+	if input.PatchFixture != "" && input.PatchFixture != "g2-m3-authoritative" && input.PatchFixture != "project-document" && input.PatchFixture != "delegation-plan" {
+		return startRunInput{}, errors.New("patchFixture must be g2-m3-authoritative, project-document or delegation-plan")
 	}
 	return input, nil
 }
@@ -214,7 +214,7 @@ func (server *Server) e2eStartRunAdapter(input startRunInput, criteria []domain.
 	if input.PatchFixture == "" {
 		return nil, nil
 	}
-	if input.PatchFixture == "project-document" {
+	if input.PatchFixture == "project-document" || input.PatchFixture == "delegation-plan" {
 		server.supervisor.mu.RLock()
 		runtime, ok := server.supervisor.byAdapter[adapterID].(*fakeSupervisor)
 		server.supervisor.mu.RUnlock()
@@ -222,6 +222,9 @@ func (server *Server) e2eStartRunAdapter(input startRunInput, criteria []domain.
 			return nil, errors.New("project document fixture runtime is unavailable")
 		}
 		proposal := "# Compatibility proposal\n\nPreserve the public API contract described by the supplied migration notes.\n"
+		if input.PatchFixture == "delegation-plan" {
+			proposal = "# Research plan\n\nSource: supplied:design.\n\n```chora-delegation-plan\n" + `{"schemaVersion":"chora.delegation-plan.v1","assignments":[{"role":"Designer","title":"Compare supplied options","requirement":"Compare options using only supplied material and identify unknowns."},{"role":"Reviewer","title":"Review compatibility risks","requirement":"List compatibility risks supported by the supplied material."}]}` + "\n```\n"
+		}
 		message, err := json.Marshal(map[string]any{
 			"type": "message_end",
 			"message": map[string]any{
