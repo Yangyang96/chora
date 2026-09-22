@@ -1,7 +1,8 @@
 import { defineConfig } from '@playwright/test'
 
-const port = 18787
-const documentPort = 18788
+const port = Number(process.env.CHORA_E2E_PORT ?? 18787)
+if (!Number.isInteger(port) || port < 1 || port > 65534) throw new Error('CHORA_E2E_PORT must allow a consecutive pair of TCP ports')
+const documentPort = port + 1
 const dedicatedRunnerTests = [
   '**/joined-room.spec.ts',
   '**/project-entry.spec.ts',
@@ -11,6 +12,7 @@ const dedicatedRunnerTests = [
 
 export default defineConfig({
   testDir: './e2e',
+  outputDir: process.env.CHORA_E2E_OUTPUT_DIR ?? 'test-results',
   testMatch: '**/*.spec.ts',
   // These suites boot their own Workbench and use dedicated runner inputs.
   testIgnore: dedicatedRunnerTests,

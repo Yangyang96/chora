@@ -22,6 +22,15 @@ M2-S8-2 reusable execution settings are complete. M2-S9-1 and M2-S9-2 passed
 technical acceptance on 2026-09-21. See the
 [product decision](docs/project-workflows.md).
 
+The M2 reliability follow-up adds live Docker observation, bounded Pi progress
+capture, qualified in-container browser tooling and explicit acceptance-coverage
+limits in Review. A fresh real-Agent sample exercised the browser capability and
+required reviewer feedback to repair correctness and check-reporting gaps. The
+Agent repaired its own code; this is review-driven repair, not first-pass
+autonomous completion. Browser availability and successful selected commands do
+not establish full task acceptance or close M2.
+See [isolated execution](docs/isolated-local.md) for the supported boundary.
+
 Project is the long-lived owner of repository resources and topic Rooms. A Task
 belongs to one Room and selects its repository scope. Empty Projects, multiple
 repositories, independent Room history and Task worktrees are current foundations.

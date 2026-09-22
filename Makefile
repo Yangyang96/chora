@@ -8,7 +8,7 @@ GO_LOCALWEB_RACE_TIMEOUT ?= 45m
 GO_TEST_PACKAGE_PARALLEL ?= 4
 GO_RACE_PACKAGE_PARALLEL ?= 3
 GO_TEST_HEARTBEAT_SECONDS ?= 30
-GO_TAGGED_LOCALWEB_TEST_PATTERN ?= ^TestE2EVerifierStartupCandidateRecoveryDoesNotUseAmbientDocker$$
+GO_TAGGED_LOCALWEB_TEST_PATTERN ?= ^Test(E2EVerifierStartupCandidateRecoveryDoesNotUseAmbientDocker|PublicE2EBaselineIsSelfContainedAndRejectsDrift)$$
 
 define RUN_WITH_PROGRESS
 	@start="$$(date +%s)"; \

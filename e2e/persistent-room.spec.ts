@@ -1,15 +1,15 @@
 import { expect, test } from '@playwright/test'
-import { authoritativePatchSHA256, captureJourney, createRegisteredFakeRun, waitForRunStatus } from './verification'
+import { syntheticPatchSHA256, captureJourney, createRegisteredFakeRun, waitForRunStatus } from './verification'
 
 // Verification auto-starts once the Agent completes, so these tests land on
 // the review gate without a manual "Start Verification" step. SCM and raw
 // Patch behavior are asserted through the API; the Docker-specific verifier
 // container checks are covered by the real Pi/Docker acceptance path.
-test('authoritative G2-M3 Patch is auto-verified and accepted', async ({ page, request }) => {
+test('synthetic public Patch is auto-verified and accepted', async ({ page, request }) => {
   const { run, v8 } = await createRegisteredFakeRun(request, 'g2-m3-authoritative')
   expect(run.verification?.result?.outcome).toBe('review_ready')
-  expect(run.verification?.bindings.patchDigest).toBe(authoritativePatchSHA256)
-  expect(run.reviewablePatch?.patchDigest).toBe(authoritativePatchSHA256)
+  expect(run.verification?.bindings.patchDigest).toBe(syntheticPatchSHA256)
+  expect(run.reviewablePatch?.patchDigest).toBe(syntheticPatchSHA256)
 
   await page.goto(runURL(v8, run.id))
   await expect(page.getByText('Awaiting review')).toBeVisible()
@@ -19,8 +19,8 @@ test('authoritative G2-M3 Patch is auto-verified and accepted', async ({ page, r
   await expect(page.getByText('Accepted · Not applied', { exact: true }).first()).toBeVisible()
 
   const accepted = await waitForRunStatus(request, run.id, 'accepted')
-  expect(accepted.verifiedReview).toMatchObject({ kind: 'accept', patchDigest: authoritativePatchSHA256 })
-  expect(accepted.reviewablePatch?.patchDigest).toBe(authoritativePatchSHA256)
+  expect(accepted.verifiedReview).toMatchObject({ kind: 'accept', patchDigest: syntheticPatchSHA256 })
+  expect(accepted.reviewablePatch?.patchDigest).toBe(syntheticPatchSHA256)
   await captureJourney('g2-m5-accepted', accepted)
 })
 

@@ -133,7 +133,7 @@ func newProductVerifier(ctx context.Context, repoRoot, runtimeRoot string, recon
 	if err != nil {
 		return nil, verifierRuntimeStatus{}, err
 	}
-	baselineDigest, err := decodeVerifierDigest(verifier.M1FrozenBaselineDigestHex)
+	baselineDigest, err := decodeVerifierDigest(productBaselineDigest)
 	if err != nil {
 		return nil, verifierRuntimeStatus{}, err
 	}
@@ -149,7 +149,7 @@ func newProductVerifier(ctx context.Context, repoRoot, runtimeRoot string, recon
 		imageID = installedAuthority.VerifierImageID()
 	}
 	status := verifierRuntimeStatus{Enabled: true, Reason: "digest-pinned independent verifier configured", Mode: mode,
-		PolicyVersion: policy.Document().Version, PolicyDigest: hex.EncodeToString(policyDigest[:]), BaselineDigest: verifier.M1FrozenBaselineDigestHex,
+		PolicyVersion: policy.Document().Version, PolicyDigest: hex.EncodeToString(policyDigest[:]), BaselineDigest: productBaselineDigest,
 		Image: imageID, Network: "none", Credentials: "zero", ResourceBoundary: "2 CPU · 4096 MiB · 256 PID · 1024 FD"}
 	return service, status, nil
 }
@@ -432,7 +432,7 @@ func (service *productVerifier) VerifyBaselineIdentity() error {
 	if err != nil {
 		return err
 	}
-	if result.AggregateSHA256 != verifier.M1FrozenBaselineDigestHex {
+	if result.AggregateSHA256 != productBaselineDigest {
 		return errors.New("frozen Baseline aggregate mismatch")
 	}
 	return nil

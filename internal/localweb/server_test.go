@@ -556,6 +556,14 @@ func TestPiProductEntryExposesAdoptedRuntimeAndSandbox(t *testing.T) {
 }
 
 func TestPiMonitorPersistsUncertainReconcileAsRecoveryRequired(t *testing.T) {
+	testPiMonitorRecovery(t, false)
+}
+
+func TestPiMonitorPersistsObservationErrorAsRecoveryRequired(t *testing.T) {
+	testPiMonitorRecovery(t, true)
+}
+
+func testPiMonitorRecovery(t *testing.T, observationError bool) {
 	root := t.TempDir()
 	if err := os.Chmod(root, 0o700); err != nil {
 		t.Fatal(err)
@@ -591,6 +599,9 @@ func TestPiMonitorPersistsUncertainReconcileAsRecoveryRequired(t *testing.T) {
 	runtime.mu.Lock()
 	runtime.reconcileOverride = execution.ReconcileUncertain
 	runtime.reconcileDiagnostic = "declared test uncertainty"
+	if observationError {
+		runtime.reconcileError = errors.New("Docker daemon observation failed")
+	}
 	runtime.mu.Unlock()
 
 	run = waitForRunState(t, server.Handler(), run.ID, string(domain.RunStateRecoveryRequired))

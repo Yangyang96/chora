@@ -6,7 +6,7 @@ import { resolve } from 'node:path'
 import { promisify } from 'node:util'
 
 const execFileAsync = promisify(execFile)
-export const authoritativePatchSHA256 = 'bedbeee71ba1bb7dc9f4d2aa86a90454f45620784d5f995ec89297948f2f39b6'
+export const syntheticPatchSHA256 = 'bc824507bf3f95126dca54f774813a79179fa50542feba9435d3061244b3df1d'
 
 export type VerificationRunView = {
   id: string
