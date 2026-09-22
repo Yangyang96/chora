@@ -288,6 +288,10 @@ gate, browser journeys and real Pi execution covered sourced results, explicit
 stop, restart continuity and unchanged human acceptance. Overall M3 remains in
 progress.
 
+An optional pre-authorized synthesis uses only frozen child results in one
+additional Agent Attempt. Its integrated qualification is in progress.
+
+
 This is a bounded starting point within M3. Multi-human membership/revocation,
 parallel execution and coding integration are not
 claimed complete. M4 remains demand-gated.

@@ -14,6 +14,7 @@ export type ProjectDocumentRevision = {
 }
 
 export type TaskContextSelection = {
+  synthesize?: boolean
   outcomeKind?: 'document'
   materials?: TaskMaterialInput[]
   revisionIds?: string[]

@@ -976,7 +976,7 @@ test('can cancel resource preparation before Task creation returns an ID', async
   expect(screen.queryByRole('alert')).not.toBeInTheDocument()
 })
 
-test('starts a dedicated research planner through persisted authorization instead of the ordinary Run endpoint', async () => {
+test.each([false, true])('starts a dedicated planner through persisted authorization, with synthesis=%s', async (synthesize) => {
   window.history.replaceState({}, '', '/rooms/room-1/tasks/task-planner')
   const planner = {
     id: 'task-planner', roomId: 'room-1', title: 'Research planning', goal: '[Chora research delegation planning v1]',
@@ -999,7 +999,7 @@ test('starts a dedicated research planner through persisted authorization instea
     if (path === '/api/rooms/room-1/tasks/task-planner') return jsonResponse(planner)
     if (path === '/api/tasks/task-planner/delegation/planning' && init?.method === 'POST') {
       writes.push(path); started = true
-      expect(JSON.parse(String(init.body))).toEqual({})
+      expect(JSON.parse(String(init.body))).toEqual(synthesize ? { synthesize: true } : {})
       return jsonResponse({ planning: { state: 'planning', version: 1, runId: 'run-planner' } })
     }
     if (path === '/api/tasks/task-planner/delegation') return jsonResponse({ parentTaskId: planner.id, version: 0, state: 'not_started', eligible: true, assignments: [], children: [], ...(started ? { planning: { state: 'planning', version: 1, runId: 'run-planner' } } : {}) })
@@ -1007,7 +1007,9 @@ test('starts a dedicated research planner through persisted authorization instea
   })
   vi.stubGlobal('fetch', fetchMock)
   render(<NewApp />)
-  await userEvent.click(await screen.findByRole('button', { name: 'Start research delegation' }))
+  const start = await screen.findByRole('button', { name: 'Start research delegation' })
+  if (synthesize) await userEvent.click(screen.getByLabelText('Generate one synthesis after research'))
+  await userEvent.click(start)
   await screen.findByRole('button', { name: 'Stop research planning' })
   expect(writes).toEqual(['/api/tasks/task-planner/delegation/planning'])
   expect(fetchMock.mock.calls.some(([path]) => String(path) === '/api/tasks/task-planner/runs')).toBe(false)

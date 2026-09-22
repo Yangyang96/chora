@@ -90,15 +90,37 @@ inspect the existing Run before choosing **Resume research planning**. Resume
 keeps the same authorization and identities and does not grant another Attempt.
 Use a new Task if a new planning round is needed.
 
+## Optional synthesis report
+
+Before starting, select **Generate one synthesis after research** to authorize
+one additional Agent Attempt after every assignment has a complete result. This
+option is available for manual assignments, source-bound proposals and single-start
+planning. It defaults off and cannot be added to an already-started delegation.
+
+Chora freezes the complete original child results, their identities and digests
+as the only materials of a separate synthesis Task. The synthesis inherits the
+parent's frozen execution and model settings. It selects no repositories and
+adds no project context or externally fetched material. Its report must preserve
+source attribution, disagreements and unknowns rather than treating child claims
+as verified facts. The report is Agent-authored and remains subject to human review.
+
+The authorization permits one synthesis Task, Run and Attempt, with no automatic
+retry, repair or regeneration. The parent remains running until the synthesis
+produces a reviewable result; a failure blocks the workflow. **Stop delegation**
+also stops this phase. Restart and explicit recovery preserve the same identities.
+If a child result changes later, the collection marks the frozen report's sources
+as stale without replacing its original inputs or regenerating the report.
+
 ## Results and review
 
 The parent shows each child's current state and a link to its normal execution
 and review screen. Completed findings show their original Markdown, result
-identity and digest. This is a collection of independently sourced results; it
-is not a new Agent-written synthesis or a claim that the parent Agent consumed
-those results. A role labelled "Reviewer" still produces an Agent proposal.
+identity and digest. By default this is a collection of independently sourced
+results. An additional Agent-written report is produced only when synthesis was
+explicitly authorized before start, and has its own Task and source lineage. A role labelled "Reviewer" still produces an Agent proposal.
 
-**Awaiting review** means every assignment has finished with a reviewable result.
+**Awaiting review** means every assignment and any authorized synthesis have
+finished with a reviewable result.
 It does not mean the research is factually verified or accepted. Inspect evidence,
 unknowns and individual results before using the existing document review actions.
 Delegation never saves an accepted Room revision, accepts a result, starts a later

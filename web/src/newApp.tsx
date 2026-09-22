@@ -309,7 +309,7 @@ function NewAppContent() {
   // Plan default-pass: submit the generated draft, accept the revision, and
   // start the Run automatically so the user lands directly on the execution
   // stream (the plan remains viewable through the audit details).
-  async function autoRun(task: TaskRef, signal?: AbortSignal): Promise<RunView | null> {
+  async function autoRun(task: TaskRef, signal?: AbortSignal, synthesize = false): Promise<RunView | null> {
     let current = task
     const hasResourceSnapshot = Boolean((current as ResourceTaskRef).resourceSnapshot)
     if (current.executionProfile === 'real_spec_coding' && !hasResourceSnapshot && current.worktree?.state !== 'ready') {
@@ -340,7 +340,7 @@ function NewAppContent() {
     if (!acceptance) return null
     if (isDelegationPlanningTask(current.goal)) {
       await api<unknown>(`/api/tasks/${encodeURIComponent(current.id)}/delegation/planning`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': commandKey('start-planning-delegation') }, body: '{}', signal,
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': commandKey('start-planning-delegation') }, body: JSON.stringify(synthesize ? { synthesize: true } : {}), signal,
       })
       setDirectoryRefresh((value) => value + 1)
       return null
@@ -384,7 +384,7 @@ function NewAppContent() {
     if (view === 'newTask') setView('home')
   }
 
-  async function startExistingTask(current: TaskRef) {
+  async function startExistingTask(current: TaskRef, synthesize = false) {
     if (busy || route.kind !== 'task') return
     if (roomDetail === null || (roomDetail.ownershipKind === 'project' && routeProject === null) || routeProject?.state === 'archived' || roomDetail.state === 'archived' || roomDetail.ownershipKind === 'unclassified') {
       setError(t('New work is blocked by the current Project or Room state.'))
@@ -398,7 +398,7 @@ function NewAppContent() {
     setBusy(true)
     setError('')
     try {
-      const started = await autoRun(current, controller.signal)
+      const started = await autoRun(current, controller.signal, synthesize)
       if (started) navigate(`/rooms/${encodeURIComponent(ownerRoom)}/tasks/${encodeURIComponent(current.id)}/runs/${encodeURIComponent(started.id)}`)
     } catch (reason) {
       if (!controller.signal.aborted) setError(message(reason))
@@ -493,7 +493,7 @@ function NewAppContent() {
       }
       setDirectoryRefresh((n) => n + 1)
       navigate(`/rooms/${encodeURIComponent(roomID)}/tasks/${encodeURIComponent(created.id)}`)
-      const started = await autoRun(created, controller.signal)
+      const started = await autoRun(created, controller.signal, context?.synthesize)
       if (started) navigate(`/rooms/${encodeURIComponent(roomID)}/tasks/${encodeURIComponent(created.id)}/runs/${encodeURIComponent(started.id)}`)
     } catch (reason) {
       if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : String(reason))
@@ -816,7 +816,7 @@ function NewAppContent() {
       </section>}
       {localWorkbench && (route.kind === 'directory' || view === 'newTask') && <PiInstallation existing={piDiscovery.phase === 'loaded' ? piDiscovery.discovery : undefined} onChanged={() => { void api<PiDiscoveryView>('/api/pi/discovery').then(discovery => setPiDiscovery({phase:'loaded',discovery})).catch(() => setPiDiscovery({phase:'error'})) }} />}
       {main}
-      {(route.kind === 'task' || route.kind === 'run') && (routeRun?.outcomeKind === 'document' || (task as ResourceTaskRef | null)?.resourceSnapshot?.outcomeKind === 'document') && <TaskDelegation key={route.taskID} taskId={route.taskID} roomId={route.roomID} onNavigate={navigate} planningTask={isDelegationPlanningTask(task?.goal ?? routeRun?.task.goal)} starting={busy || frozenTaskProfileUnavailable || workBlocked} onStartPlanning={route.kind === 'task' && task ? () => startExistingTask(task) : undefined} />}
+      {(route.kind === 'task' || route.kind === 'run') && (routeRun?.outcomeKind === 'document' || (task as ResourceTaskRef | null)?.resourceSnapshot?.outcomeKind === 'document') && <TaskDelegation key={route.taskID} taskId={route.taskID} roomId={route.roomID} onNavigate={navigate} planningTask={isDelegationPlanningTask(task?.goal ?? routeRun?.task.goal)} starting={busy || frozenTaskProfileUnavailable || workBlocked} onStartPlanning={route.kind === 'task' && task ? (synthesize) => startExistingTask(task, synthesize) : undefined} />}
     </AppShell>
   )
 }

@@ -50,6 +50,7 @@ export function NewTask({ projectId, roomId, roomName, busy, preparationPending 
   const [disclosureRequest, setDisclosureRequest] = useState(0)
   const [purpose, setPurpose] = useState<'code' | 'document' | 'delegation'>('code')
   const suppliedOnly = purpose !== 'code'
+  const [synthesize, setSynthesize] = useState(false)
   const [materials, setMaterials] = useState<TaskMaterialInput[]>([])
   const [revisionIds, setRevisionIds] = useState<string[]>([])
   const [materialBlocker, setMaterialBlocker] = useState('')
@@ -92,7 +93,7 @@ export function NewTask({ projectId, roomId, roomName, busy, preparationPending 
     if (usesTaskResources && suppliedOnly && (materialBlocker || materials.length === 0)) return
     if (projectId && !roomId && settingsVersion === undefined) return
     if (!projectId && !modelBinding) { onSubmit(requirement.trim(), agentExecutionProfile); return }
-    if (projectId && roomId && projectExecution) onSubmit(purpose === 'delegation' ? delegationPlanningRequirement(requirement) : requirement.trim(), agentExecutionProfile, undefined, suppliedOnly ? [] : resources, undefined, { projectVersion: projectExecution.version, ...(overrideExecution ? { agentExecutionProfile: agentExecutionProfile as 'trusted_local' | 'isolated_local', model: modelIdentity } : {}) }, { ...(suppliedOnly ? { outcomeKind: 'document' as const, materials } : {}), revisionIds })
+    if (projectId && roomId && projectExecution) onSubmit(purpose === 'delegation' ? delegationPlanningRequirement(requirement) : requirement.trim(), agentExecutionProfile, undefined, suppliedOnly ? [] : resources, undefined, { projectVersion: projectExecution.version, ...(overrideExecution ? { agentExecutionProfile: agentExecutionProfile as 'trusted_local' | 'isolated_local', model: modelIdentity } : {}) }, { ...(suppliedOnly ? { outcomeKind: 'document' as const, materials } : {}), ...(purpose === 'delegation' && synthesize ? { synthesize: true } : {}), revisionIds })
     else if (projectId) onSubmit(requirement.trim(), agentExecutionProfile, settingsVersion, undefined, modelBinding)
     else onSubmit(requirement.trim(), agentExecutionProfile, undefined, undefined, modelBinding)
   }
@@ -113,6 +114,8 @@ export function NewTask({ projectId, roomId, roomName, busy, preparationPending 
           <span><strong>{t(choice.label)}</strong><small id={`${choice.id}-purpose-description`}>{t(choice.description)}</small></span>
         </label>)}
       </fieldset>}
+      {purpose === 'delegation' && <label className="task-choice"><input type="checkbox" checked={synthesize} disabled={busy} onChange={event => setSynthesize(event.target.checked)} />{t('Generate one synthesis after research')}</label>}
+      {purpose === 'delegation' && synthesize && <p className="section-note">{t('Authorizes one additional Agent attempt using only the frozen child results. You review the report; no result is accepted automatically.')}</p>}
       {localWorkbench && !suppliedOnly && <p className="section-note">{t('New tasks start from the current branch’s committed HEAD. Uncommitted and untracked changes stay in the original checkout and are not copied. Commit them externally first if the task needs them.')}</p>}
       <label>
         {t(suppliedOnly ? 'What should Chora investigate or document?' : 'What should Chora build?')}

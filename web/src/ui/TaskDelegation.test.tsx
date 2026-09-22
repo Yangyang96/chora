@@ -122,3 +122,31 @@ it('keeps planning Stop visible after the parent loses eligibility', async () =>
  expect(screen.queryByRole('button', { name: 'Resume research planning' })).toBeNull()
  expect(screen.queryByRole('button', { name: 'Start delegation' })).toBeNull()
 })
+
+
+it('sends synthesis authorization only when selected before proposal start', async () => {
+ const writes: unknown[] = []
+ vi.stubGlobal('fetch', vi.fn(async (path, init) => {
+   if (init?.method === 'POST') { writes.push(JSON.parse(init.body)); return new Response(JSON.stringify({ ...initial, state: 'running', version: 1, synthesis: { enabled: true, state: 'pending', current: true } })) }
+   return new Response(JSON.stringify(String(path).endsWith('/proposal') ? proposed : initial))
+ }))
+ render(<LanguageProvider><TaskDelegation taskId="task-parent" onNavigate={vi.fn()} /></LanguageProvider>)
+ const checkbox = await screen.findByLabelText('Generate one synthesis after research')
+ expect(checkbox).not.toBeChecked()
+ fireEvent.click(checkbox)
+ fireEvent.click(screen.getByRole('button', { name: 'Load Agent plan' }))
+ fireEvent.click(await screen.findByRole('button', { name: 'Start proposed delegation' }))
+ await waitFor(() => expect(writes).toEqual([{ synthesize: true, sourceAttemptId: source.attemptId, expectedResultDigest: source.resultDigest }]))
+ await waitFor(() => expect(screen.queryByLabelText('Generate one synthesis after research')).toBeNull())
+})
+
+it('retains a synthesis with stale source warning and opens its separate review task', async () => {
+ vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ ...initial, version: 3, state: 'awaiting_review', synthesis: { enabled: true, state: 'awaiting_review', taskId: 'task-synthesis', current: false, url: '/rooms/r/tasks/task-synthesis/runs/run-synthesis', resultId: 'result-synthesis', resultDigest: 'c'.repeat(64), markdown: '# Synthesis\nA disagreement remains unresolved.' } }))))
+ const navigate = vi.fn()
+ render(<LanguageProvider><TaskDelegation taskId="task-parent" onNavigate={navigate} /></LanguageProvider>)
+ fireEvent.click(await screen.findByRole('button', { name: 'Open synthesis task' }))
+ expect(navigate).toHaveBeenCalledWith('/rooms/r/tasks/task-synthesis/runs/run-synthesis')
+ expect(screen.getByText('A child result has changed. This report retains its original frozen sources and is not regenerated automatically.')).toBeInTheDocument()
+ expect(screen.getByText(/result-synthesis/)).toBeInTheDocument()
+ expect(screen.queryByRole('button', { name: /accept/i })).toBeNull()
+})

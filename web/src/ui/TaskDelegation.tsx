@@ -10,10 +10,11 @@ type Delegation = {
   assignments: Assignment[]
   children: { position: number; role: string; title: string; taskId?: string; runId?: string; state: string; url?: string; resultId?: string; resultDigest?: string; markdown?: string }[]
   source?: ProposalSource
+  synthesis?: { enabled: boolean; state: string; taskId?: string; runId?: string; url?: string; resultId?: string; resultDigest?: string; markdown?: string; current: boolean; reason?: string }
   planning?: { state: string; version: number; runId?: string; reason?: string }
 }
 
-export function TaskDelegation({ taskId, roomId, onNavigate, planningTask = false, starting = false, onStartPlanning }: { taskId: string; roomId?: string; onNavigate: (url: string) => void; planningTask?: boolean; starting?: boolean; onStartPlanning?: () => Promise<void> }) {
+export function TaskDelegation({ taskId, roomId, onNavigate, planningTask = false, starting = false, onStartPlanning }: { taskId: string; roomId?: string; onNavigate: (url: string) => void; planningTask?: boolean; starting?: boolean; onStartPlanning?: (synthesize: boolean) => Promise<void> }) {
   const { t } = useI18n()
   const [view, setView] = useState<Delegation | null>(null)
   const [assignments, setAssignments] = useState<Assignment[]>([{ role: '', title: '', requirement: '' }])
@@ -23,6 +24,7 @@ export function TaskDelegation({ taskId, roomId, onNavigate, planningTask = fals
   const [proposalLoading, setProposalLoading] = useState(false)
   const [proposalError, setProposalError] = useState('')
   const proposalRequest = useRef<AbortController | null>(null)
+  const [synthesize, setSynthesize] = useState(false)
   const [busy, setBusy] = useState(false)
   const [refresh, setRefresh] = useState(0)
   const epoch = useRef(0)
@@ -69,7 +71,7 @@ export function TaskDelegation({ taskId, roomId, onNavigate, planningTask = fals
     try {
       const next = await api<Delegation>(action === 'start' || action === 'start_proposal' ? endpoint : `${endpoint}/${action.replace('planning_', 'planning/')}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': commandKey(`delegation-${action}`) },
-        body: JSON.stringify(action === 'start' ? { assignments } : action === 'start_proposal' ? { sourceAttemptId: proposal!.source!.attemptId, expectedResultDigest: proposal!.source!.resultDigest } : { expectedVersion: action.startsWith('planning_') ? view?.planning?.version : view?.version }),
+        body: JSON.stringify(action === 'start' ? { assignments, ...(synthesize ? { synthesize: true } : {}) } : action === 'start_proposal' ? { ...(synthesize ? { synthesize: true } : {}), sourceAttemptId: proposal!.source!.attemptId, expectedResultDigest: proposal!.source!.resultDigest } : { expectedVersion: action.startsWith('planning_') ? view?.planning?.version : view?.version }),
       })
       setView(next)
     } catch (e) { setError(e instanceof Error ? e.message : String(e)) }
@@ -86,6 +88,10 @@ export function TaskDelegation({ taskId, roomId, onNavigate, planningTask = fals
     {!planningTask && <p>{t('Define up to four research assignments. Start authorizes sequential Agent execution with this task’s frozen material and settings. You review each result; nothing is accepted or delivered automatically.')}</p>}
     {(error || loadError) && <p role="alert">{error || loadError}</p>}
     {!view && <p role="status">{t('Loading…')}</p>}
+    {view?.state === 'not_started' && !view.planning && <>
+      <label className="task-choice"><input type="checkbox" checked={synthesize} disabled={busy || starting} onChange={event => setSynthesize(event.target.checked)} />{t('Generate one synthesis after research')}</label>
+      {synthesize && <p>{t('Authorizes one additional Agent attempt using only the frozen child results. You review the report; no result is accepted automatically.')}</p>}
+    </>}
     {view?.planning && <section aria-label={t('Research planning')}>
       <h3>{t('Research planning')}</h3>
       <p role="status">{t('Planning status')}: {t(view.planning.state)}</p>
@@ -97,7 +103,7 @@ export function TaskDelegation({ taskId, roomId, onNavigate, planningTask = fals
     </section>}
     {view?.state === 'not_started' && !view.planning && planningTask && <p>
       {t('One start authorizes a planning Agent and up to four sequential research assignments. You review the results.')}
-      {onStartPlanning && <button type="button" disabled={busy || starting} onClick={() => { setBusy(true); void onStartPlanning().finally(() => { setBusy(false); setRefresh(n => n + 1) }) }}>{t('Start research delegation')}</button>}
+      {onStartPlanning && <button type="button" disabled={busy || starting} onClick={() => { setBusy(true); void onStartPlanning(synthesize).finally(() => { setBusy(false); setRefresh(n => n + 1) }) }}>{t('Start research delegation')}</button>}
     </p>}
     {view?.state === 'not_started' && !view.planning && !planningTask && <>
       <section aria-label={t('Agent-proposed plan')}>
@@ -137,6 +143,14 @@ export function TaskDelegation({ taskId, roomId, onNavigate, planningTask = fals
         {child.url && <button type="button" onClick={() => onNavigate(child.url!)}>{t('Open child task')}</button>}
         {child.markdown && <details><summary>{t('Delegated finding')}</summary><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{child.markdown}</pre><p>{t('Source result')}: {child.resultId}</p><p style={{ overflowWrap: 'anywhere' }}>{t('Result digest')}: {child.resultDigest}</p></details>}
       </li>)}</ol>
+      {view.synthesis?.enabled && <section aria-label={t('Synthesis report')}>
+        <h3>{t('Synthesis report')}</h3>
+        <p role="status">{t('Synthesis status')}: {t(view.synthesis.state)}</p>
+        {view.synthesis.reason && <p>{view.synthesis.reason}</p>}
+        {view.synthesis.url && <button type="button" onClick={() => onNavigate(view.synthesis!.url!)}>{t('Open synthesis task')}</button>}
+        {view.synthesis.markdown && <details><summary>{t('Read synthesis report')}</summary><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{view.synthesis.markdown}</pre><p>{t('Source result')}: {view.synthesis.resultId}</p><p style={{ overflowWrap: 'anywhere' }}>{t('Result digest')}: {view.synthesis.resultDigest}</p></details>}
+        {!view.synthesis.current && view.synthesis.taskId && <p role="status">{t('A child result has changed. This report retains its original frozen sources and is not regenerated automatically.')}</p>}
+      </section>}
       {view.state === 'awaiting_review' && <p>{t('All assignments finished execution. Review their evidence and results before accepting them.')}</p>}
       {(view.state === 'running' || view.state === 'blocked') && <button type="button" disabled={busy} onClick={() => void mutate('stop')}>{t('Stop delegation')}</button>}
       {view.state === 'blocked' && view.eligible && <button type="button" disabled={busy} onClick={() => void mutate('resume')}>{t('Resume delegation')}</button>}
