@@ -232,3 +232,19 @@ func TestDocumentPromptUsesRepositoryFreePolicyInBothEnvironments(t *testing.T) 
 		t.Fatal("document prompt granted repository authority")
 	}
 }
+
+func TestIsolatedBrowserPromptPreservesFrozenAuthority(t *testing.T) {
+	snapshot := []byte(`{"task":{"id":"task-browser"}}`)
+	contract := []byte(`{"schema_version":"chora.spec-coding-core.v12","task":{"resources":{"resources":[]}}}`)
+	prompt, err := WrapIsolatedExecutionPrompt(snapshot, contract, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotSnapshot, gotContract, ok := UnwrapFrozenExecutionPrompt(prompt)
+	if !ok || string(gotSnapshot) != string(snapshot) || string(gotContract) != string(contract) {
+		t.Fatalf("browser guidance invalidated frozen authority: ok=%v", ok)
+	}
+	if !strings.Contains(prompt, "/opt/chora-browser/browser.mjs") {
+		t.Fatal("browser capability is undiscoverable")
+	}
+}

@@ -154,7 +154,13 @@ func (supervisor *Supervisor) verifyEffectiveContainers(ctx context.Context, rec
 		return fmt.Errorf("inspect effective Agent container: %w", err)
 	}
 	if supervisor.config.Workbench != nil {
-		return supervisor.verifyEffectiveWorkbench(agent, record, metadata)
+		if err := supervisor.verifyEffectiveWorkbench(agent, record, metadata); err != nil {
+			return err
+		}
+		record.mu.Lock()
+		record.containerDockerID = agent.ID
+		record.mu.Unlock()
+		return nil
 	}
 	boundary, err := supervisor.inspectEffectiveContainer(ctx, record.boundary)
 	if err != nil {

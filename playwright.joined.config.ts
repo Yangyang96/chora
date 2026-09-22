@@ -5,6 +5,7 @@ if (!baseURL) throw new Error('CHORA_JOINED_BASE_URL is required')
 
 export default defineConfig({
   testDir: './e2e',
+  outputDir: process.env.CHORA_E2E_OUTPUT_DIR ?? 'test-results',
   testMatch: 'joined-room.spec.ts',
   timeout: 300_000,
   expect: { timeout: 15_000 },

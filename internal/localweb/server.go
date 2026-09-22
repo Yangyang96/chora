@@ -3625,8 +3625,13 @@ func (server *Server) monitorRuntimeRun(adapterID string, runID domain.RunID, se
 		}
 		reconciled, err := server.supervisor.Reconcile(server.ctx, identity)
 		if err != nil {
+			if server.ctx.Err() != nil {
+				return
+			}
 			server.logger.Printf("reconcile %s run %s: %v", adapterID, runID, err)
-			return
+			// Losing observation is not proof of continued execution. Persist the
+			// existing fail-closed intervention path rather than abandon a running Run.
+			reconciled = execution.ReconcileOutcome{Kind: execution.ReconcileUncertain, Diagnostic: "runtime observation failed"}
 		}
 		switch reconciled.Kind {
 		case execution.ReconcileAlive:

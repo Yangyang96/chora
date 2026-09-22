@@ -29,6 +29,7 @@ import (
 	"github.com/Yangyang96/chora/internal/domain"
 	"github.com/Yangyang96/chora/internal/execution"
 	"github.com/Yangyang96/chora/internal/isolatedproxy"
+	"github.com/Yangyang96/chora/internal/pistream"
 )
 
 const (
@@ -177,6 +178,10 @@ type Supervisor struct {
 }
 
 type attemptRecord struct {
+	progress                                              *pistream.Writer
+	livenessMu                                            sync.Mutex
+	livenessAt                                            time.Time
+	liveness                                              execution.ReconcileOutcome
 	mu                                                    sync.Mutex
 	handle                                                execution.RuntimeHandle
 	identity                                              execution.ProcessIdentity
@@ -437,6 +442,9 @@ func (supervisor *Supervisor) finishFailedSetup(record *attemptRecord, setupErr 
 	reaped := make(chan struct{})
 	go func() {
 		exitCode, _ := record.process.Wait()
+		if record.progress != nil {
+			_ = record.progress.Flush()
+		}
 		record.mu.Lock()
 		record.exitCode = exitCode
 		record.exited = true
@@ -1160,7 +1168,8 @@ func (supervisor *Supervisor) setupWorkbench(ctx context.Context, record *attemp
 	}
 	execArgs := []string{"exec", "-i", "--user", "1000:1000", "--workdir", "/workspace/repository", record.container, allowedExecutable}
 	execArgs = append(execArgs, invocation.Arguments()...)
-	process, err := supervisor.config.Runner.Start(context.Background(), Command{Args: execArgs, Stdout: stdout, Stderr: stderr})
+	record.progress = &pistream.Writer{Target: stdout}
+	process, err := supervisor.config.Runner.Start(context.Background(), Command{Args: execArgs, Stdout: record.progress, Stderr: stderr})
 	if process != nil {
 		record.process = process
 	}
@@ -1353,6 +1362,9 @@ func (supervisor *Supervisor) runOK(ctx context.Context, args []string) error {
 
 func (supervisor *Supervisor) wait(record *attemptRecord) {
 	exitCode, _ := record.process.Wait()
+	if record.progress != nil {
+		_ = record.progress.Flush()
+	}
 	record.mu.Lock()
 	record.exitCode = exitCode
 	record.exitObserved = true
@@ -1382,6 +1394,13 @@ func (supervisor *Supervisor) wait(record *attemptRecord) {
 		record.mu.Unlock()
 	} else if injectedFailure {
 		supervisor.deriveInjectedFailureTerminal(record)
+	} else if supervisor.config.Workbench != nil && !stopRequested && !timedOut && (record.stdout.limitExceeded() || record.stderr.limitExceeded()) {
+		_ = supervisor.terminateWorkbenchContainer(record)
+		record.mu.Lock()
+		record.terminationCause = execution.TerminationOutputLimit
+		record.exitCode = 1
+		record.mu.Unlock()
+		supervisor.deriveWorkbenchTerminal(record, errors.New("runtime output exceeded the retained evidence limit; changes were not imported"))
 	} else if supervisor.config.Workbench != nil && !stopRequested && !timedOut {
 		var collectErr error
 		if exitCode != 0 {
@@ -1788,18 +1807,18 @@ func (supervisor *Supervisor) runAllowFailure(ctx context.Context, args []string
 	return err
 }
 
-func (supervisor *Supervisor) Reconcile(_ context.Context, identity execution.ProcessIdentity) (execution.ReconcileOutcome, error) {
+func (supervisor *Supervisor) Reconcile(ctx context.Context, identity execution.ProcessIdentity) (execution.ReconcileOutcome, error) {
 	supervisor.mu.Lock()
 	record := supervisor.byIdentity[identity.Value]
 	supervisor.mu.Unlock()
-	return reconcile(record), nil
+	return supervisor.reconcileObserved(ctx, record), nil
 }
 
-func (supervisor *Supervisor) ReconcileLaunch(_ context.Context, launch execution.LaunchToken) (execution.ReconcileOutcome, error) {
+func (supervisor *Supervisor) ReconcileLaunch(ctx context.Context, launch execution.LaunchToken) (execution.ReconcileOutcome, error) {
 	supervisor.mu.Lock()
 	record := supervisor.byLaunch[launch.Value]
 	supervisor.mu.Unlock()
-	return reconcile(record), nil
+	return supervisor.reconcileObserved(ctx, record), nil
 }
 
 func reconcile(record *attemptRecord) execution.ReconcileOutcome {
@@ -2841,10 +2860,11 @@ func (record *attemptRecord) stream(kind execution.StreamKind) (*cappedStream, b
 }
 
 type cappedStream struct {
-	mu      sync.RWMutex
-	data    []byte
-	pending []byte
-	secrets [][]byte
+	truncated bool
+	mu        sync.RWMutex
+	data      []byte
+	pending   []byte
+	secrets   [][]byte
 }
 
 func (stream *cappedStream) append(data []byte) (int, int64) {
@@ -2888,6 +2908,9 @@ func (stream *cappedStream) flush() (int, int64) {
 
 func (stream *cappedStream) appendLocked(data []byte) (int, int64) {
 	available := persistedLogBytes - len(stream.data)
+	if len(data) > available {
+		stream.truncated = true
+	}
 	if available <= 0 {
 		return 0, int64(len(stream.data))
 	}
@@ -2920,6 +2943,12 @@ func (stream *cappedStream) read(offset int64, limit int) ([]byte, int64, bool) 
 	}
 	return append([]byte(nil), stream.data[offset:end]...), end, true
 }
+func (stream *cappedStream) limitExceeded() bool {
+	stream.mu.RLock()
+	defer stream.mu.RUnlock()
+	return stream.truncated
+}
+
 func (stream *cappedStream) length() int64 {
 	stream.mu.RLock()
 	defer stream.mu.RUnlock()

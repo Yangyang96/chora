@@ -41,6 +41,7 @@ type fakeSupervisor struct {
 	sink                execution.RuntimeSink
 	exited              bool
 	reconcileOverride   execution.ReconcileOutcomeKind
+	reconcileError      error
 	reconcileDiagnostic string
 	streams             map[execution.StreamKind][]byte
 	terminalFiles       execution.TerminalFiles
@@ -100,6 +101,9 @@ func (supervisor *fakeSupervisor) Stop(context.Context, execution.RuntimeHandle,
 func (supervisor *fakeSupervisor) Reconcile(context.Context, execution.ProcessIdentity) (execution.ReconcileOutcome, error) {
 	supervisor.mu.Lock()
 	defer supervisor.mu.Unlock()
+	if supervisor.reconcileError != nil {
+		return execution.ReconcileOutcome{}, supervisor.reconcileError
+	}
 	if supervisor.reconcileOverride != "" {
 		return execution.ReconcileOutcome{Kind: supervisor.reconcileOverride, Handle: execution.RuntimeHandle{Value: supervisor.identityNamespace + "local-fake-handle"}, LaunchToken: supervisor.invocation.LaunchToken(), Diagnostic: supervisor.reconcileDiagnostic}, nil
 	}

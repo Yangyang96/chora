@@ -107,6 +107,10 @@ func newE2E(ctx context.Context, databasePath, webRoot string, logger *log.Logge
 }
 
 func finishE2E(server *Server, webRoot, fixtureSessions, fixtureExecutable string, discovery pidiscovery.Result) (*Server, error) {
+	if err := prepareE2EBaseline(server); err != nil {
+		server.Close()
+		return nil, err
+	}
 	if fixtureExecutable == "" {
 		repoRoot := filepath.Clean(filepath.Join(webRoot, "..", ".."))
 		runtimeConfig, err := os.ReadFile(filepath.Join(repoRoot, "contracts", "g2-m1a", "pi-runtime-config.v6.json"))
@@ -291,24 +295,12 @@ func (server *Server) e2eVerifiedRetryAdapter(criteria []domain.AcceptanceCriter
 	return adapter, nil
 }
 
-const (
-	g2M3AuthoritativePatchSHA256 = "bedbeee71ba1bb7dc9f4d2aa86a90454f45620784d5f995ec89297948f2f39b6"
-	g2M3AuthoritativePatchPath   = "normal-attempt1-v6/runtime/artifacts/attempts/3bc10e5e02d3087050f37ed936ca642da0639b4b39efdd6ce0a25f8ff43dce21/patch.diff"
-)
-
 func (server *Server) fakeAuthoritativeVerificationTerminal(criteria []domain.AcceptanceCriterion, runID domain.RunID) ([]byte, error) {
 	if server.verifier == nil {
 		return nil, errors.New("independent Verifier is unavailable")
 	}
-	g2M3Root := filepath.Dir(filepath.Dir(server.verifier.baselineRoot))
-	patch, err := os.ReadFile(filepath.Join(g2M3Root, filepath.FromSlash(g2M3AuthoritativePatchPath)))
-	if err != nil {
-		return nil, fmt.Errorf("read authoritative G2-M3 Patch: %w", err)
-	}
+	patch := []byte(e2eVerificationPatch)
 	digest := fmt.Sprintf("%x", sha256.Sum256(patch))
-	if digest != g2M3AuthoritativePatchSHA256 {
-		return nil, errors.New("authoritative G2-M3 Patch digest changed")
-	}
 	locator := filepath.ToSlash(filepath.Join("g2-m3-authoritative-replay", runID.String(), "patch.diff"))
 	path := filepath.Join(server.runtimeRoot, "artifacts", filepath.FromSlash(locator))
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
@@ -336,8 +328,8 @@ func (server *Server) fakeAuthoritativeVerificationTerminal(criteria []domain.Ac
 		Unknowns           []string            `json:"unknowns"`
 		Handoff            map[string]any      `json:"handoff"`
 	}{
-		SchemaVersion: "chora.agent-result.v1", Summary: "Build-tagged E2E Fake replayed the digest-pinned authoritative G2-M3 Pi/Docker Patch.", ReviewReady: true,
-		Outputs:            []map[string]string{{"locator": locator, "description": "Authoritative G2-M3 Pi/Docker Patch replay", "sha256": digest, "media_type": "text/x-diff"}},
+		SchemaVersion: "chora.agent-result.v1", Summary: "Build-tagged E2E Fake supplied a synthetic public patch for workflow verification.", ReviewReady: true,
+		Outputs:            []map[string]string{{"locator": locator, "description": "Synthetic public E2E patch", "sha256": digest, "media_type": "text/x-diff"}},
 		ArtifactCandidates: []map[string]string{}, Checks: claims, Unknowns: []string{}, Handoff: map[string]any{"requested": false, "reason": ""},
 	}
 	return json.Marshal(document)

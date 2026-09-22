@@ -39,7 +39,7 @@ function ResourceChecks({ checks }: { checks: ResourceCheckDerivationView }) {
   </section>
 }
 
-export function ResourceResult({ result }: { result: ResourceResultView }) {
+export function ResourceResult({ result, criteria = [] }: { result: ResourceResultView; criteria?: Array<{ id: string; title: string; description?: string }> }) {
   const { t } = useI18n()
   const patches = new Map(result.patches.map((patch) => [patch.repoId, patch]))
   return <section className="workbench-section resource-result" aria-labelledby="repository-results-title">
@@ -50,6 +50,15 @@ export function ResourceResult({ result }: { result: ResourceResultView }) {
       </div>
     </div>
     <div className="workbench-section-body">
+      <section aria-label={t('Acceptance coverage')} className="panel">
+        <h3>{t('Acceptance coverage')}</h3>
+        <p className="section-note">{t('A reviewable result is not an acceptance pass. Checks below are Agent-reported command results for the recorded contents; they do not prove that every requirement was tested.')}</p>
+        <p>{t('Review each requirement against the changes and actual test evidence, including browser behavior where relevant. Missing evidence remains unverified.')}</p>
+        {criteria.length > 0 ? <ul>{criteria.map(criterion => <li key={criterion.id}>
+          <strong>{criterion.title}</strong> · {t('Coverage requires review')}
+          {criterion.description && criterion.description !== criterion.title && <p>{criterion.description}</p>}
+        </li>)}</ul> : <p>{t('No separate acceptance checklist is available. Review the original task requirements; passing selected checks does not establish full coverage.')}</p>}
+      </section>
       <details className="check-evidence">
         <summary>{t('Result evidence')}</summary>
         <p>{t('Agent report')} · <code>{result.group.agentReportId}</code></p>

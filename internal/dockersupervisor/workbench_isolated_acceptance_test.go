@@ -124,6 +124,22 @@ func TestRealWorkbenchCancelIsolationAndZeroResidue(t *testing.T) {
 		_ = supervisor.Finalize(context.Background(), outcome.Handle, execution.RetentionPolicy{})
 	})
 	record := supervisor.record(outcome.Handle)
+	if observed, err := supervisor.Reconcile(context.Background(), outcome.Identity); err != nil || observed.Kind != execution.ReconcileAlive {
+		t.Fatalf("live container observation = %+v, %v", observed, err)
+	}
+	// Pause only this disposable test container. Its CLI stays alive, so the
+	// observation must detect loss of execution independently of process exit.
+	if err := supervisor.runOK(context.Background(), []string{"pause", record.container}); err != nil {
+		t.Fatal(err)
+	}
+	record.livenessMu.Lock()
+	record.livenessAt = time.Time{}
+	record.livenessMu.Unlock()
+	observed, observationErr := supervisor.Reconcile(context.Background(), outcome.Identity)
+	unpauseErr := supervisor.runOK(context.Background(), []string{"unpause", record.container})
+	if observationErr != nil || observed.Kind != execution.ReconcileUncertain || unpauseErr != nil {
+		t.Fatalf("paused container observation = %+v, %v; unpause=%v", observed, observationErr, unpauseErr)
+	}
 	effective, err := supervisor.inspectEffectiveContainer(context.Background(), record.container)
 	if err != nil {
 		t.Fatal(err)
@@ -160,6 +176,9 @@ func TestRealWorkbenchCancelIsolationAndZeroResidue(t *testing.T) {
 			t.Fatalf("command failed: %s: %#v %v", script, result, err)
 		}
 		return result.Stdout
+	}
+	if evidence := positive("node /opt/chora-browser/probe.mjs"); !strings.Contains(string(evidence), `"passed":true`) {
+		t.Fatalf("browser did not pass inside actual Workbench container: %s", evidence)
 	}
 	if uid := strings.TrimSpace(string(positive("stat -c %u /workspace/repository/repo/ordinary.txt"))); uid != "1000" {
 		t.Fatalf("ordinary file uid=%q", uid)

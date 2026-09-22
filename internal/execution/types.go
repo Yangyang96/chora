@@ -25,12 +25,16 @@ const DocumentExecutionPromptPrefix = "Chora document task policy: produce a tru
 
 // IsolatedTaskResourcesExecutionPromptPrefix preserves the multi-repository task
 // instructions while describing the actual Docker boundary and delivery flow.
-var IsolatedTaskResourcesExecutionPromptPrefix = strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(
+var IsolatedTaskResourcesExecutionPromptPrefix = strings.Replace(strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(
 	TaskResourcesExecutionPromptPrefix,
 	"Chora Local Connected task policy:", "Chora Isolated Local task policy:"),
 	"one Git worktree per selected repo_id child directory in task.resources. This is No Sandbox; Pi native permissions apply.",
 	"one private repository copy per selected repo_id child directory in task.resources. Execution is in Docker with a read-only root filesystem, bounded temporary workspace, and outbound bridge networking. Git metadata and reference repositories are read-only."),
-	"requires human Apply.", "requires human Review before Commit, Push, PR, Merge and cleanup; legacy Apply remains available.")
+	"requires human Apply.", "requires human Review before Commit, Push, PR, Merge and cleanup; legacy Apply remains available."), "\n\nFrozen Execution Input:", IsolatedBrowserGuidance+"\n\nFrozen Execution Input:", 1)
+
+// Browser guidance describes an image-provided tool, never a host browser or an
+// automatic assertion that an application's acceptance criteria have passed.
+const IsolatedBrowserGuidance = " Browser validation: the prepared image includes Playwright and headless Chromium. In a Node .mjs check, import { launchBrowser } from '/opt/chora-browser/browser.mjs'; await launchBrowser() returns a Playwright Browser. Start the application inside this same container and use its loopback URL. No package installation or host browser is needed. For browser-visible changes under auto check policy, write and run a relevant browser check covering the requested interactions, refresh/history and narrow viewport where applicable; a static code review or HTTP request alone does not verify browser behavior. Respect named/none check policies and repository write scope. Keep reusable test scripts as ordinary scoped text files; keep screenshots and temporary browser output outside repository copies (for example /tmp). Close the browser and application server in finally blocks. Run the check as a separate command with explicit repository cwd so its result can be attributed, and include it in chora-check-selection. Report each requested acceptance criterion as checked, failed or not checked, naming actual evidence and remaining gaps. Never equate selected checks passing with all acceptance criteria passing."
 
 func WrapIsolatedExecutionPrompt(snapshot, contract []byte, commands []string) (string, error) {
 	prompt, err := WrapLocalConnectedExecutionPrompt(snapshot, contract, commands)

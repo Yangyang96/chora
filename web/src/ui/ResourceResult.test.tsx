@@ -158,3 +158,18 @@ test('hides group Apply when a mixed result contains any task-branch repository'
   expect(screen.queryByRole('button', { name: /Apply|Continue remaining repositories/ })).not.toBeInTheDocument()
   vi.unstubAllGlobals()
 })
+
+test('does not promote passing commands to acceptance coverage', () => {
+  const value = result()
+  value.group.repositories = [value.group.repositories[0]]
+  render(<LanguageProvider><ResourceResult result={value} criteria={[
+    { id: 'search', title: 'Search updates displayed results' },
+    { id: 'history', title: 'Browser Back restores the previous filter' },
+  ]} /></LanguageProvider>)
+  expect(screen.getByText('Checks passed for final repository contents')).toBeInTheDocument()
+  const coverage = screen.getByRole('region', { name: 'Acceptance coverage' })
+  expect(within(coverage).getAllByRole('listitem')).toHaveLength(2)
+  expect(coverage).toHaveTextContent('Browser Back restores the previous filter')
+  for (const criterion of within(coverage).getAllByRole('listitem')) expect(criterion).toHaveTextContent('Coverage requires review')
+  expect(coverage).toHaveTextContent('they do not prove that every requirement was tested')
+})

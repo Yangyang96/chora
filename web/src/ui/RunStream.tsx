@@ -248,7 +248,7 @@ export function RunStream({ run, busy, onResultClosed, trustedLocalSelectionRead
       </section>
 
       {run.resourceResult && !documentTask && <AppPreview key={run.id} runId={run.id} expectedVersion={run.version} />}
-      {documentTask ? <ProjectDocument key={run.task.id} run={run} onChanged={onResultClosed} /> : run.resourceResult ? <ResourceResult result={run.resourceResult} /> : <>
+      {documentTask ? <ProjectDocument key={run.task.id} run={run} onChanged={onResultClosed} /> : run.resourceResult ? <ResourceResult result={run.resourceResult} criteria={run.criteria} /> : <>
         <ChangedFiles patch={run.reviewablePatch} provenanceLabel={run.reviewablePatch ? patchProvenanceLabel : undefined} />
         <section className="workbench-section" aria-labelledby="diff-title">
         <div className="workbench-section-head">

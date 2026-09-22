@@ -16,7 +16,7 @@ for ((iteration=1; iteration<=repetitions; iteration++)); do
   data="$root/run-$iteration"
   mkdir -p "$data"
   chmod 700 "$data"
-  port=$((18886 + iteration))
+  port=$((${CHORA_JOINED_BASE_PORT:-18886} + iteration))
   CHORA_JOINED_BIN="$root/chora-e2e" \
   CHORA_JOINED_DB="$data/chora.db" \
   CHORA_JOINED_WEB="${CHORA_WEB_BUILD_DIR:-$PWD/web/dist}" \

@@ -2,6 +2,7 @@ import { defineConfig } from '@playwright/test'
 
 const port = Number(process.env.CHORA_E2E_PORT ?? 18787)
 const documentPort = Number(process.env.CHORA_E2E_DOCUMENT_PORT ?? port + 1)
+if (![port, documentPort].every(value => Number.isInteger(value) && value >= 1 && value <= 65535) || port === documentPort) throw new Error('Browser-test services require two distinct valid TCP ports')
 const dedicatedRunnerTests = [
   '**/joined-room.spec.ts',
   '**/project-entry.spec.ts',
@@ -11,6 +12,7 @@ const dedicatedRunnerTests = [
 
 export default defineConfig({
   testDir: './e2e',
+  outputDir: process.env.CHORA_E2E_OUTPUT_DIR ?? 'test-results',
   testMatch: '**/*.spec.ts',
   // These suites boot their own Workbench and use dedicated runner inputs.
   testIgnore: dedicatedRunnerTests,

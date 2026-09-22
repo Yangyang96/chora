@@ -55,6 +55,7 @@ type diskRecord struct {
 	GitVersion           string                                         `json:"gitVersion"`
 	WorkspaceProbe       string                                         `json:"workspaceProbe"`
 	Models               []pidiscovery.ModelOption                      `json:"models"`
+	BrowserInputs        string                                         `json:"browserInputs"`
 }
 
 func Prepare(ctx context.Context, sourceRoot, dataRoot string) (Record, error) {
@@ -172,7 +173,10 @@ func prepare(ctx context.Context, sourceRoot, dataRoot, packagedHelper string) (
 	if err := dockersupervisor.VerifyWorkbenchWorkspaceVolume(ctx, runner, imageID, probeRoot); err != nil {
 		return Record{}, fmt.Errorf("qualify public workspace volume: %w", err)
 	}
-	disk := diskRecord{recordSchema, source.Record(), contextName, endpoint, identity.Record(), contract.Record(), qualification.Record(), observerDigest(), gitVersion, workspaceProbeVersion, models}
+	if err := verifyBrowser(ctx, runner, imageID); err != nil {
+		return Record{}, err
+	}
+	disk := diskRecord{recordSchema, source.Record(), contextName, endpoint, identity.Record(), contract.Record(), qualification.Record(), observerDigest(), gitVersion, workspaceProbeVersion, models, browserInputDigest()}
 	if err := writeMetadata(dataRoot, disk); err != nil {
 		return Record{}, err
 	}
@@ -186,6 +190,9 @@ func Load(ctx context.Context, dataRoot string) (Record, error) {
 	var d diskRecord
 	if err := readMetadata(dataRoot, &d); err != nil || d.Schema != recordSchema {
 		return Record{}, errors.New("public isolated environment metadata is unavailable or invalid")
+	}
+	if d.BrowserInputs != browserInputDigest() {
+		return Record{}, errors.New("public isolated browser qualification is unavailable or drifted; prepare the environment again")
 	}
 	if d.WorkspaceProbe != workspaceProbeVersion || d.ObserverSHA256 == "" || d.ObserverSHA256 != agentpi.ResourceObserverSHA256() || !validGitVersion(d.GitVersion) {
 		return Record{}, errors.New("public isolated observer or Git identity drifted")
@@ -252,8 +259,15 @@ func writeBuildContext(source, stage, helper, tarball string) error {
 	if err := os.WriteFile(filepath.Join(stage, "qualified-package.tgz"), packageBytes, 0600); err != nil {
 		return err
 	}
+	if err := writeBrowserInputs(stage); err != nil {
+		return err
+	}
 	dockerfile := `FROM ` + nodeImage + `
 RUN sed -i -e 's|http://deb.debian.org/debian-security|http://snapshot.debian.org/archive/debian-security/20260901T000000Z|' -e 's|http://deb.debian.org/debian$|http://snapshot.debian.org/archive/debian/20260901T000000Z|' /etc/apt/sources.list.d/debian.sources && apt-get -o Acquire::Check-Valid-Until=false -o APT::Update::Error-Mode=any update && apt-get install --yes --no-install-recommends git=1:2.39.5-0+deb12u3 && rm -rf /var/lib/apt/lists/* && git --version
+WORKDIR /opt/chora-browser
+COPY browser/ ./
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/chora-browser/browsers
+RUN npm ci --ignore-scripts --omit=dev --no-audit --no-fund --registry=https://registry.npmjs.org && echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99chora-snapshot && node node_modules/playwright-core/cli.js install --with-deps --only-shell chromium && rm /etc/apt/apt.conf.d/99chora-snapshot && rm -rf /var/lib/apt/lists/* && npm cache clean --force && chmod -R a+rX /opt/chora-browser
 WORKDIR /opt/pi
 COPY qualified-package.tgz /opt/qualified-package.tgz
 COPY package.json package-lock.json ./

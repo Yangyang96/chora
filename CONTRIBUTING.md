@@ -52,6 +52,12 @@ npm run e2e
 git diff --check
 ```
 
+Concurrent checkouts can select separate browser-test ports with `CHORA_E2E_PORT`
+(the main service and the following port) and `CHORA_JOINED_BASE_PORT` (the joined
+suite uses the following port). Set `CHORA_E2E_OUTPUT_DIR` to an external directory
+for browser evidence. `VITEST_MAX_WORKERS` can limit frontend test concurrency
+without changing the test scope.
+
 For documentation-only changes, check accuracy, translation consistency, links
 and diff formatting; run the full suite only when the task requires it.
 Source tests use self-contained fixtures and do not certify historical private

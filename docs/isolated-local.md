@@ -17,7 +17,9 @@ local execution automatically.
   API key with model access. This mode does not use the host Pi model selection or models.json.
 - Git repositories with at least one commit. The initial supported project
   scope is Node.js standard-library code/tests (`node --test`), without package
-  installation, native builds, external databases or dependency services.
+  installation, native builds, external databases or dependency services. The image
+  also provides Playwright `1.62.0` and its matching Chromium headless shell for
+  browser checks of an application running inside the same container.
 - Each Task retains its immutable repository bases, write/reference roles,
   protected paths and check policy. Input copies must fit 4,096 ordinary entries
   and 100 MiB; the container workspace has a separate 256 MiB hard limit.
@@ -76,6 +78,48 @@ verifier. Review → Commit → Push → PR → Merge → cleanup uses the exist
 per-repository delivery flow. Legacy Apply remains compatible. Git hosting
 credentials stay in the host delivery flow and are never injected into Pi.
 
+## Browser checks and acceptance coverage
+
+Preparation installs the committed browser package lock and the Chromium revision
+selected by that Playwright version. It then opens a loopback test application,
+checks keyboard interaction, reload persistence, a narrow viewport and screenshot
+capture under the execution resource limits. Failure leaves preparation incomplete.
+Older prepared environments without browser qualification must be prepared again;
+existing Tasks still retain their frozen image identity.
+
+An Agent can write a scoped `.mjs` test using the image-owned module:
+
+```js
+import { launchBrowser } from '/opt/chora-browser/browser.mjs';
+const browser = await launchBrowser();
+try {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await page.goto('http://127.0.0.1:3000'); // Start your application in this container first.
+  // Assert the task's actual interactions and outcomes here.
+} finally {
+  await browser.close();
+}
+```
+
+No browser package installation in the task repository is required. Under auto
+check policy the execution instructions require relevant browser checks for
+browser-visible changes. Named and none check policies remain authoritative.
+Run each check separately from the explicit repository working directory and
+include it in the selected checks. Stop application servers after testing. Store
+screenshots and temporary output in `/tmp`, outside reviewable repository copies;
+only scoped ordinary text changes are imported.
+
+Chromium runs without its nested browser sandbox inside Chora's existing Docker
+boundary. This adds no host browser access, host IPC, published port or Docker
+capability. The tool is intended for testing the task's own application; this
+qualification does not establish support for arbitrary web browsing.
+
+The result page separates acceptance coverage from command results. A passing
+selected check does not prove all requirements were tested, and **awaiting review**
+is not acceptance. Review the original requirements and actual evidence, including
+browser behavior. Missing evidence remains unverified. Browser results are still
+Agent-reported; the preparation probe qualifies the tool, not the Agent's work.
+
 ## Boundaries and recovery
 
 | Boundary | Policy |
@@ -86,6 +130,13 @@ credentials stay in the host delivery flow and are never injected into Pi.
 | Network | Outbound Docker bridge networking. No domain allowlist, host network namespace, published ports or Docker socket. Host network services may be reachable. |
 | Credentials | Only the selected DeepSeek API key; stdin injection into owner-only tmpfs. Credentials disappear with the container. Provider requests necessarily use the network. |
 | Results | Freeze the container before export; prove death before import. Bound logs to 10 MiB and reviewable artifacts/changes to 100 MiB. No partial output is imported on cancellation or timeout. |
+
+Transient Pi model/tool progress is filtered before bounded log capture; terminal
+messages and tool results are retained. Exceeding the retained evidence limit
+fails with `runtime_output_limit_exceeded` and prevents importing partial changes.
+While an attempt is running, stopped, paused or unobservable containers trigger
+recovery instead of remaining indefinitely running. An observation failure is not
+proof of process death and does not authorize a replacement attempt.
 
 Cancel stops the selected attempt and requires proof of termination before a
 successor. After a Workbench restart, recovery cleans up only owned Docker
