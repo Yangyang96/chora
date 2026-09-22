@@ -150,7 +150,7 @@ task. New slice IDs preserve earlier milestone IDs and evidence.
 | Complete | M2-S8-2: reusable Project execution settings | S8-1 terminology is validated. | Project defaults, deliberate Task overrides and an accurate effective-settings summary work through execution and restart. |
 | Complete | M2-S9-1: project research and proposal review | S8 execution settings are usable; select one concrete project question. | A repository-optional Task produces a sourced finding/proposal, supports feedback and review, and reopens without fabricated code delivery. |
 | Complete | M2-S9-2: document revision and implementation handoff | S9-1 result, review and provenance contract is proved. | Revise and accept a project design/document, then explicitly bind that accepted revision to a later coding Task. |
-| In progress | M3 team collaboration and delegation | Prioritize after the personal S9 journey; qualify identity, membership and concurrency before delegation. | Shared ownership, review, handoff, aggregation and conflict handling. |
+| In progress | M3 team collaboration and delegation | Start with bounded single-user local Agent delegation after S9; shared identity, membership and concurrency remain gates for multi-human work. | Shared ownership, review, handoff, aggregation and conflict handling. |
 | On demonstrated need | M4 background/remote execution | A bounded scenario needs work away from the foreground. | Explicit placement, cancellation, recovery, budgets and notifications. |
 
 S8/S9 do not wait for signed macOS distribution, a second Runtime, Contexere or
@@ -265,7 +265,8 @@ required to start V0, and this slice does not authorize a Tag, Release or instal
 
 V1 lightweight drafts/ordering is demand-gated before or around M3, with capture
 separate from execution authorization and explicit promotion into a Task. M3 adds
-claims, handoff and delegation only with team authority/concurrency; M4 adds
+bounded local delegation first, with team authority/concurrency required for
+shared claims and handoff; M4 adds
 queued/background/remote execution, budgets and notifications. These extensions
 are not implicit V0 work. The S6A suffix preserves existing S6/S7 milestone IDs.
 
@@ -281,7 +282,10 @@ handling are part of this slice. A follow-on source-bound proposal import lets t
 parent Agent suggest fixed assignments; explicit start revalidates the current
 result and freezes its provenance without accepting it. Dedicated research
 planning adds a single explicit start with pre-execution authority, one planning
-Attempt and automatic validated import. Implementation and qualification are in
+Attempt and automatic validated import. These three slices passed technical
+qualification on Apple Silicon macOS on 2026-09-23: the complete development
+gate, browser journeys and real Pi execution covered sourced results, explicit
+stop, restart continuity and unchanged human acceptance. Overall M3 remains in
 progress.
 
 This is a bounded starting point within M3. Multi-human membership/revocation,
