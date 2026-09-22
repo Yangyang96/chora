@@ -21,7 +21,7 @@ func TestDelegationMigrationRejectsUnledgeredTables(t *testing.T) {
 	defer db.Close()
 	// Test-owned corruption: retaining new tables while removing their ledger row
 	// must fail rather than hiding drift through CREATE IF NOT EXISTS.
-	if _, err = db.db.ExecContext(ctx, `DELETE FROM schema_migrations WHERE version=46`); err != nil {
+	if _, err = db.db.ExecContext(ctx, `DROP TABLE delegation_proposal_sources; DELETE FROM schema_migrations WHERE version>=46`); err != nil {
 		t.Fatal(err)
 	}
 	if err = migrate(ctx, db.db); err == nil || !strings.Contains(err.Error(), "already exists") {

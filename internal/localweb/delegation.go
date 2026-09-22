@@ -26,6 +26,19 @@ func (server *Server) getDelegation(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, v)
 }
+func (server *Server) getDelegationProposal(w http.ResponseWriter, r *http.Request) {
+	id, err := domain.ParseTaskID(r.PathValue("taskID"))
+	if err != nil {
+		writeProjectError(w, err)
+		return
+	}
+	v, err := server.service.GetDelegationProposal(r.Context(), id)
+	if err != nil {
+		writeAgentExecutionCommandError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, v)
+}
 func (server *Server) startDelegation(w http.ResponseWriter, r *http.Request) {
 	if !server.pathPiEnabled {
 		writeError(w, 422, errors.New("delegation requires the local workbench"))
@@ -37,18 +50,32 @@ func (server *Server) startDelegation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var input struct {
-		Assignments []domain.DelegationAssignment `json:"assignments"`
+		Assignments          []domain.DelegationAssignment `json:"assignments"`
+		SourceAttemptID      string                        `json:"sourceAttemptId"`
+		ExpectedResultDigest string                        `json:"expectedResultDigest"`
 	}
 	if err = decodeJSON(r, &input); err != nil {
 		writeError(w, 400, err)
 		return
 	}
+	var sourceAttempt domain.AttemptID
+	if input.SourceAttemptID != "" {
+		sourceAttempt, err = domain.ParseAttemptID(input.SourceAttemptID)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+	}
 	meta, ok := requestCommandMetaForProduct(w, r, "start-delegation", server.product)
 	if !ok {
 		return
 	}
-	v, err := server.service.StartDelegation(r.Context(), app.StartDelegationRequest{CommandMeta: meta, ParentTaskID: id, Assignments: input.Assignments})
+	v, err := server.service.StartDelegation(r.Context(), app.StartDelegationRequest{CommandMeta: meta, ParentTaskID: id, Assignments: input.Assignments, SourceAttemptID: sourceAttempt, ExpectedResultDigest: input.ExpectedResultDigest})
 	if err != nil {
+		if errors.Is(err, app.ErrReviewEvidenceUnavailable) {
+			writeError(w, http.StatusConflict, err)
+			return
+		}
 		writeAgentExecutionCommandError(w, err)
 		return
 	}

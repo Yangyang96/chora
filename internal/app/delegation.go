@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,6 +24,7 @@ type DelegationChildView struct {
 	URL          string `json:"url,omitempty"`
 }
 type DelegationView struct {
+	Source       *DelegationProposalSourceView `json:"source,omitempty"`
 	ParentTaskID string                        `json:"parentTaskId"`
 	Version      uint64                        `json:"version"`
 	State        string                        `json:"state"`
@@ -34,8 +36,10 @@ type DelegationView struct {
 }
 type StartDelegationRequest struct {
 	CommandMeta
-	ParentTaskID domain.TaskID
-	Assignments  []domain.DelegationAssignment
+	ParentTaskID         domain.TaskID
+	Assignments          []domain.DelegationAssignment
+	SourceAttemptID      domain.AttemptID
+	ExpectedResultDigest string
 }
 type ChangeDelegationRequest struct {
 	CommandMeta
@@ -72,6 +76,16 @@ func (s *Service) GetDelegation(ctx context.Context, id domain.TaskID) (Delegati
 	v.State = string(d.State)
 	v.Reason = d.Reason
 	v.Assignments = d.Assignments
+	if source, e := r.GetDelegationProposalSource(ctx, id); e == nil {
+		_, current, currentErr := loadDelegationProposalEvidence(ctx, r, id, source.AttemptID, fmt.Sprintf("%x", source.ResultDigest), false)
+		if currentErr != nil && !delegationProposalUnavailable(currentErr) {
+			return v, currentErr
+		}
+		sv := delegationSourceView(source, currentErr == nil && current.ProjectDocumentSource == source.ProjectDocumentSource && current.PlanDigest == source.PlanDigest)
+		v.Source = &sv
+	} else if !errors.Is(e, storecontract.ErrNotFound) {
+		return v, e
+	}
 	children, err := r.ListDelegationChildren(ctx, id)
 	if err != nil {
 		return v, err
@@ -186,7 +200,20 @@ func (s *Service) StartDelegation(ctx context.Context, req StartDelegationReques
 		return DelegationView{}, err
 	}
 	now := s.deps.Clock.Now()
-	key, err := s.commandKey(req.CommandMeta, "start_delegation", req.ParentTaskID.String(), 0, req.Assignments, now)
+	// Preserve the original assignments-mode command digest across upgrades.
+	var semantic any = req.Assignments
+	sourceMode := req.SourceAttemptID.Valid() || req.ExpectedResultDigest != ""
+	if sourceMode {
+		if req.Assignments != nil || !req.SourceAttemptID.Valid() || req.ExpectedResultDigest == "" {
+			return DelegationView{}, fmt.Errorf("%w: choose assignments or one exact source Attempt and digest", ErrInvalidCommand)
+		}
+		decoded, e := hex.DecodeString(req.ExpectedResultDigest)
+		if e != nil || len(decoded) != 32 || hex.EncodeToString(decoded) != req.ExpectedResultDigest {
+			return DelegationView{}, fmt.Errorf("%w: source result digest must be a lowercase SHA-256", ErrInvalidCommand)
+		}
+		semantic = struct{ SourceAttemptID, ExpectedResultDigest string }{req.SourceAttemptID.String(), req.ExpectedResultDigest}
+	}
+	key, err := s.commandKey(req.CommandMeta, "start_delegation", req.ParentTaskID.String(), 0, semantic, now)
 	if err != nil {
 		return DelegationView{}, err
 	}
@@ -212,9 +239,23 @@ func (s *Service) StartDelegation(ctx context.Context, req StartDelegationReques
 			}
 			return storecontract.ErrVersionConflict
 		}
-		d := domain.TaskDelegation{ParentTaskID: req.ParentTaskID, Version: 1, State: domain.DelegationRunning, Assignments: req.Assignments, ActorID: req.ActorID, SessionID: req.SessionID, CreatedAt: now, UpdatedAt: now}
+		assignments := req.Assignments
+		var source domain.DelegationProposalSource
+		if sourceMode {
+			assignments, source, e = loadDelegationProposal(ctx, tx, req.ParentTaskID, req.SourceAttemptID, req.ExpectedResultDigest)
+			if e != nil {
+				return e
+			}
+			source.CreatedAt = now
+		}
+		d := domain.TaskDelegation{ParentTaskID: req.ParentTaskID, Version: 1, State: domain.DelegationRunning, Assignments: assignments, ActorID: req.ActorID, SessionID: req.SessionID, CreatedAt: now, UpdatedAt: now}
 		if e = tx.InsertTaskDelegation(ctx, d); e != nil {
 			return e
+		}
+		if sourceMode {
+			if e = tx.InsertDelegationProposalSource(ctx, source); e != nil {
+				return e
+			}
 		}
 		return tx.SaveCommand(ctx, key, storecontract.Response{Body: []byte(`{}`)})
 	})
