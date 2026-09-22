@@ -975,3 +975,41 @@ test('can cancel resource preparation before Task creation returns an ID', async
   await waitFor(() => expect(screen.queryByRole('region', { name: 'Repository preparation' })).not.toBeInTheDocument())
   expect(screen.queryByRole('alert')).not.toBeInTheDocument()
 })
+
+test('starts a dedicated research planner through persisted authorization instead of the ordinary Run endpoint', async () => {
+  window.history.replaceState({}, '', '/rooms/room-1/tasks/task-planner')
+  const planner = {
+    id: 'task-planner', roomId: 'room-1', title: 'Research planning', goal: '[Chora research delegation planning v1]',
+    executionProfile: 'real_spec_coding', agentExecutionProfile: 'trusted_local',
+    resourceSnapshot: { outcomeKind: 'document', resources: [] },
+    planning: { revisions: [], acceptance: { revisionId: 'plan-planner' } },
+  }
+  let started = false
+  const writes: string[] = []
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const path = String(input)
+    if (path === '/api/pi/installation') return jsonResponse(piInstallationMissing)
+    if (path === '/api/pi/discovery') return jsonResponse(piDiscoveryReady)
+    if (path === '/api/isolated-local') return jsonResponse(isolatedLocalReady)
+    if (path.includes('/continuity')) return jsonResponse({ available: false })
+    if (path === '/api/agent-execution/trusted-local-acknowledgements/current') return jsonResponse({ acknowledged: true, policyVersion: TRUSTED_LOCAL_DISCLOSURE_POLICY })
+    if (path.startsWith('/api/v2/projects?')) return jsonResponse({ projects: [] })
+    if (path === '/api/rooms') return jsonResponse({ activeRooms: [roomSummary], archivedRooms: [] })
+    if (path === '/api/rooms/room-1') return jsonResponse({ ...roomRef, ownershipKind: 'legacy_standalone' })
+    if (path === '/api/rooms/room-1/tasks/task-planner') return jsonResponse(planner)
+    if (path === '/api/tasks/task-planner/delegation/planning' && init?.method === 'POST') {
+      writes.push(path); started = true
+      expect(JSON.parse(String(init.body))).toEqual({})
+      return jsonResponse({ planning: { state: 'planning', version: 1, runId: 'run-planner' } })
+    }
+    if (path === '/api/tasks/task-planner/delegation') return jsonResponse({ parentTaskId: planner.id, version: 0, state: 'not_started', eligible: true, assignments: [], children: [], ...(started ? { planning: { state: 'planning', version: 1, runId: 'run-planner' } } : {}) })
+    throw new Error(`Unexpected fetch: ${init?.method ?? 'GET'} ${path}`)
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  render(<NewApp />)
+  await userEvent.click(await screen.findByRole('button', { name: 'Start research delegation' }))
+  await screen.findByRole('button', { name: 'Stop research planning' })
+  expect(writes).toEqual(['/api/tasks/task-planner/delegation/planning'])
+  expect(fetchMock.mock.calls.some(([path]) => String(path) === '/api/tasks/task-planner/runs')).toBe(false)
+  expect(screen.queryByRole('button', { name: 'Start research delegation' })).toBeNull()
+})

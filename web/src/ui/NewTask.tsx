@@ -1,3 +1,4 @@
+import { delegationPlanningRequirement } from '../delegationPlanning'
 import { ActionButton } from './ActionButton'
 import { useEffect, useState } from 'react'
 import { ProjectSettings } from './ProjectSettings'
@@ -47,7 +48,8 @@ export function NewTask({ projectId, roomId, roomName, busy, preparationPending 
   const [modelValid, setModelValid] = useState(true)
   const [localAcknowledged, setLocalAcknowledged] = useState(false)
   const [disclosureRequest, setDisclosureRequest] = useState(0)
-  const [suppliedOnly, setSuppliedOnly] = useState(false)
+  const [purpose, setPurpose] = useState<'code' | 'document' | 'delegation'>('code')
+  const suppliedOnly = purpose !== 'code'
   const [materials, setMaterials] = useState<TaskMaterialInput[]>([])
   const [revisionIds, setRevisionIds] = useState<string[]>([])
   const [materialBlocker, setMaterialBlocker] = useState('')
@@ -90,7 +92,7 @@ export function NewTask({ projectId, roomId, roomName, busy, preparationPending 
     if (usesTaskResources && suppliedOnly && (materialBlocker || materials.length === 0)) return
     if (projectId && !roomId && settingsVersion === undefined) return
     if (!projectId && !modelBinding) { onSubmit(requirement.trim(), agentExecutionProfile); return }
-    if (projectId && roomId && projectExecution) onSubmit(requirement.trim(), agentExecutionProfile, undefined, suppliedOnly ? [] : resources, undefined, { projectVersion: projectExecution.version, ...(overrideExecution ? { agentExecutionProfile: agentExecutionProfile as 'trusted_local' | 'isolated_local', model: modelIdentity } : {}) }, { ...(suppliedOnly ? { outcomeKind: 'document' as const, materials } : {}), revisionIds })
+    if (projectId && roomId && projectExecution) onSubmit(purpose === 'delegation' ? delegationPlanningRequirement(requirement) : requirement.trim(), agentExecutionProfile, undefined, suppliedOnly ? [] : resources, undefined, { projectVersion: projectExecution.version, ...(overrideExecution ? { agentExecutionProfile: agentExecutionProfile as 'trusted_local' | 'isolated_local', model: modelIdentity } : {}) }, { ...(suppliedOnly ? { outcomeKind: 'document' as const, materials } : {}), revisionIds })
     else if (projectId) onSubmit(requirement.trim(), agentExecutionProfile, settingsVersion, undefined, modelBinding)
     else onSubmit(requirement.trim(), agentExecutionProfile, undefined, undefined, modelBinding)
   }
@@ -103,11 +105,12 @@ export function NewTask({ projectId, roomId, roomName, busy, preparationPending 
       {usesTaskResources && <fieldset className="task-purpose" disabled={busy}>
         <legend>{t('What would you like to do?')}</legend>
         {[
-          { document: false, label: 'Develop code', description: 'Work in selected repositories, then review code changes.' },
-          { document: true, label: 'Research / write a proposal', description: 'Use supplied material to produce a document for review. No repository changes.' },
-        ].map((purpose) => <label className="task-purpose-choice" key={purpose.label}>
-          <input type="radio" name="task-purpose" aria-label={t(purpose.label)} aria-describedby={purpose.document ? 'document-purpose-description' : 'code-purpose-description'} checked={suppliedOnly === purpose.document} onChange={() => { setSuppliedOnly(purpose.document); setResources(undefined); setResourceBlocker('') }} />
-          <span><strong>{t(purpose.label)}</strong><small id={purpose.document ? 'document-purpose-description' : 'code-purpose-description'}>{t(purpose.description)}</small></span>
+          { id: 'code' as const, label: 'Develop code', description: 'Work in selected repositories, then review code changes.' },
+          { id: 'document' as const, label: 'Research / write a proposal', description: 'Use supplied material to produce a document for review. No repository changes.' },
+          ...(localWorkbench ? [{ id: 'delegation' as const, label: 'Plan and delegate research', description: 'One start authorizes a planning Agent and up to four sequential research assignments. You review the results.' }] : []),
+        ].map((choice) => <label className="task-purpose-choice" key={choice.label}>
+          <input type="radio" name="task-purpose" aria-label={t(choice.label)} aria-describedby={`${choice.id}-purpose-description`} checked={purpose === choice.id} onChange={() => { setPurpose(choice.id); setResources(undefined); setResourceBlocker('') }} />
+          <span><strong>{t(choice.label)}</strong><small id={`${choice.id}-purpose-description`}>{t(choice.description)}</small></span>
         </label>)}
       </fieldset>}
       {localWorkbench && !suppliedOnly && <p className="section-note">{t('New tasks start from the current branch’s committed HEAD. Uncommitted and untracked changes stay in the original checkout and are not copied. Commit them externally first if the task needs them.')}</p>}
@@ -150,7 +153,7 @@ export function NewTask({ projectId, roomId, roomName, busy, preparationPending 
           {preparationPending ? t('Cancel preparation') : t('Cancel')}
         </ActionButton>
         <ActionButton type="submit" className="btn-primary" disabled={busy || disclosurePending || unavailable || !modelValid || !agentExecutionProfile || !requirement.trim() || (agentExecutionProfile === 'trusted_local' && !trustedLocalAcknowledged) || (usesTaskResources ? (!suppliedOnly && (!resources || resources.length === 0)) || (suppliedOnly && (Boolean(materialBlocker) || materials.length === 0)) || !projectExecution : !!projectId && settingsVersion === undefined)} disabledReason={startDisabledReason}>
-          {busy ? t('Starting…') : t('Start')}
+          {busy ? t('Starting…') : t(purpose === 'delegation' ? 'Start research delegation' : 'Start')}
         </ActionButton>
       </div>
     </form></>

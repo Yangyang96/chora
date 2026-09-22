@@ -279,11 +279,13 @@ The parent collects sourced results for human review; no result is automatically
 accepted and no SCM delivery is authorized. Stop, restart and duplicate-command
 handling are part of this slice. A follow-on source-bound proposal import lets the
 parent Agent suggest fixed assignments; explicit start revalidates the current
-result and freezes its provenance without accepting it. Implementation and
-qualification are in progress.
+result and freezes its provenance without accepting it. Dedicated research
+planning adds a single explicit start with pre-execution authority, one planning
+Attempt and automatic validated import. Implementation and qualification are in
+progress.
 
 This is a bounded starting point within M3. Multi-human membership/revocation,
-single-start automatic planning, parallel execution and coding integration are not
+parallel execution and coding integration are not
 claimed complete. M4 remains demand-gated.
 
 ## Later outcomes and demand gates

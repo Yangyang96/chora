@@ -10,9 +10,10 @@ type Delegation = {
   assignments: Assignment[]
   children: { position: number; role: string; title: string; taskId?: string; runId?: string; state: string; url?: string; resultId?: string; resultDigest?: string; markdown?: string }[]
   source?: ProposalSource
+  planning?: { state: string; version: number; runId?: string; reason?: string }
 }
 
-export function TaskDelegation({ taskId, onNavigate }: { taskId: string; onNavigate: (url: string) => void }) {
+export function TaskDelegation({ taskId, roomId, onNavigate, planningTask = false, starting = false, onStartPlanning }: { taskId: string; roomId?: string; onNavigate: (url: string) => void; planningTask?: boolean; starting?: boolean; onStartPlanning?: () => Promise<void> }) {
   const { t } = useI18n()
   const [view, setView] = useState<Delegation | null>(null)
   const [assignments, setAssignments] = useState<Assignment[]>([{ role: '', title: '', requirement: '' }])
@@ -59,16 +60,16 @@ export function TaskDelegation({ taskId, onNavigate }: { taskId: string; onNavig
       if (!controller.signal.aborted) setProposalLoading(false)
     }
   }
-  async function mutate(action: 'start' | 'start_proposal' | 'stop' | 'resume') {
+  async function mutate(action: 'start' | 'start_proposal' | 'stop' | 'resume' | 'planning_stop' | 'planning_resume') {
     if (action === 'start_proposal' && (!proposal?.available || !proposal.source?.current)) return
     proposalRequest.current?.abort()
     setProposalLoading(false)
     ++epoch.current
     setBusy(true); setError('')
     try {
-      const next = await api<Delegation>(action === 'start' || action === 'start_proposal' ? endpoint : `${endpoint}/${action}`, {
+      const next = await api<Delegation>(action === 'start' || action === 'start_proposal' ? endpoint : `${endpoint}/${action.replace('planning_', 'planning/')}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': commandKey(`delegation-${action}`) },
-        body: JSON.stringify(action === 'start' ? { assignments } : action === 'start_proposal' ? { sourceAttemptId: proposal!.source!.attemptId, expectedResultDigest: proposal!.source!.resultDigest } : { expectedVersion: view?.version }),
+        body: JSON.stringify(action === 'start' ? { assignments } : action === 'start_proposal' ? { sourceAttemptId: proposal!.source!.attemptId, expectedResultDigest: proposal!.source!.resultDigest } : { expectedVersion: action.startsWith('planning_') ? view?.planning?.version : view?.version }),
       })
       setView(next)
     } catch (e) { setError(e instanceof Error ? e.message : String(e)) }
@@ -82,10 +83,23 @@ export function TaskDelegation({ taskId, onNavigate }: { taskId: string; onNavig
   if (view && !view.eligible && view.state === 'not_started') return null
   return <section className="panel" aria-label={t('Agent delegation')}>
     <h2>{t('Agent delegation')}</h2>
-    <p>{t('Define up to four research assignments. Start authorizes sequential Agent execution with this task’s frozen material and settings. You review each result; nothing is accepted or delivered automatically.')}</p>
+    {!planningTask && <p>{t('Define up to four research assignments. Start authorizes sequential Agent execution with this task’s frozen material and settings. You review each result; nothing is accepted or delivered automatically.')}</p>}
     {(error || loadError) && <p role="alert">{error || loadError}</p>}
     {!view && <p role="status">{t('Loading…')}</p>}
-    {view?.state === 'not_started' && <>
+    {view?.planning && <section aria-label={t('Research planning')}>
+      <h3>{t('Research planning')}</h3>
+      <p role="status">{t('Planning status')}: {t(view.planning.state)}</p>
+      {view.planning.reason && <p>{view.planning.reason}</p>}
+      <p>{t('This start authorizes one planning attempt, then up to four research assignments from its valid result. Final acceptance remains yours.')}</p>
+      {view.planning.runId && roomId && <button type="button" onClick={() => onNavigate(`/rooms/${encodeURIComponent(roomId)}/tasks/${encodeURIComponent(taskId)}/runs/${encodeURIComponent(view.planning!.runId!)}`)}>{t('Open planning run')}</button>}
+      {(view.planning.state === 'planning' || view.planning.state === 'blocked') && <button type="button" disabled={busy} onClick={() => void mutate('planning_stop')}>{t('Stop research planning')}</button>}
+      {view.planning.state === 'blocked' && view.eligible && <button type="button" disabled={busy} onClick={() => void mutate('planning_resume')}>{t('Resume research planning')}</button>}
+    </section>}
+    {view?.state === 'not_started' && !view.planning && planningTask && <p>
+      {t('One start authorizes a planning Agent and up to four sequential research assignments. You review the results.')}
+      {onStartPlanning && <button type="button" disabled={busy || starting} onClick={() => { setBusy(true); void onStartPlanning().finally(() => { setBusy(false); setRefresh(n => n + 1) }) }}>{t('Start research delegation')}</button>}
+    </p>}
+    {view?.state === 'not_started' && !view.planning && !planningTask && <>
       <section aria-label={t('Agent-proposed plan')}>
         <h3>{t('Agent-proposed plan')}</h3>
         <p>{t('Load fixed assignments from this Task’s latest completed Agent result. Loading a plan does not start work or accept the result.')}</p>

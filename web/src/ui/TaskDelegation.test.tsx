@@ -92,3 +92,24 @@ it('retains original plan provenance when the parent result is superseded', asyn
   expect(screen.getByText('result-parent')).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Start proposed delegation' })).toBeNull()
 })
+
+it('shows the bound planning run and stops using the planning version without exposing another launch', async () => {
+ const writes: { path: string; body: unknown }[] = []
+ let view = { ...initial, planning: { state: 'planning', version: 3, runId: 'run-planner' } }
+ vi.stubGlobal('fetch', vi.fn(async (path, init) => {
+   if (init?.method === 'POST') {
+     writes.push({ path: String(path), body: JSON.parse(init.body) })
+     view = { ...view, planning: { ...view.planning, state: 'stopping', version: 4 } }
+   }
+   return new Response(JSON.stringify(view))
+ }))
+ const navigate = vi.fn()
+ render(<LanguageProvider><TaskDelegation taskId="task-parent" roomId="room-parent" onNavigate={navigate} /></LanguageProvider>)
+ fireEvent.click(await screen.findByRole('button', { name: 'Open planning run' }))
+ expect(navigate).toHaveBeenCalledWith('/rooms/room-parent/tasks/task-parent/runs/run-planner')
+ expect(screen.queryByRole('button', { name: 'Start delegation' })).toBeNull()
+ expect(screen.queryByRole('button', { name: 'Load Agent plan' })).toBeNull()
+ fireEvent.click(screen.getByRole('button', { name: 'Stop research planning' }))
+ await waitFor(() => expect(writes).toEqual([{ path: '/api/tasks/task-parent/delegation/planning/stop', body: { expectedVersion: 3 } }]))
+ await waitFor(() => expect(screen.queryByRole('button', { name: 'Stop research planning' })).toBeNull())
+})

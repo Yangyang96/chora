@@ -47,8 +47,8 @@ While that parent Task is still open, choose **Load Agent plan**. Review the
 assignments and **Plan source**, then choose **Start proposed delegation** to
 explicitly authorize execution. Loading or generating a proposal never starts
 children, saves an accepted document, or constitutes human result acceptance.
-This is a proposal-and-start workflow; a single parent launch does not yet
-implicitly authorize automatic planning followed by child execution.
+This remains a proposal-and-start workflow. Dedicated research delegation below
+records its separate execution authority before the planning Run starts.
 
 The server imports only the latest Run's current, review-ready document result.
 It checks the complete assistant event, Agent report, result and text digests,
@@ -64,6 +64,31 @@ and expected result digest; the server reloads and validates the assignments.
 Later parent retries or result changes do not replace the imported plan, and the
 collection shows when its source is no longer current. Stop and restart retain
 the original frozen plan and the same child execution limits.
+
+## Plan and execute with one start
+
+When creating a Task in the local Workbench, choose **Plan and delegate research**,
+enter the research goal and supplied materials, then choose **Start research
+delegation**. The Task freezes an explicit planning requirement before its normal
+execution plan is activated. This start records durable authority for one planning
+Attempt and up to four sequential research assignments from its valid result.
+The same action is available on an unstarted dedicated planning Task.
+
+Chora binds that authority to one parent Run and Attempt. It consumes only that
+Run's complete, current, source-checked proposal and atomically freezes the plan
+before child execution. Ordinary research results and text containing the plan
+format do not grant this authority. Manual plans, imported proposals and planning
+intents are mutually exclusive for a parent Task.
+
+The planning Attempt is not automatically retried. A failed or malformed plan
+blocks without creating children, repairing the output or starting a new planning
+round. Child execution retains its existing bounded retry policy. **Stop research
+planning** records stop intent immediately and prevents automatic import before
+cancelling the bound planning Run. After import, use **Stop delegation** for the
+child execution phase. An interrupted planning phase becomes blocked on restart;
+inspect the existing Run before choosing **Resume research planning**. Resume
+keeps the same authorization and identities and does not grant another Attempt.
+Use a new Task if a new planning round is needed.
 
 ## Results and review
 
@@ -99,7 +124,7 @@ a new delegation.
 ## Current boundary
 
 This is the first local M3 slice, not complete team collaboration. Multi-human
-identity/membership/revocation, single-start automatic planning, recursive delegation,
+identity/membership/revocation, recursive delegation,
 parallel child execution, coding assignments and code integration remain future
 work. Remote placement, a general background queue, notifications and token/cost
 budgets remain demand-gated M4 work. The existing service owns these local Runs;

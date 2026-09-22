@@ -126,3 +126,28 @@ test('submits supplied material without repositories and preserves explicit docu
    { outcomeKind: 'document', materials: [{ title: 'Support notes', locator: 'https://example.test/support', body: '# Observations' }], revisionIds: ['doc-3'] },
  )
 })
+
+test('freezes a planning requirement only after selecting research delegation', async () => {
+ const onSubmit = vi.fn()
+ mockedApi.mockImplementation(async (path: string) => {
+   if (path.endsWith('/execution-settings')) return { version: 9, agentExecutionProfile: 'isolated_local', model: null }
+   if (path.endsWith('/revisions')) return []
+   if (path.endsWith('/task-options')) return { repositories: [], selectedRepoIds: [], nextRepositoryCursor: '' }
+   return catalog
+ })
+ render(<NewTask projectId="project-1" roomId="room-1" roomName="Demo" busy={false} initialRequirement="Compare compatibility options" isolatedLocal={isolatedReady} piDiscovery={{ phase: 'loaded', discovery: { state: 'unavailable', readyProviders: [], notReadyProviders: [] } }} onCancel={vi.fn()} onSubmit={onSubmit} onAcknowledgeTrustedLocal={vi.fn()} />)
+ await userEvent.click(screen.getByLabelText('Plan and delegate research'))
+ await userEvent.type(screen.getByLabelText('Material title'), 'Notes')
+ await userEvent.type(screen.getByLabelText('Source locator'), 'supplied:notes')
+ await userEvent.type(screen.getByLabelText('Markdown content'), 'Existing clients must remain compatible.')
+ await waitFor(() => expect(screen.getByRole('button', { name: 'Start research delegation' })).toBeEnabled())
+ expect(onSubmit).not.toHaveBeenCalled()
+ await userEvent.click(screen.getByRole('button', { name: 'Start research delegation' }))
+ expect(onSubmit.mock.calls[0][0]).toContain('Compare compatibility options\n\n[Chora research delegation planning v1]')
+ expect(onSubmit.mock.calls[0][0]).toContain('"schemaVersion": "chora.delegation-plan.v1"')
+ expect(onSubmit.mock.calls[0][3]).toEqual([])
+ expect(onSubmit.mock.calls[0][6]).toMatchObject({ outcomeKind: 'document', materials: [{ locator: 'supplied:notes' }] })
+ await userEvent.click(screen.getByLabelText('Research / write a proposal'))
+ await userEvent.click(screen.getByRole('button', { name: 'Start' }))
+ expect(onSubmit.mock.lastCall?.[0]).toBe('Compare compatibility options')
+})

@@ -12,9 +12,10 @@ source checkout, and an explicit absolute Chora data root. It does not define an
 online backup service, cross-machine migration, or a general disaster-recovery
 system.
 
-The current development source uses SQLite schema 47; rc.10 uses schema 41.
-Schemas 46–47 add durable local delegation authority, child lineage and immutable
-Agent-plan provenance; they do not rewrite existing Task, Run or result history. Older binaries reject this newer
+The current development source uses SQLite schema 48; rc.10 uses schema 41.
+Schemas 46–48 add durable local delegation authority, child lineage, immutable
+Agent-plan provenance and a single-attempt planning authorization. They do not
+rewrite existing Task, Run or result history. Older binaries reject this newer
 schema; use a pre-upgrade whole-data-root backup when rolling back.
 The 41 → 42 transition adds Isolated Local authority and creates a consistent
 `.chora-schema41-backup-*` snapshot before changing the database. Stop all owners
