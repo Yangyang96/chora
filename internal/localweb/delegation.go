@@ -119,6 +119,9 @@ func (server *Server) setDelegationState(ctx context.Context, d domain.TaskDeleg
 	return server.store.WithinWriteTx(ctx, func(tx storecontract.WriteTx) error { return tx.SaveTaskDelegationCAS(ctx, d.Version, next) })
 }
 func (server *Server) recoverDelegations(ctx context.Context) error {
+	if err := server.recoverDelegationPlanning(ctx); err != nil {
+		return err
+	}
 	active, err := server.store.Reader().ListActiveTaskDelegations(ctx)
 	if err != nil {
 		return err
@@ -137,6 +140,7 @@ func (server *Server) recoverDelegations(ctx context.Context) error {
 func (server *Server) dispatchDelegations(ctx context.Context) {
 	server.delegationMu.Lock()
 	defer server.delegationMu.Unlock()
+	server.dispatchDelegationPlanning(ctx)
 	active, err := server.store.Reader().ListActiveTaskDelegations(ctx)
 	if err != nil {
 		server.logger.Printf("list delegations: %v", err)

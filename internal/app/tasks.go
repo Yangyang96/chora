@@ -827,14 +827,22 @@ func (s *Service) replayPlanningReview(ctx context.Context, reader storecontract
 }
 
 func (s *Service) CreateRun(ctx context.Context, request CreateRunRequest) (CreateRunResult, error) {
-	if err := s.authorize(ctx, request.CommandMeta, "create_run", request.TaskID.String(), 0); err != nil {
+	action := "create_run"
+	if request.delegationPlanning {
+		action = "start_delegation_planning"
+	}
+	if err := s.authorize(ctx, request.CommandMeta, action, request.TaskID.String(), 0); err != nil {
 		return CreateRunResult{}, err
 	}
 	if err := s.ensureExistingTaskWorktree(ctx, request.TaskID); err != nil {
 		return CreateRunResult{}, err
 	}
 	now := s.deps.Clock.Now()
-	key, err := s.commandKey(request.CommandMeta, "create_run", request.TaskID.String(), 0, request.RevisionID.String(), now)
+	semantic := request.RevisionID.String()
+	if request.delegationPlanning {
+		semantic = domain.DelegationProposalSchemaV1
+	}
+	key, err := s.commandKey(request.CommandMeta, action, request.TaskID.String(), 0, semantic, now)
 	if err != nil {
 		return CreateRunResult{}, err
 	}
@@ -861,6 +869,12 @@ func (s *Service) CreateRun(ctx context.Context, request CreateRunRequest) (Crea
 			result.Replayed = err == nil
 			return err
 		}
+		if _, e := tx.GetDelegationPlanning(ctx, request.TaskID); !errors.Is(e, storecontract.ErrNotFound) {
+			if e != nil {
+				return e
+			}
+			return storecontract.ErrVersionConflict
+		}
 		task, err := tx.GetTask(ctx, request.TaskID)
 		if err != nil {
 			return err
@@ -875,6 +889,9 @@ func (s *Service) CreateRun(ctx context.Context, request CreateRunRequest) (Crea
 		if err != nil {
 			return err
 		}
+		if request.delegationPlanning && len(history) > 0 {
+			return fmt.Errorf("%w: planning requires a Task without a previous Run", ErrInvalidCommand)
+		}
 		for _, prior := range history {
 			if prior.Run.State() == domain.RunStateAccepted {
 				return storecontract.ErrVersionConflict
@@ -884,7 +901,7 @@ func (s *Service) CreateRun(ctx context.Context, request CreateRunRequest) (Crea
 		if err != nil {
 			return err
 		}
-		if acceptance.RevisionID() != request.RevisionID {
+		if !request.delegationPlanning && acceptance.RevisionID() != request.RevisionID {
 			return storecontract.ErrVersionConflict
 		}
 		snapshot, err := tx.GetSnapshot(ctx, acceptance.SnapshotID())
@@ -899,7 +916,7 @@ func (s *Service) CreateRun(ctx context.Context, request CreateRunRequest) (Crea
 		if err != nil || charter.TaskID() != request.TaskID {
 			return fmt.Errorf("%w: accepted Charter drift", ErrInvalidCommand)
 		}
-		if err := s.validateAcceptedRealSpecCoding(ctx, tx, request.TaskID, request.RevisionID, charter, snapshot); err != nil {
+		if err := s.validateAcceptedRealSpecCoding(ctx, tx, request.TaskID, acceptance.RevisionID(), charter, snapshot); err != nil {
 			return err
 		}
 		run, err := domain.NewAgentRun(s.deps.IDs.RunID(), request.TaskID, charter.ID(), now)
@@ -913,6 +930,23 @@ func (s *Service) CreateRun(ctx context.Context, request CreateRunRequest) (Crea
 		if err := tx.InsertRun(ctx, run); err != nil {
 			return err
 		}
+		if request.delegationPlanning {
+			digest, e := planningAuthority(ctx, tx, request.TaskID)
+			if e != nil {
+				return e
+			}
+			settings, e := tx.GetTaskExecutionSettings(ctx, request.TaskID)
+			if e != nil {
+				return e
+			}
+			if e = requireProfileAcknowledgement(ctx, tx, settings.AgentExecutionProfile, request.ActorID); e != nil {
+				return e
+			}
+			p := domain.DelegationPlanningIntent{ParentTaskID: request.TaskID, RunID: run.ID(), Version: 1, State: domain.DelegationPlanningRunning, AuthorityDigest: digest, ActorID: request.ActorID, SessionID: request.SessionID, CreatedAt: now, UpdatedAt: now}
+			if e = tx.InsertDelegationPlanning(ctx, p); e != nil {
+				return e
+			}
+		}
 		if _, childErr := tx.GetDelegationChild(ctx, request.TaskID); childErr == nil {
 			if err := tx.BindDelegationChildRun(ctx, request.TaskID, run.ID()); err != nil {
 				return err
@@ -924,7 +958,7 @@ func (s *Service) CreateRun(ctx context.Context, request CreateRunRequest) (Crea
 		if err := tx.InsertTechnicalPlanRunBinding(ctx, binding); err != nil {
 			return err
 		}
-		if charter.AdapterID() == "pi" {
+		if charter.AdapterID() == "pi" && !request.delegationPlanning {
 			payload := automaticRetryEvent{Type: automaticRetryEnabledEvent, RunID: run.ID().String(), MaxRetries: AutomaticRetryMaxRetries}
 			if _, err := tx.AppendRunEvent(ctx, run.ID(), storecontract.EventDraft{ID: s.deps.IDs.EventID(), Type: automaticRetryEnabledEvent, Source: "app", OccurredAt: now, RecordedAt: now, NormalizedJSON: responseBody(payload)}); err != nil {
 				return err

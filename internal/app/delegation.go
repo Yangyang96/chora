@@ -24,6 +24,7 @@ type DelegationChildView struct {
 	URL          string `json:"url,omitempty"`
 }
 type DelegationView struct {
+	Planning     *DelegationPlanningView       `json:"planning,omitempty"`
 	Source       *DelegationProposalSourceView `json:"source,omitempty"`
 	ParentTaskID string                        `json:"parentTaskId"`
 	Version      uint64                        `json:"version"`
@@ -65,6 +66,11 @@ func (s *Service) GetDelegation(ctx context.Context, id domain.TaskID) (Delegati
 	}
 	_, _, eligibilityErr := delegationParent(ctx, r, id)
 	v.Eligible = eligibilityErr == nil
+	if p, e := r.GetDelegationPlanning(ctx, id); e == nil {
+		v.Planning = &DelegationPlanningView{State: p.State, Version: p.Version, RunID: p.RunID.String(), Reason: p.Reason}
+	} else if !errors.Is(e, storecontract.ErrNotFound) {
+		return v, e
+	}
 	d, err := r.GetTaskDelegation(ctx, id)
 	if errors.Is(err, storecontract.ErrNotFound) {
 		return v, nil
@@ -222,6 +228,12 @@ func (s *Service) StartDelegation(ctx context.Context, req StartDelegationReques
 			return e
 		} else if replay {
 			return nil
+		}
+		if _, e := tx.GetDelegationPlanning(ctx, req.ParentTaskID); !errors.Is(e, storecontract.ErrNotFound) {
+			if e != nil {
+				return e
+			}
+			return storecontract.ErrVersionConflict
 		}
 		if _, _, e := delegationParent(ctx, tx, req.ParentTaskID); e != nil {
 			return e
@@ -385,18 +397,53 @@ func (s *Service) CancelUnstartedDelegationChild(ctx context.Context, parentID, 
 	if child.ParentTaskID != parentID || !child.RunID.Valid() {
 		return ErrInvalidCommand
 	}
-	unlock := s.runLock(child.RunID)
+	return s.cancelUnstartedDelegationRun(ctx, child.RunID, parentID, false)
+}
+func (s *Service) cancelUnstartedDelegationRun(ctx context.Context, runID domain.RunID, parentID domain.TaskID, planning bool) error {
+	unlock := s.runLock(runID)
 	defer unlock()
 	return s.deps.Store.WithinWriteTx(ctx, func(tx storecontract.WriteTx) error {
-		d, e := tx.GetTaskDelegation(ctx, parentID)
+		if planning {
+			p, e := tx.GetDelegationPlanning(ctx, parentID)
+			if e != nil {
+				return e
+			}
+			if p.State != domain.DelegationPlanningStopping || p.RunID != runID {
+				return storecontract.ErrVersionConflict
+			}
+		} else {
+			d, e := tx.GetTaskDelegation(ctx, parentID)
+			if e != nil {
+				return e
+			}
+			if d.State != domain.DelegationStopping {
+				return storecontract.ErrVersionConflict
+			}
+		}
+		run, e := tx.GetRun(ctx, runID)
 		if e != nil {
 			return e
 		}
-		if d.State != domain.DelegationStopping {
-			return storecontract.ErrVersionConflict
-		}
-		run, e := tx.GetRun(ctx, child.RunID)
-		if e != nil {
+		if planning && run.State() == domain.RunStateRecoveryRequired {
+			attempt, e := tx.GetCurrentAttempt(ctx, run.ID())
+			if e != nil {
+				return e
+			}
+			session, e := tx.GetRuntimeSessionForAttempt(ctx, attempt.ID())
+			if e != nil {
+				return e
+			}
+			if !automaticRetryFinalized(attempt, session) {
+				return storecontract.ErrVersionConflict
+			}
+			next, e := run.Transition(domain.CommandCancelInactiveRun, s.deps.Clock.Now())
+			if e != nil {
+				return e
+			}
+			if e = tx.SaveRunCAS(ctx, run.Version(), next); e != nil {
+				return e
+			}
+			_, e = tx.AppendRunEvent(ctx, run.ID(), storecontract.EventDraft{ID: s.deps.IDs.EventID(), Type: "run.cancelled", Source: "app", OccurredAt: s.deps.Clock.Now(), RecordedAt: s.deps.Clock.Now(), NormalizedJSON: responseBody(map[string]any{"type": "run.cancelled", "run_id": run.ID().String(), "attempt_id": attempt.ID().String(), "reason": "Planning delegation stopped after runtime finalization", "retry_allowed": false})})
 			return e
 		}
 		if run.State() != domain.RunStateDraft && run.State() != domain.RunStateReady {

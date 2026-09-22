@@ -362,3 +362,7 @@ func TestDelegationFrozenSourceRemainsCurrentAfterReview(t *testing.T) {
 		})
 	}
 }
+
+func (p *proposalTestPort) GetDelegationPlanning(context.Context, domain.TaskID) (domain.DelegationPlanningIntent, error) {
+	return domain.DelegationPlanningIntent{}, storecontract.ErrNotFound
+}

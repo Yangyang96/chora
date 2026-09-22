@@ -64,6 +64,13 @@ func (tx *writeTx) InsertTaskDelegation(ctx context.Context, d domain.TaskDelega
 	if d.Version != 1 || d.State != domain.DelegationRunning {
 		return storecontract.ErrVersionConflict
 	}
+	if p, e := tx.GetDelegationPlanning(ctx, d.ParentTaskID); e == nil {
+		if p.State != domain.DelegationPlanningImported {
+			return storecontract.ErrVersionConflict
+		}
+	} else if !errors.Is(e, storecontract.ErrNotFound) {
+		return e
+	}
 	if err := tx.requireActiveRoomForTask(ctx, d.ParentTaskID); err != nil {
 		return err
 	}

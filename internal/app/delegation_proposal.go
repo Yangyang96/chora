@@ -46,6 +46,12 @@ func (s *Service) GetDelegationProposal(ctx context.Context, id domain.TaskID) (
 		}
 		return v, err
 	}
+	if _, err := r.GetDelegationPlanning(ctx, id); err == nil {
+		v.Reason = "A single-start planning authorization already owns this Task."
+		return v, nil
+	} else if !errors.Is(err, storecontract.ErrNotFound) {
+		return v, err
+	}
 	if _, err := r.GetTaskDelegation(ctx, id); err == nil {
 		v.Reason = "A delegation is already frozen for this Task."
 		return v, nil

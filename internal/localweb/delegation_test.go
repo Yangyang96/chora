@@ -16,6 +16,9 @@ import (
 )
 
 func delegationFixture(t *testing.T) (*Server, *taskResourceLifecycleSupervisor, taskRefView, string) {
+	return delegationFixtureWithRequirement(t, "Research compatibility and migration risk.")
+}
+func delegationFixtureWithRequirement(t *testing.T, requirement string) (*Server, *taskResourceLifecycleSupervisor, taskRefView, string) {
 	t.Helper()
 	server, runtime, dataRoot := newResourceTerminalIntegrationServer(t)
 	target, _ := execution.NewExecutionTarget("pi", domain.TrustedHostExecutionProvider)
@@ -30,7 +33,7 @@ func delegationFixture(t *testing.T) (*Server, *taskResourceLifecycleSupervisor,
 		t.Fatalf("room revisions: %v", err)
 	}
 	var task taskRefView
-	requestJSONWithHeaders(t, h, http.MethodPost, "/api/v2/rooms/"+project.DefaultRoomID+"/tasks", map[string]any{"revisionIds": []string{revisions[0].ID().String()}, "title": "Compare designs", "requirement": "Research compatibility and migration risk.", "agentExecutionProfile": "trusted_local", "outcomeKind": "document", "materials": []map[string]string{{"title": "Design", "locator": "supplied:design", "body": "Keep existing clients compatible. Unknown: deployment sequence."}}}, map[string]string{"Idempotency-Key": "delegation-parent"}, 201, &task)
+	requestJSONWithHeaders(t, h, http.MethodPost, "/api/v2/rooms/"+project.DefaultRoomID+"/tasks", map[string]any{"revisionIds": []string{revisions[0].ID().String()}, "title": "Compare designs", "requirement": requirement, "agentExecutionProfile": "trusted_local", "outcomeKind": "document", "materials": []map[string]string{{"title": "Design", "locator": "supplied:design", "body": "Keep existing clients compatible. Unknown: deployment sequence."}}}, map[string]string{"Idempotency-Key": "delegation-parent"}, 201, &task)
 	return server, runtime, task, dataRoot
 }
 func delegationPlan() map[string]any {

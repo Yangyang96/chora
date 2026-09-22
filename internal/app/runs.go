@@ -75,6 +75,18 @@ func (s *Service) prepare(ctx context.Context, meta CommandMeta, runID domain.Ru
 		if err != nil {
 			return err
 		}
+		planning, e := planningForRun(ctx, tx, run)
+		if e != nil {
+			return e
+		}
+		if planning != nil {
+			if retry != nil || planning.State != domain.DelegationPlanningRunning || planning.AttemptID.Valid() {
+				return fmt.Errorf("%w: planning permits one Attempt only", ErrInvalidCommand)
+			}
+			if e = requirePlanningAuthority(ctx, tx, *planning); e != nil {
+				return e
+			}
+		}
 		if run.Version() != expected {
 			return storecontract.ErrVersionConflict
 		}
@@ -192,6 +204,15 @@ func (s *Service) prepare(ctx context.Context, meta CommandMeta, runID domain.Ru
 		}
 		if err := tx.InsertAttempt(ctx, attempt); err != nil {
 			return err
+		}
+		if planning != nil {
+			bound, e := planning.BindAttempt(attempt.ID(), now)
+			if e != nil {
+				return e
+			}
+			if e = tx.SaveDelegationPlanningCAS(ctx, planning.Version, bound); e != nil {
+				return e
+			}
 		}
 		eventJSON := responseBody(s.attemptEvent("run.prepared", next, attempt))
 		if _, err := tx.AppendRunEvent(ctx, runID, storecontract.EventDraft{ID: s.deps.IDs.EventID(), Type: "run.prepared", Source: "app", OccurredAt: now, RecordedAt: now, NormalizedJSON: eventJSON}); err != nil {
@@ -369,6 +390,16 @@ func (s *Service) StartAttempt(ctx context.Context, request StartAttemptRequest)
 		attempt, err := tx.GetCurrentAttempt(ctx, request.RunID)
 		if err != nil {
 			return err
+		}
+		if planning, e := planningForRun(ctx, tx, run); e != nil {
+			return e
+		} else if planning != nil {
+			if planning.State != domain.DelegationPlanningRunning || planning.AttemptID != attempt.ID() || attempt.Sequence() != 1 {
+				return fmt.Errorf("%w: planning authorization does not permit launch", ErrUnauthorizedCommand)
+			}
+			if e = requirePlanningAuthority(ctx, tx, *planning); e != nil {
+				return e
+			}
 		}
 		if request.Mode != StartFresh && request.Mode != StartResumeRecordedSession {
 			return fmt.Errorf("%w: explicit start mode required", ErrInvalidCommand)

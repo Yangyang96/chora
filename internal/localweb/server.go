@@ -994,6 +994,8 @@ func (server *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/tasks/{taskID}/delegation", server.getDelegation)
 	mux.HandleFunc("GET /api/tasks/{taskID}/delegation/proposal", server.getDelegationProposal)
 	mux.HandleFunc("POST /api/tasks/{taskID}/delegation", server.startDelegation)
+	mux.HandleFunc("POST /api/tasks/{taskID}/delegation/planning", server.startDelegationPlanning)
+	mux.HandleFunc("POST /api/tasks/{taskID}/delegation/planning/{action}", server.changeDelegationPlanning)
 	mux.HandleFunc("POST /api/tasks/{taskID}/delegation/{action}", server.changeDelegation)
 	mux.HandleFunc("POST /api/tasks/{taskID}/archive", server.archiveTask)
 	mux.HandleFunc("POST /api/tasks/{taskID}/restore", server.restoreTask)

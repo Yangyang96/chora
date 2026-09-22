@@ -72,6 +72,9 @@ func (server *Server) dispatchAutomaticRetries(ctx context.Context) {
 func (server *Server) dispatchAutomaticRetry(ctx context.Context, run domain.AgentRun, status app.AutomaticRetry) {
 	server.delegationMu.Lock()
 	defer server.delegationMu.Unlock()
+	if _, err := server.store.Reader().GetDelegationPlanning(ctx, run.TaskID()); !errors.Is(err, storecontract.ErrNotFound) {
+		return
+	}
 	if child, err := server.store.Reader().GetDelegationChild(ctx, run.TaskID()); err == nil {
 		d, e := server.store.Reader().GetTaskDelegation(ctx, child.ParentTaskID)
 		if e != nil || d.State != domain.DelegationRunning {
