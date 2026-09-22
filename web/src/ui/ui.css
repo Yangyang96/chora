@@ -563,6 +563,14 @@
   color: var(--muted);
   font-size: 12px;
 }
+.pi-discovery-status code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.pi-discovery-status > div {
+  min-width: 0;
+  max-width: 100%;
+}
 .pi-discovery-status.not-ready {
   color: #92400e;
 }

@@ -38,7 +38,7 @@ export function PiDiscoveryStatus({ discovery, className = '' }: {
   discovery: PiDiscoveryView
   className?: string
 }) {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const label = piDiscoveryStateLabel(discovery.state)
 
   if (discovery.state === 'ready') {
@@ -57,6 +57,11 @@ export function PiDiscoveryStatus({ discovery, className = '' }: {
     <div className={`pi-discovery-status not-ready ${className}`.trim()}>
       <strong>{t(label)}</strong>
       {discovery.reason && <span>{discovery.reason}</span>}
+      {discovery.state === 'unconfigured' && <div>
+        <p>{locale === 'zh-CN' ? '在终端运行以下命令以配置模型：' : 'Run this command in a terminal to configure your model:'}</p>
+        <code>{discovery.configurationAction || 'pi'}</code>
+        <p>{locale === 'zh-CN' ? '进入 Pi 后，使用 /login 登录服务商，再用 /model 选择模型。完成后刷新页面；若提示重启，再重启 Chora 服务。' : 'In Pi, use /login to sign in to your provider, then /model to choose a model. Refresh this page afterward; restart the Chora service if prompted.'}</p>
+      </div>}
     </div>
   )
 }

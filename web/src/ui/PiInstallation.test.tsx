@@ -57,7 +57,7 @@ describe('PiInstallation', () => {
     await screen.findByText('Pi is not installed.')
     await userEvent.click(screen.getByRole('button', { name: 'Install fixed Pi version' }))
 
-    await screen.findByText('Pi is installed. Restart Chora before using this installation.')
+    await screen.findByText('Pi is installed. Configure your model before starting a task.')
     const post = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST')
     expect(post?.[0]).toBe('/api/pi/installation')
     expect(JSON.parse(String(post?.[1]?.body))).toEqual({ expectedStateVersion: 5 })
@@ -106,8 +106,8 @@ describe('PiInstallation', () => {
     const fetchMock = vi.fn(async () => response(views.shift()))
     vi.stubGlobal('fetch', fetchMock)
     const rendered = render(<LanguageProvider><PiInstallation /></LanguageProvider>)
-    await screen.findByText('Pi is installed. Restart Chora before using this installation.')
-    expect(screen.getByText('Restart is required. This installation is not active yet.')).toBeInTheDocument()
+    await screen.findByText('Pi is installed. Configure your model before starting a task.')
+    expect(screen.queryByText('Restart is required. This installation is not active yet.')).not.toBeInTheDocument()
     expect(screen.getByText('pi')).toBeInTheDocument()
     expect(screen.queryByText('Pi is installed, active, and configured.')).not.toBeInTheDocument()
     rendered.unmount()
@@ -115,6 +115,13 @@ describe('PiInstallation', () => {
     render(<LanguageProvider><PiInstallation /></LanguageProvider>)
     expect(await screen.findByText('Pi is installed, active, and configured.')).toBeInTheDocument()
     expect(screen.queryByText('Restart is required. This installation is not active yet.')).not.toBeInTheDocument()
+  })
+
+  test('requests restart only after model configuration is ready', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => response(installation('installed', { restartRequired: true }, { configured: true }))))
+    render(<LanguageProvider><PiInstallation /></LanguageProvider>)
+    expect(await screen.findByText('Pi is installed. Restart Chora before using this installation.')).toBeInTheDocument()
+    expect(screen.queryByText('pi')).not.toBeInTheDocument()
   })
 
   test('retries a failed installation from its exact state version', async () => {
@@ -125,7 +132,7 @@ describe('PiInstallation', () => {
     render(<LanguageProvider><PiInstallation /></LanguageProvider>)
     await screen.findByText('Pi installation failed.')
     await userEvent.click(screen.getByRole('button', { name: 'Retry installation' }))
-    await screen.findByText('Pi is installed. Restart Chora before using this installation.')
+    await screen.findByText('Pi is installed. Configure your model before starting a task.')
     const post = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST')
     expect(JSON.parse(String(post?.[1]?.body))).toEqual({ expectedStateVersion: 8 })
   })

@@ -118,7 +118,7 @@ func (server *Server) inspectPiInstallation(ctx context.Context) (piInstallation
 	view.State = &state
 	composedExact := identityExact && server.piStatus.Enabled && selection == server.piInstalledSelection
 	view.Active = configured && composedExact
-	view.RestartRequired = state.Code == piinstall.StateInstalled && !composedExact
+	view.RestartRequired = state.Code == piinstall.StateInstalled && configured && !composedExact
 	return view, nil
 }
 
@@ -162,7 +162,7 @@ func (server *Server) installPi(writer http.ResponseWriter, request *http.Reques
 	if view.State == nil {
 		view.State = &outcome.State
 	}
-	if outcome.RestartRequired && !view.Active {
+	if outcome.RestartRequired && view.State.Configured && !view.Active {
 		view.RestartRequired = true
 	}
 	writeJSON(writer, http.StatusOK, view)

@@ -162,6 +162,8 @@ export function PiInstallation({ onChanged, existing }: { onChanged?: () => void
     ? text('Installing the fixed Pi package…', '正在安装固定版本的 Pi…')
     : state.code === 'installed' && view.active && state.configured
       ? text('Pi is installed, active, and configured.', 'Pi 已安装、已启用并已配置。')
+      : state.code === 'installed' && !state.configured
+        ? text('Pi is installed. Configure your model before starting a task.', 'Pi 已安装。请先配置模型，再开始任务。')
       : state.code === 'installed' && view.restartRequired
         ? text('Pi is installed. Restart Chora before using this installation.', 'Pi 已安装。请重启 Chora 后再使用此安装。')
         : state.code === 'installed'
@@ -190,7 +192,8 @@ export function PiInstallation({ onChanged, existing }: { onChanged?: () => void
       <code>{state.configurationAction || 'pi'}</code>
     </p>}
     {!state.configured && <p>{text('In Pi, use /login to configure a provider and /model to choose a model. Model configuration belongs to Pi; execution mode is separate from reasoning effort.', '进入 Pi 后，使用 /login 配置服务商、/model 选择模型。模型配置由 Pi 管理；执行模式与推理强度是不同设置。')}</p>}
-    {view.restartRequired && !view.active && <p>{text('Restart is required. This installation is not active yet.', '需要重启。此安装目前尚未启用。')}</p>}
+    {view.restartRequired && state.configured && !view.active && <p>{text('Restart is required. This installation is not active yet.', '需要重启。此安装目前尚未启用。')}</p>}
+    {state.code === 'installed' && !state.configured && <p>{text('After configuring Pi, click Refresh. Restart the Chora service only if prompted.', '配置 Pi 后点击刷新。仅在提示需要时重启 Chora 服务。')}</p>}
     {state.message && <p>{state.message}</p>}
     {error && <p role="alert">{error}</p>}
     <div className="action-row">

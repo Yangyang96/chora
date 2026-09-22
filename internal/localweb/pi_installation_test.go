@@ -161,12 +161,29 @@ func TestPiInstallationSeparatesRestartReadinessAndDrift(t *testing.T) {
 	if err != nil || view.Active || view.RestartRequired || view.State.Configured || view.State.ConfigurationAction != piinstall.ConfigurationCommand(selection.ExecutablePath) {
 		t.Fatalf("unconfigured composed view=%#v err=%v", view, err)
 	}
+	server.piStatus.Enabled = false
+	server.piInstalledSelection = piinstall.Selection{}
+	view, err = server.inspectPiInstallation(context.Background())
+	if err != nil || view.RestartRequired || view.State.Configured {
+		t.Fatalf("unconfigured startup must request configuration before restart: %#v err=%v", view, err)
+	}
+	server.piDiscoveryOptions.LookPath = fixedPathPi(filepath.Join(root, "not-on-path"))
+	recorder := httptest.NewRecorder()
+	server.getPiDiscovery(recorder, httptest.NewRequest(http.MethodGet, "/api/pi/discovery", nil))
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"state":"unconfigured"`) || !strings.Contains(recorder.Body.String(), `"configurationAction":`) {
+		t.Fatalf("unconfigured discovery must provide configuration command: %s", recorder.Body.String())
+	}
 	server.piDiscoveryOptions = pidiscovery.Options{LookPath: fixedPathPi(piPath), PiHome: home}
 
 	server.piInstalledSelection = piinstall.Selection{}
 	view, err = server.inspectPiInstallation(context.Background())
 	if err != nil || view.Active || !view.RestartRequired {
 		t.Fatalf("restart view=%#v err=%v", view, err)
+	}
+	recorder = httptest.NewRecorder()
+	server.getPiDiscovery(recorder, httptest.NewRequest(http.MethodGet, "/api/pi/discovery", nil))
+	if !strings.Contains(recorder.Body.String(), `"state":"restart_required"`) {
+		t.Fatalf("configured startup must request activation: %s", recorder.Body.String())
 	}
 
 	fake.selection = piinstall.Selection{}

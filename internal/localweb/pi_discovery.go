@@ -5,18 +5,20 @@ import (
 	"net/http"
 
 	"github.com/Yangyang96/chora/internal/pidiscovery"
+	"github.com/Yangyang96/chora/internal/piinstall"
 )
 
 const piDiscoveryUnavailableReason = "Local execution Pi discovery is not configured"
 
 type piDiscoveryView struct {
-	State             string   `json:"state"`
-	ExecutablePath    string   `json:"executablePath,omitempty"`
-	Version           string   `json:"version,omitempty"`
-	ExecutableSHA256  string   `json:"executableSha256,omitempty"`
-	ReadyProviders    []string `json:"readyProviders"`
-	NotReadyProviders []string `json:"notReadyProviders"`
-	Reason            string   `json:"reason,omitempty"`
+	ConfigurationAction string   `json:"configurationAction,omitempty"`
+	State               string   `json:"state"`
+	ExecutablePath      string   `json:"executablePath,omitempty"`
+	Version             string   `json:"version,omitempty"`
+	ExecutableSHA256    string   `json:"executableSha256,omitempty"`
+	ReadyProviders      []string `json:"readyProviders"`
+	NotReadyProviders   []string `json:"notReadyProviders"`
+	Reason              string   `json:"reason,omitempty"`
 }
 
 func piDiscoveryViewOf(result pidiscovery.Result) piDiscoveryView {
@@ -65,10 +67,23 @@ func (server *Server) getPiDiscovery(writer http.ResponseWriter, request *http.R
 		writeJSON(writer, http.StatusOK, piDiscoveryView{State: state, Reason: reason, ReadyProviders: []string{}, NotReadyProviders: []string{}})
 		return
 	}
-	result, err := pidiscovery.Discover(request.Context(), server.piDiscoveryOptions)
+	discovery := server.piDiscoveryOptions
+	if installation.State != nil && installation.State.SelectionPresent {
+		selection, selectionErr := server.piInstaller.ResolveSelection(request.Context())
+		if selectionErr != nil {
+			writePiInstallationError(writer, selectionErr)
+			return
+		}
+		discovery.LookPath = func(string) (string, error) { return selection.ExecutablePath, nil }
+	}
+	result, err := pidiscovery.Discover(request.Context(), discovery)
 	if err != nil {
 		writeError(writer, http.StatusInternalServerError, err)
 		return
 	}
-	writeJSON(writer, http.StatusOK, piDiscoveryViewOf(result))
+	view := piDiscoveryViewOf(result)
+	if result.State == pidiscovery.StateUnconfigured && result.ExecutablePath != "" {
+		view.ConfigurationAction = piinstall.ConfigurationCommand(result.ExecutablePath)
+	}
+	writeJSON(writer, http.StatusOK, view)
 }

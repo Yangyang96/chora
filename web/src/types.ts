@@ -69,6 +69,7 @@ export type AgentExecution = {
 }
 export type PiDiscoveryState = 'restart_required' | 'installing' | 'drifted' | 'ready' | 'missing' | 'not_executable' | 'incompatible_version' | 'unconfigured' | 'unavailable'
 export type PiDiscoveryView = {
+  configurationAction?: string
   state: PiDiscoveryState
   executablePath?: string
   version?: string
