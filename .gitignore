@@ -58,3 +58,7 @@ playwright/.cache/
 
 # Internal development notes and acceptance records; keep them outside the public tree.
 docs/internal/
+
+# Local agent instructions must never be uploaded at any directory level.
+AGENTS.md
+agents.md
