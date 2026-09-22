@@ -58,6 +58,7 @@ type retryDeltaEnvelope struct {
 }
 
 type Server struct {
+	delegationMu     sync.Mutex
 	gracefulShutdown bool
 	monitorMu        sync.Mutex
 	monitorWG        sync.WaitGroup
@@ -768,6 +769,11 @@ func newServer(ctx context.Context, databasePath, webRoot string, logger *log.Lo
 			server.dockerLedgerCloser = ledger
 		}
 	}
+	if err := server.recoverDelegations(runtimeContext); err != nil {
+		cancel()
+		store.Close()
+		return nil, fmt.Errorf("recover delegations: %w", err)
+	}
 	automaticRetryContext, automaticRetryCancel := context.WithCancel(runtimeContext)
 	server.automaticRetryCancel = automaticRetryCancel
 	server.automaticRetryWG.Add(1)
@@ -985,6 +991,9 @@ func (server *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/rooms/{roomID}/tasks/{taskID}/runs", server.listTaskRuns)
 	mux.HandleFunc("GET /api/rooms/{roomID}/tasks/{taskID}/runs/{runID}", server.getRoomTaskRun)
 	mux.HandleFunc("GET /api/tasks/{taskID}", server.getTask)
+	mux.HandleFunc("GET /api/tasks/{taskID}/delegation", server.getDelegation)
+	mux.HandleFunc("POST /api/tasks/{taskID}/delegation", server.startDelegation)
+	mux.HandleFunc("POST /api/tasks/{taskID}/delegation/{action}", server.changeDelegation)
 	mux.HandleFunc("POST /api/tasks/{taskID}/archive", server.archiveTask)
 	mux.HandleFunc("POST /api/tasks/{taskID}/restore", server.restoreTask)
 	mux.HandleFunc("PATCH /api/tasks/{taskID}/plan/drafts/{draftID}", server.saveTechnicalPlanDraft)

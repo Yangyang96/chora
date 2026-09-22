@@ -233,6 +233,8 @@ func (server *Server) e2eStartRunAdapter(input startRunInput, criteria []domain.
 			return nil, err
 		}
 		runtime.mu.Lock()
+		// Every fixture launch must retain a distinct durable process identity.
+		runtime.identityNamespace = "e2e-document-" + runID.String() + "-"
 		runtime.streams[execution.StreamStdout] = append(append(message, '\n'), []byte("{\"type\":\"agent_settled\"}\n")...)
 		runtime.streams[execution.StreamStderr] = nil
 		runtime.mu.Unlock()
@@ -336,4 +338,11 @@ func (server *Server) fakeAuthoritativeVerificationTerminal(criteria []domain.Ac
 		ArtifactCandidates: []map[string]string{}, Checks: claims, Unknowns: []string{}, Handoff: map[string]any{"requested": false, "reason": ""},
 	}
 	return json.Marshal(document)
+}
+
+func (server *Server) e2eDelegationRunAdapter(criteria []domain.AcceptanceCriterion, id domain.RunID) (*agentfake.Adapter, error) {
+	if server.piStatus.Reason != "build-tagged E2E Pi identity verified" {
+		return nil, nil
+	}
+	return server.e2eStartRunAdapter(startRunInput{PatchFixture: "project-document"}, criteria, id, "pi", true)
 }

@@ -2,6 +2,7 @@
 set -euo pipefail
 
 port="${CHORA_E2E_PORT:-18787}"
+document_port="${CHORA_E2E_DOCUMENT_PORT:-$((port + 1))}"
 tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/chora-e2e.XXXXXX")"
 tmp_dir="$(cd "$tmp_dir" && pwd -P)"
 chmod 700 "$tmp_dir"
@@ -35,13 +36,13 @@ child_pid=$!
 if [[ -z "${CHORA_E2E_SCENARIO:-}" ]]; then
   mkdir -p "$tmp_dir/document"
   chmod 700 "$tmp_dir/document"
-  "$tmp_dir/chora-e2e" --db "$tmp_dir/document/chora.db" --web "${CHORA_WEB_BUILD_DIR:-$PWD/web/dist}" --port 18788 --scenario project-document &
+  "$tmp_dir/chora-e2e" --db "$tmp_dir/document/chora.db" --web "${CHORA_WEB_BUILD_DIR:-$PWD/web/dist}" --port "$document_port" --scenario project-document &
   document_pid=$!
   for attempt in {1..100}; do
-    if curl --silent --fail http://127.0.0.1:18788/ >/dev/null; then break; fi
+    if curl --silent --fail "http://127.0.0.1:$document_port/" >/dev/null; then break; fi
     if ! kill -0 "$document_pid" 2>/dev/null; then wait "$document_pid"; exit 1; fi
     sleep 0.1
   done
-  curl --silent --fail http://127.0.0.1:18788/ >/dev/null
+  curl --silent --fail "http://127.0.0.1:$document_port/" >/dev/null
 fi
 wait "$child_pid"

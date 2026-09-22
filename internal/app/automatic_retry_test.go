@@ -97,6 +97,20 @@ func TestAutomaticRetryBudgetExhaustsAfterTwoSuccessors(t *testing.T) {
 	}); !errors.Is(err, app.ErrInvalidCommand) {
 		t.Fatalf("over-budget prepare error=%v", err)
 	}
+	cancelled, err := fixture.service.RequestCancel(context.Background(), app.StopRequest{
+		CommandMeta: meta("cancel-exhausted", "cancel-exhausted"), RunID: failed.Run.ID(), ExpectedVersion: failed.Run.Version(),
+		Reason: "Stop exhausted delegation.", AllowRetry: false,
+	})
+	if err != nil || cancelled.Run.State() != domain.RunStateCancelled {
+		t.Fatalf("cancel exhausted=%#v err=%v", cancelled, err)
+	}
+	status, err := fixture.service.AutomaticRetryForRun(context.Background(), failed.Run.ID())
+	if err != nil || status != nil {
+		t.Fatalf("cancelled exhausted metadata=%#v err=%v", status, err)
+	}
+	if fixture.supervisor.startCalls != 3 {
+		t.Fatalf("cancelling exhausted Run launched another runtime: %d", fixture.supervisor.startCalls)
+	}
 }
 
 func TestAutomaticRetryRequiresExplicitRecoveryAfterInterruptedProcess(t *testing.T) {

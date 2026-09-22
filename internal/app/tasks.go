@@ -250,6 +250,18 @@ func (s *Service) CreateTask(ctx context.Context, request CreateTaskRequest) (Cr
 			result.Replayed = err == nil
 			return err
 		}
+		if request.delegation != nil {
+			if _, _, e := delegationParent(ctx, tx, request.delegation.ParentTaskID); e != nil {
+				return e
+			}
+			d, e := tx.GetTaskDelegation(ctx, request.delegation.ParentTaskID)
+			if e != nil {
+				return e
+			}
+			if d.State != domain.DelegationRunning {
+				return storecontract.ErrVersionConflict
+			}
+		}
 		room, err := tx.GetRoom(ctx, request.RoomID)
 		if err != nil {
 			return err
@@ -380,7 +392,7 @@ func (s *Service) CreateTask(ctx context.Context, request CreateTaskRequest) (Cr
 		if frozenExecutionSettings != nil {
 			frozenExecutionSettings.TaskID = task.ID()
 			config := nativecapabilities.Config{Version: 0, SkillPaths: []string{}, DisabledSkillPaths: []string{}, DisabledMCPServers: []string{}}
-			if s.deps.DataRoot != "" {
+			if request.delegation == nil && s.deps.DataRoot != "" {
 				config, err = nativecapabilities.Read(s.deps.DataRoot, room.ProjectID().String())
 				if err != nil {
 					return err
@@ -391,6 +403,12 @@ func (s *Service) CreateTask(ctx context.Context, request CreateTaskRequest) (Cr
 				return err
 			}
 			frozenExecutionSettings.NativeCapabilitiesJSON = string(encoded)
+			if request.delegation != nil {
+				inherited := request.delegation.Settings
+				inherited.TaskID = task.ID()
+				inherited.CreatedAt = now
+				frozenExecutionSettings = &inherited
+			}
 			if err := frozenExecutionSettings.Validate(); err != nil {
 				return err
 			}
@@ -434,6 +452,11 @@ func (s *Service) CreateTask(ctx context.Context, request CreateTaskRequest) (Cr
 					return err
 				}
 				plannedWorktree = &binding
+			}
+		}
+		if request.delegation != nil {
+			if err := tx.InsertDelegationChild(ctx, domain.DelegationChild{ParentTaskID: request.delegation.ParentTaskID, Position: request.delegation.Position, TaskID: task.ID(), CreatedAt: now}); err != nil {
+				return err
 			}
 		}
 		draftWire := wireTechnicalPlanDraft(draft)
@@ -890,6 +913,14 @@ func (s *Service) CreateRun(ctx context.Context, request CreateRunRequest) (Crea
 		if err := tx.InsertRun(ctx, run); err != nil {
 			return err
 		}
+		if _, childErr := tx.GetDelegationChild(ctx, request.TaskID); childErr == nil {
+			if err := tx.BindDelegationChildRun(ctx, request.TaskID, run.ID()); err != nil {
+				return err
+			}
+		} else if !errors.Is(childErr, storecontract.ErrNotFound) {
+			return childErr
+		}
+
 		if err := tx.InsertTechnicalPlanRunBinding(ctx, binding); err != nil {
 			return err
 		}

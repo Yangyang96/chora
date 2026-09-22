@@ -9,6 +9,22 @@ type I18n = { locale: Locale; setLocale: (locale: Locale) => void; t: (english: 
 const storageKey = 'chora.locale'
 
 const zhCN: Record<string, string> = {
+  "Delegated finding": "委派研究结果",
+  "Agent delegation": "Agent 委派",
+  "Open parent task": "打开父任务",
+  "Define up to four research assignments. Start authorizes sequential Agent execution with this task’s frozen material and settings. You review each result; nothing is accepted or delivered automatically.": "定义最多四项研究分工。启动后，Agent 将使用本任务冻结的材料和设置依次执行。每项结果由你评审，系统不会自动接受或交付。",
+  "Assignment": "分工",
+  "Agent role": "Agent 角色",
+  "Assignment instructions": "分工要求",
+  "Remove assignment": "移除分工",
+  "Add assignment": "添加分工",
+  "Start delegation": "启动委派",
+  "Delegation status": "委派状态",
+  "Open child task": "打开子任务",
+  "All assignments finished execution. Review their evidence and results before accepting them.": "所有分工已执行完毕。请检查各项证据和结果，再决定是否接受。",
+  "Stop delegation": "停止委派",
+  "Resume delegation": "继续委派",
+
   "A source locator exceeds the 1 KiB limit.": "来源标识超出 1 KiB 上限。",
   "Supplied material exceeds the 512 KiB total limit.": "材料正文合计超出 512 KiB 上限。",
   "What should Chora investigate or document?": "希望 Chora 调研或撰写什么？",

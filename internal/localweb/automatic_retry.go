@@ -40,6 +40,7 @@ func (server *Server) runAutomaticRetryDispatcher(ctx context.Context) {
 }
 
 func (server *Server) dispatchAutomaticRetries(ctx context.Context) {
+	server.dispatchDelegations(ctx)
 	directory, err := server.service.ListRoomDirectory(ctx)
 	if err != nil {
 		server.logger.Printf("list automatic retry Rooms: %v", err)
@@ -69,6 +70,16 @@ func (server *Server) dispatchAutomaticRetries(ctx context.Context) {
 }
 
 func (server *Server) dispatchAutomaticRetry(ctx context.Context, run domain.AgentRun, status app.AutomaticRetry) {
+	server.delegationMu.Lock()
+	defer server.delegationMu.Unlock()
+	if child, err := server.store.Reader().GetDelegationChild(ctx, run.TaskID()); err == nil {
+		d, e := server.store.Reader().GetTaskDelegation(ctx, child.ParentTaskID)
+		if e != nil || d.State != domain.DelegationRunning {
+			return
+		}
+	} else if !errors.Is(err, storecontract.ErrNotFound) {
+		return
+	}
 	attempt, err := server.store.Reader().GetCurrentAttempt(ctx, run.ID())
 	if err != nil {
 		server.logger.Printf("load automatic retry Attempt for Run %s: %v", run.ID(), err)

@@ -1,3 +1,4 @@
+import { TaskDelegation } from './ui/TaskDelegation'
 import { ActionButton } from './ui/ActionButton'
 import { automaticRetryActive } from './taskStatus'
 import { useEffect, useRef, useState } from 'react'
@@ -29,7 +30,7 @@ import type { TaskContextSelection } from './projectDocumentTypes'
 type Route = { kind: 'directory' } | { kind: 'project'; projectID: string; tasks?: boolean } | { kind: 'room'; roomID: string; tasks?: boolean } | { kind: 'task'; roomID: string; taskID: string } | { kind: 'run'; roomID: string; taskID: string; runID: string }
 
 type TaskResourceSummary = { repoId: string; name?: string }
-type ResourceTaskRef = TaskRef & { resourceSnapshot?: { resources: TaskResourceSummary[] } }
+type ResourceTaskRef = TaskRef & { resourceSnapshot?: { resources: TaskResourceSummary[]; outcomeKind?: string } }
 type ResourcePreparation = {
   taskID?: string
   startedAt: number
@@ -807,6 +808,7 @@ function NewAppContent() {
       </section>}
       {localWorkbench && (route.kind === 'directory' || view === 'newTask') && <PiInstallation existing={piDiscovery.phase === 'loaded' ? piDiscovery.discovery : undefined} onChanged={() => { void api<PiDiscoveryView>('/api/pi/discovery').then(discovery => setPiDiscovery({phase:'loaded',discovery})).catch(() => setPiDiscovery({phase:'error'})) }} />}
       {main}
+      {(route.kind === 'task' || route.kind === 'run') && (routeRun?.outcomeKind === 'document' || (task as ResourceTaskRef | null)?.resourceSnapshot?.outcomeKind === 'document') && <TaskDelegation key={route.taskID} taskId={route.taskID} onNavigate={navigate} />}
     </AppShell>
   )
 }

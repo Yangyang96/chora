@@ -351,6 +351,18 @@ func (s *Service) StartAttempt(ctx context.Context, request StartAttemptRequest)
 		if err != nil {
 			return err
 		}
+		if child, e := tx.GetDelegationChild(ctx, run.TaskID()); e == nil {
+			d, e := tx.GetTaskDelegation(ctx, child.ParentTaskID)
+			if e != nil {
+				return e
+			}
+			if d.State == domain.DelegationStopping || d.State == domain.DelegationStopped {
+				return fmt.Errorf("%w: parent delegation has been stopped", ErrUnauthorizedCommand)
+			}
+		} else if !errors.Is(e, storecontract.ErrNotFound) {
+			return e
+		}
+
 		if run.Version() != request.ExpectedVersion {
 			return storecontract.ErrVersionConflict
 		}

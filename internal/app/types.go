@@ -80,6 +80,7 @@ type ChangeRoomLifecycleResult struct {
 	Replayed bool
 }
 type CreateTaskRequest struct {
+	delegation *delegatedTaskCreation
 	CommandMeta
 	RoomID                domain.RoomID
 	Title, Goal           string

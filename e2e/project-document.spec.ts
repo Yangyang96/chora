@@ -153,3 +153,51 @@ async function getJSON<T>(request: APIRequestContext, path: string): Promise<T> 
   expect(response.status(), await response.text()).toBe(200)
   return response.json() as Promise<T>
 }
+
+test('bounded local delegation runs assignments and leaves final review to the human', async ({ page, request }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.setItem('chora.locale', 'en'))
+  const ack = await request.post('/api/agent-execution/trusted-local-acknowledgements', { headers: { 'Idempotency-Key': 'delegation-e2e-ack' }, data: { policyVersion: 'chora.trusted-local-disclosure.v1' } })
+  expect(ack.status(), await ack.text()).toBe(200)
+
+  const projectResponse = await request.post('/api/v2/projects', { data: { name: 'Delegation acceptance' } })
+  expect(projectResponse.status()).toBe(201)
+  const project = await projectResponse.json()
+  const revisions = await getJSON<Array<{ id: string }>>(request, `/api/rooms/${project.defaultRoomId}/revisions`)
+  const created = await request.post(`/api/v2/rooms/${project.defaultRoomId}/tasks`, {
+    headers: { 'Idempotency-Key': 'delegation-e2e-parent' },
+    data: { title: 'Explore compatibility', requirement: 'Research implementation choices and risks.', agentExecutionProfile: 'trusted_local', outcomeKind: 'document', revisionIds: [revisions[0].id], materials: [{ title: 'Compatibility', locator: 'supplied:compatibility', body: 'Preserve existing clients. Deployment order remains unknown.' }] },
+  })
+  expect(created.status(), await created.text()).toBe(201)
+  const parent = await created.json()
+  await page.goto(`/rooms/${project.defaultRoomId}/tasks/${parent.id}`)
+  const panel = page.getByRole('region', { name: 'Agent delegation', exact: true })
+  await panel.getByLabel('Agent role 1', { exact: true }).fill('Designer')
+  await panel.getByLabel('Task title 1', { exact: true }).fill('Implementation choices')
+  await panel.getByLabel('Assignment instructions 1', { exact: true }).fill('Compare implementation options using the supplied source.')
+  await panel.getByRole('button', { name: 'Add assignment', exact: true }).click()
+  await panel.getByLabel('Agent role 2', { exact: true }).fill('Reviewer')
+  await panel.getByLabel('Task title 2', { exact: true }).fill('Compatibility risks')
+  await panel.getByLabel('Assignment instructions 2', { exact: true }).fill('Identify compatibility risks and unknowns in the supplied source.')
+  await panel.getByRole('button', { name: 'Start delegation', exact: true }).click()
+  await expect(panel.getByText('All assignments finished execution. Review their evidence and results before accepting them.', { exact: true })).toBeVisible({ timeout: 120_000 })
+  await expect(panel.getByText('Delegated finding', { exact: true })).toHaveCount(2)
+  const endpoint = `/api/tasks/${parent.id}/delegation`
+  const view = await getJSON<{ version: number; state: string; children: Array<{ taskId: string; runId: string; resultId: string; resultDigest: string }> }>(request, endpoint)
+  expect(view.state).toBe('awaiting_review')
+  expect(new Set(view.children.map(child => child.taskId)).size).toBe(2)
+  for (const child of view.children) {
+    expect(child.resultDigest).toMatch(/^[a-f0-9]{64}$/)
+    const document = await getJSON<{ version: number; reviews: unknown[] }>(request, `/api/tasks/${child.taskId}/document`)
+    expect(document.version).toBe(0)
+    expect(document.reviews).toHaveLength(0)
+  }
+  await page.reload()
+  await expect(panel.getByText('Delegated finding', { exact: true })).toHaveCount(2)
+  await panel.getByRole('button', { name: 'Open child task', exact: true }).first().click()
+  await expect(page.getByRole('button', { name: 'Open parent task', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Open parent task', exact: true }).click()
+  await expect(panel.getByText('Delegated finding', { exact: true })).toHaveCount(2)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+})

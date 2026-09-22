@@ -141,7 +141,7 @@ task. New slice IDs preserve earlier milestone IDs and evidence.
 | Complete | M2-S8-2: reusable Project execution settings | S8-1 terminology is validated. | Project defaults, deliberate Task overrides and an accurate effective-settings summary work through execution and restart. |
 | Complete | M2-S9-1: project research and proposal review | S8 execution settings are usable; select one concrete project question. | A repository-optional Task produces a sourced finding/proposal, supports feedback and review, and reopens without fabricated code delivery. |
 | Complete | M2-S9-2: document revision and implementation handoff | S9-1 result, review and provenance contract is proved. | Revise and accept a project design/document, then explicitly bind that accepted revision to a later coding Task. |
-| Later | M3 team collaboration and delegation | Prioritize after the personal S9 journey; qualify identity, membership and concurrency before delegation. | Shared ownership, review, handoff, aggregation and conflict handling. |
+| In progress | M3 team collaboration and delegation | Prioritize after the personal S9 journey; qualify identity, membership and concurrency before delegation. | Shared ownership, review, handoff, aggregation and conflict handling. |
 | On demonstrated need | M4 background/remote execution | A bounded scenario needs work away from the foreground. | Explicit placement, cancellation, recovery, budgets and notifications. |
 
 S8/S9 do not wait for signed macOS distribution, a second Runtime, Contexere or
@@ -259,6 +259,20 @@ separate from execution authorization and explicit promotion into a Task. M3 add
 claims, handoff and delegation only with team authority/concurrency; M4 adds
 queued/background/remote execution, budgets and notifications. These extensions
 are not implicit V0 work. The S6A suffix preserves existing S6/S7 milestone IDs.
+
+## M3 first local slice: bounded research delegation
+
+The first implementation slice is [local Agent delegation](docs/local-delegation.md):
+one person on one Mac explicitly starts a fixed plan of one to four material-only
+research/document assignments. Children inherit frozen parent input and execution
+settings, execute sequentially, and retain normal Task/Run/result identities.
+The parent collects sourced results for human review; no result is automatically
+accepted and no SCM delivery is authorized. Stop, restart and duplicate-command
+handling are part of this slice. Implementation and qualification are in progress.
+
+This is a bounded starting point within M3. Multi-human membership/revocation,
+Agent-selected decomposition, parallel execution and coding integration are not
+claimed complete. M4 remains demand-gated.
 
 ## Later outcomes and demand gates
 

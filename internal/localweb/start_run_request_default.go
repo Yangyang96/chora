@@ -26,3 +26,7 @@ func (server *Server) e2eStartRunAdapter(startRunInput, []domain.AcceptanceCrite
 func (server *Server) e2eVerifiedRetryAdapter([]domain.AcceptanceCriterion, domain.RunID) (*agentfake.Adapter, error) {
 	return nil, nil
 }
+
+func (server *Server) e2eDelegationRunAdapter([]domain.AcceptanceCriterion, domain.RunID) (*agentfake.Adapter, error) {
+	return nil, nil
+}

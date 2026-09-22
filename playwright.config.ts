@@ -1,7 +1,7 @@
 import { defineConfig } from '@playwright/test'
 
-const port = 18787
-const documentPort = 18788
+const port = Number(process.env.CHORA_E2E_PORT ?? 18787)
+const documentPort = Number(process.env.CHORA_E2E_DOCUMENT_PORT ?? port + 1)
 const dedicatedRunnerTests = [
   '**/joined-room.spec.ts',
   '**/project-entry.spec.ts',
@@ -29,7 +29,7 @@ export default defineConfig({
     { name: 'project-document', testMatch: '**/project-document.spec.ts', testIgnore: dedicatedRunnerTests, use: { baseURL: `http://127.0.0.1:${documentPort}` } },
   ],
   webServer: {
-    command: `CHORA_E2E_PORT=${port} bash e2e/start-test-server.sh`,
+    command: `CHORA_E2E_PORT=${port} CHORA_E2E_DOCUMENT_PORT=${documentPort} bash e2e/start-test-server.sh`,
     url: `http://127.0.0.1:${port}`,
     reuseExistingServer: false,
     timeout: 120_000,

@@ -56,7 +56,7 @@ func TestV28UpgradePreservesPopulatedLocalReviewResult(t *testing.T) {
 	createEnd := strings.Index(resultSchema, "\n);") + len("\n);")
 	create := strings.Replace(resultSchema[:createEnd], "CREATE TABLE local_review_results (", "CREATE TABLE local_review_results_v28 (", 1)
 	decisionTrigger := old[strings.Index(old, "CREATE TRIGGER local_review_decisions_authority"):strings.Index(old, "CREATE TRIGGER local_review_decisions_immutable_update")]
-	ddl := "BEGIN; DROP TRIGGER local_review_decisions_authority;\n" + create +
+	ddl := "BEGIN; DROP TABLE task_delegation_children; DROP TABLE task_delegations; DROP TRIGGER local_review_decisions_authority;\n" + create +
 		"\nINSERT INTO local_review_results_v28 SELECT * FROM local_review_results;\nDROP TABLE local_review_results;\nALTER TABLE local_review_results_v28 RENAME TO local_review_results;\n" + resultSchema[createEnd:] + decisionTrigger
 	for _, item := range []struct{ file, table string }{
 		{"0021_patch_applications.sql", "patch_applications"},
@@ -93,7 +93,7 @@ func TestV28UpgradePreservesPopulatedLocalReviewResult(t *testing.T) {
 	if err != nil || result != fixture.result {
 		t.Fatalf("v28 Result changed during upgrade: %#v, %v", result, err)
 	}
-	if version, err := upgraded.SchemaVersion(ctx); err != nil || version != 45 {
+	if version, err := upgraded.SchemaVersion(ctx); err != nil || version != 46 {
 		t.Fatalf("version=%d, %v", version, err)
 	}
 }

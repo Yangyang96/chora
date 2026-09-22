@@ -1,0 +1,76 @@
+# Local Agent delegation
+
+[简体中文](local-delegation.zh-CN.md) · [Roadmap](../ROADMAP.md)
+
+M3 starts with one person assigning research work to several Agent executions on
+one Mac. This first slice supports material-only research and document Tasks in a
+software Project. Each assignment becomes a normal Task in the parent's Room,
+with its own Run, workspace, result and review history.
+
+## Use
+
+Open an unarchived, open research Task and use **Agent delegation**. Enter one
+to four assignments, each with a distinct role, a title and instructions. Select
+**Start delegation** to authorize their sequential execution. This is a separate
+explicit action: creating or starting an ordinary Task never implicitly delegates.
+The parent does not need to execute its own Agent Run first.
+
+The plan becomes immutable when started. Role names identify assignments; they
+are not user accounts, credential identities or reusable Agent profiles. Children
+inherit the parent's exact supplied material, selected context revisions,
+execution environment, model selection and frozen native capability configuration.
+Later Project edits do not rebind them. Local execution still requires the current
+No Sandbox acknowledgement. Unavailable execution fails closed with no host or
+model fallback. Runtime-default model selection remains a default, not a promise
+of a particular observed model.
+
+Chora activates each unchanged generated execution plan with system provenance,
+then starts the normal Pi Run. Execution is sequential within a delegation. The
+existing bounded automatic retry policy applies to each child: at most two
+automatic retries after its initial Attempt. Children cannot delegate again.
+Starting additional independent delegations is a separate user action; this is
+not a machine-wide concurrency or token-spending budget.
+
+## Results and review
+
+The parent shows each child's current state and a link to its normal execution
+and review screen. Completed findings show their original Markdown, result
+identity and digest. This is a collection of independently sourced results; it
+is not a new Agent-written synthesis or a claim that the parent Agent consumed
+those results. A role labelled "Reviewer" still produces an Agent proposal.
+
+**Awaiting review** means every assignment has finished with a reviewable result.
+It does not mean the research is factually verified or accepted. Inspect evidence,
+unknowns and individual results before using the existing document review actions.
+Delegation never saves an accepted Room revision, accepts a result, starts a later
+implementation Task, commits, pushes or merges changes. If a child later changes
+state, the collection exposes that it needs attention again.
+
+## Stop and recovery
+
+**Stop delegation** records the stop intent before cancelling an active child and
+prevents the next automatic child launch. A child prepared without a runtime
+session can be safely cancelled. An already-running check is allowed to settle;
+an uncertain stop stays visible rather than claiming that execution has ended.
+Stopping does not cancel an unrelated parent Run or delete existing work.
+
+After Workbench restart, running delegations become blocked. Inspect their child
+Runs, resolve any recovery state, then explicitly choose **Resume delegation**.
+An interrupted stop remains a stop. Stable child and Run identities, command
+idempotency and transactional parent links prevent duplicate children or Runs.
+Resuming does not reset the automatic retry allowance or authorize a changed
+execution plan. A stopped plan is retained as history; use a new parent Task for
+a new delegation.
+
+## Current boundary
+
+This is the first local M3 slice, not complete team collaboration. Multi-human
+identity/membership/revocation, Agent-selected plans, recursive delegation,
+parallel child execution, coding assignments and code integration remain future
+work. Remote placement, a general background queue, notifications and token/cost
+budgets remain demand-gated M4 work. The existing service owns these local Runs;
+closing a browser tab does not transfer execution to another machine.
+
+Verification must distinguish credential-free domain/API/persistence/browser
+checks from real-model journeys. Technical completion does not substitute for
+final product user acceptance or qualify signed macOS distribution.

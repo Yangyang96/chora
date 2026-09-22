@@ -89,7 +89,7 @@ func (s *Service) requestStop(ctx context.Context, request StopRequest, command 
 			if automaticErr != nil {
 				return automaticErr
 			}
-			if automatic != nil && (automatic.State == AutomaticRetryPending || automatic.State == AutomaticRetryRetrying || automatic.State == AutomaticRetryBlocked) {
+			if automatic != nil && (automatic.State == AutomaticRetryPending || automatic.State == AutomaticRetryRetrying || automatic.State == AutomaticRetryBlocked || automatic.State == AutomaticRetryExhausted) {
 				attempt, attemptErr := tx.GetCurrentAttempt(ctx, request.RunID)
 				if attemptErr != nil {
 					return attemptErr
