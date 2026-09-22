@@ -98,9 +98,13 @@ option is available for manual assignments, source-bound proposals and single-st
 planning. It defaults off and cannot be added to an already-started delegation.
 
 Chora freezes the complete original child results, their identities and digests
-as the only materials of a separate synthesis Task. The synthesis inherits the
-parent's frozen execution and model settings. It selects no repositories and
-adds no project context or externally fetched material. Its report must preserve
+as the only materials of a separate synthesis Task. Each original result must
+fit within 64 KiB; oversized input blocks rather than being silently truncated.
+The synthesis inherits the
+parent's frozen execution and model settings. Chora selects no repositories and
+supplies no project context or additional external material. The synthesis
+instructions prohibit further research; inherited runtime capabilities remain
+unchanged. Its report must preserve
 source attribution, disagreements and unknowns rather than treating child claims
 as verified facts. The report is Agent-authored and remains subject to human review.
 
@@ -117,7 +121,8 @@ The parent shows each child's current state and a link to its normal execution
 and review screen. Completed findings show their original Markdown, result
 identity and digest. By default this is a collection of independently sourced
 results. An additional Agent-written report is produced only when synthesis was
-explicitly authorized before start, and has its own Task and source lineage. A role labelled "Reviewer" still produces an Agent proposal.
+explicitly authorized before start, and has its own Task and source lineage.
+A role labelled "Reviewer" still produces an Agent proposal.
 
 **Awaiting review** means every assignment and any authorized synthesis have
 finished with a reviewable result.
