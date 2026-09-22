@@ -265,10 +265,10 @@ test('Agent-proposed assignments require explicit source-bound start and survive
   await page.unrouteAll({ behavior: 'wait' })
 })
 
-test('one research-delegation start plans and executes without another authorization click', async ({ page, request }) => {
+for (const synthesize of [false, true]) test(`one research-delegation start plans and executes with synthesis=${synthesize}`, async ({ page, request }) => {
   const acknowledgement = await request.post('/api/agent-execution/trusted-local-acknowledgements', { headers: { 'Idempotency-Key': 'automatic-plan-ack' }, data: { policyVersion: 'chora.trusted-local-disclosure.v1' } })
   expect(acknowledgement.ok()).toBeTruthy()
-  const created = await request.post('/api/v2/projects', { data: { name: 'Single-start research delegation' } })
+  const created = await request.post('/api/v2/projects', { data: { name: `Single-start research delegation ${synthesize}` } })
   expect(created.status()).toBe(201)
   const project = await created.json()
   const starts: string[] = []
@@ -276,6 +276,7 @@ test('one research-delegation start plans and executes without another authoriza
   await page.goto(`/rooms/${project.defaultRoomId}`)
   await page.getByRole('button', { name: '＋ New Task', exact: true }).first().click()
   await page.getByLabel('Plan and delegate research', { exact: true }).check()
+  if (synthesize) await page.getByLabel('Generate one synthesis after research', { exact: true }).check()
   await page.getByLabel('What should Chora investigate or document?').fill('Compare compatibility options and restart risks')
   await page.getByLabel('Material title').fill('Design')
   await page.getByLabel('Source locator').fill('supplied:design')
@@ -292,11 +293,17 @@ test('one research-delegation start plans and executes without another authoriza
   const panel = page.getByRole('region', { name: 'Agent delegation', exact: true })
   await expect(panel.getByText('All assignments finished execution. Review their evidence and results before accepting them.', { exact: true })).toBeVisible({ timeout: 120_000 })
   expect(starts).toEqual([`${endpoint}/planning`])
-  const finished = await getJSON<{ planning: { state: string; runId: string }; source: { runId: string }; children: Array<{ taskId: string }> }>(request, endpoint)
+  const finished = await getJSON<{ planning: { state: string; runId: string }; source: { runId: string }; children: Array<{ taskId: string }>; synthesis?: { enabled: boolean; state: string; taskId: string; runId: string; resultId: string; current: boolean } }>(request, endpoint)
   expect(finished.planning.state).toBe('imported')
   expect(finished.source.runId).toBe(finished.planning.runId)
   expect(finished.children).toHaveLength(2)
-  for (const id of [taskID, ...finished.children.map(child => child.taskId)]) {
+  if (synthesize) {
+    expect(finished.synthesis).toMatchObject({ enabled: true, state: 'awaiting_review', current: true })
+    expect(finished.synthesis?.taskId).toMatch(/^task_/)
+    expect(finished.synthesis?.resultId).toMatch(/^result_/)
+    await expect(panel.getByRole('button', { name: 'Open synthesis task', exact: true })).toBeVisible()
+  } else expect(finished.synthesis?.enabled).not.toBe(true)
+  for (const id of [taskID, ...finished.children.map(child => child.taskId), ...(finished.synthesis?.taskId ? [finished.synthesis.taskId] : [])]) {
     expect(await getJSON(request, `/api/tasks/${id}/document`)).toMatchObject({ version: 0, reviews: [] })
   }
   await expect(panel.getByRole('button', { name: 'Start delegation', exact: true })).toHaveCount(0)
