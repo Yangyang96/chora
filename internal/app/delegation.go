@@ -95,6 +95,10 @@ func (s *Service) GetDelegation(ctx context.Context, id domain.TaskID) (Delegati
 	v.Version = d.Version
 	v.State = string(d.State)
 	v.Reason = d.Reason
+	if d.State == domain.DelegationAwaitingReview && v.Synthesis != nil && v.Synthesis.State != string(domain.RunStateAwaitingReview) && v.Synthesis.State != string(domain.RunStateAccepted) && v.Synthesis.State != string(domain.RunStateCompleted) {
+		v.State = "needs_attention"
+		v.Reason = "The synthesis result changed after the delegation finished. Review its current Run."
+	}
 	v.Assignments = d.Assignments
 	if source, e := r.GetDelegationProposalSource(ctx, id); e == nil {
 		_, current, currentErr := loadDelegationProposalEvidence(ctx, r, id, source.AttemptID, fmt.Sprintf("%x", source.ResultDigest), false)

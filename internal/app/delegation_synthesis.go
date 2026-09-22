@@ -24,9 +24,9 @@ type DelegationSynthesisView struct {
 	Reason       string `json:"reason,omitempty"`
 }
 
-// Completed source evidence is independent of ProjectDocument imports or human
-// review decisions. Only the complete original Agent result can become material.
-func completedSynthesisInput(ctx context.Context, r storecontract.Reader, taskID domain.TaskID, runID domain.RunID) (domain.DelegationSynthesisInput, error) {
+// A human rejection changes review status, not the identity of original evidence.
+// Only existing-source projections may allow it; new synthesis remains strict.
+func loadSynthesisInput(ctx context.Context, r storecontract.Reader, taskID domain.TaskID, runID domain.RunID, allowReviewedRejection bool) (domain.DelegationSynthesisInput, error) {
 	var out domain.DelegationSynthesisInput
 	bad := func() (domain.DelegationSynthesisInput, error) { return out, ErrReviewEvidenceUnavailable }
 	run, err := r.GetRun(ctx, runID)
@@ -38,6 +38,10 @@ func completedSynthesisInput(ctx context.Context, r storecontract.Reader, taskID
 	}
 	switch run.State() {
 	case domain.RunStateAwaitingReview, domain.RunStateAccepted, domain.RunStateCompleted:
+	case domain.RunStateRevisionRequired:
+		if !allowReviewedRejection {
+			return bad()
+		}
 	default:
 		return bad()
 	}
@@ -105,6 +109,9 @@ func completedSynthesisInput(ctx context.Context, r storecontract.Reader, taskID
 	return out, nil
 }
 func synthesisInputs(ctx context.Context, r storecontract.Reader, parent domain.TaskID) ([]domain.DelegationSynthesisInput, error) {
+	return loadSynthesisInputs(ctx, r, parent, false)
+}
+func loadSynthesisInputs(ctx context.Context, r storecontract.Reader, parent domain.TaskID, allowReviewedRejection bool) ([]domain.DelegationSynthesisInput, error) {
 	d, err := r.GetTaskDelegation(ctx, parent)
 	if err != nil {
 		return nil, err
@@ -121,7 +128,7 @@ func synthesisInputs(ctx context.Context, r storecontract.Reader, parent domain.
 		if !child.RunID.Valid() {
 			return nil, ErrReviewEvidenceUnavailable
 		}
-		input, e := completedSynthesisInput(ctx, r, child.TaskID, child.RunID)
+		input, e := loadSynthesisInput(ctx, r, child.TaskID, child.RunID, allowReviewedRejection)
 		if e != nil {
 			return nil, e
 		}
@@ -130,7 +137,10 @@ func synthesisInputs(ctx context.Context, r storecontract.Reader, parent domain.
 	return inputs, nil
 }
 func validateSynthesisInputs(ctx context.Context, r storecontract.Reader, parent domain.TaskID, expected []domain.DelegationSynthesisInput) error {
-	current, err := synthesisInputs(ctx, r, parent)
+	return validateSynthesisSources(ctx, r, parent, expected, false)
+}
+func validateSynthesisSources(ctx context.Context, r storecontract.Reader, parent domain.TaskID, expected []domain.DelegationSynthesisInput, allowReviewedRejection bool) error {
+	current, err := loadSynthesisInputs(ctx, r, parent, allowReviewedRejection)
 	if err != nil {
 		return err
 	}
@@ -193,7 +203,7 @@ func (s *Service) synthesisView(ctx context.Context, r storecontract.Reader, par
 		v.TaskID = item.TaskID.String()
 		v.URL = fmt.Sprintf("/rooms/%s/tasks/%s", room, item.TaskID)
 		v.State = "preparing"
-		if e := validateSynthesisInputs(ctx, r, parent, item.Inputs); e != nil {
+		if e := validateSynthesisSources(ctx, r, parent, item.Inputs, true); e != nil {
 			if !delegationProposalUnavailable(e) {
 				return nil, e
 			}
@@ -208,8 +218,8 @@ func (s *Service) synthesisView(ctx context.Context, r storecontract.Reader, par
 			return nil, e
 		}
 		v.State = string(run.State())
-		if run.State() == domain.RunStateAwaitingReview || run.State() == domain.RunStateAccepted || run.State() == domain.RunStateCompleted {
-			result, e := completedSynthesisInput(ctx, r, item.TaskID, item.RunID)
+		if run.State() == domain.RunStateAwaitingReview || run.State() == domain.RunStateAccepted || run.State() == domain.RunStateCompleted || run.State() == domain.RunStateRevisionRequired {
+			result, e := loadSynthesisInput(ctx, r, item.TaskID, item.RunID, true)
 			if e != nil {
 				return nil, e
 			}

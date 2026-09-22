@@ -301,3 +301,78 @@ func TestSynthesisCannotAddAuthorizationAfterStart(t *testing.T) {
 	// A new command cannot mutate the already frozen authorization either.
 	requestJSONWithHeaders(t, server.Handler(), http.MethodPost, "/api/tasks/"+parent.ID+"/delegation", payload, map[string]string{"Idempotency-Key": "replace-authorization"}, 409, nil)
 }
+
+func rejectSynthesisDocument(t *testing.T, server *Server, taskID, attemptID string) {
+	t.Helper()
+	endpoint := "/api/tasks/" + taskID + "/document"
+	requestJSONWithHeaders(t, server.Handler(), http.MethodPost, endpoint, map[string]any{"expectedVersion": 0, "sourceAttemptId": attemptID}, map[string]string{"Idempotency-Key": "save-for-review-" + taskID}, 200, nil)
+	requestJSONWithHeaders(t, server.Handler(), http.MethodPost, endpoint+"/reviews", map[string]any{"expectedVersion": 1, "kind": "reject", "note": "The original report needs human attention."}, map[string]string{"Idempotency-Key": "reject-document-" + taskID}, 200, nil)
+}
+
+func TestSynthesisReviewRejectionPreservesRawSourceIdentity(t *testing.T) {
+	for _, target := range []string{"synthesis", "child"} {
+		t.Run(target, func(t *testing.T) {
+			server, runtime, parent := synthesisFixture(t, "manual")
+			ctx := context.Background()
+			finishSynthesisChildren(t, server, runtime, parent)
+			server.dispatchDelegations(ctx)
+			id, _ := domain.ParseTaskID(parent.ID)
+			frozen, err := server.store.Reader().GetDelegationSynthesis(ctx, id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			finishPlanning(t, server, runtime, frozen.RunID.String(), "# Frozen synthesis\n\nThe findings retain an unresolved disagreement.")
+			server.dispatchDelegations(ctx)
+			before := planningView(t, server, parent.ID)
+			if before.State != "awaiting_review" {
+				t.Fatal(before.State)
+			}
+			taskID, attemptID, runID := frozen.TaskID, frozen.AttemptID, frozen.RunID
+			if target == "child" {
+				taskID, attemptID, runID = frozen.Inputs[0].TaskID, frozen.Inputs[0].AttemptID, frozen.Inputs[0].RunID
+			}
+			rejectSynthesisDocument(t, server, taskID.String(), attemptID.String())
+			rejected, err := server.store.Reader().GetRun(ctx, runID)
+			if err != nil || rejected.State() != domain.RunStateRevisionRequired {
+				t.Fatalf("normal review did not reject Run: %v %v", rejected.State(), err)
+			}
+			after := planningView(t, server, parent.ID)
+			if after.State != "needs_attention" || after.Synthesis == nil || !after.Synthesis.Current || after.Synthesis.ResultID != before.Synthesis.ResultID || after.Synthesis.Markdown != before.Synthesis.Markdown {
+				t.Fatalf("review changed raw source projection: %#v", after)
+			}
+			still, err := server.store.Reader().GetDelegationSynthesis(ctx, id)
+			if err != nil || !reflect.DeepEqual(still, frozen) {
+				t.Fatalf("review rebound sources: %#v %v", still, err)
+			}
+			server.dispatchDelegations(ctx)
+			server.dispatchAutomaticRetries(ctx)
+			if count, _ := runtime.snapshot(); count != 3 {
+				t.Fatalf("review triggered extra execution: %d", count)
+			}
+		})
+	}
+}
+
+func TestSynthesisInitialInputStillRejectsRejectedChild(t *testing.T) {
+	server, runtime, parent := synthesisFixture(t, "manual")
+	ctx := context.Background()
+	view := finishSynthesisChildren(t, server, runtime, parent)
+	runID, _ := domain.ParseRunID(view.Children[0].RunID)
+	attempt, err := server.store.Reader().GetCurrentAttempt(ctx, runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rejectSynthesisDocument(t, server, view.Children[0].TaskID, attempt.ID().String())
+	id, _ := domain.ParseTaskID(parent.ID)
+	if _, err = server.service.CreateDelegationSynthesisTask(ctx, id); !errors.Is(err, app.ErrReviewEvidenceUnavailable) {
+		t.Fatalf("rejected initial source accepted: %v", err)
+	}
+	frozen, err := server.store.Reader().GetDelegationSynthesis(ctx, id)
+	if err != nil || frozen.TaskID.Valid() {
+		t.Fatalf("created from rejected input: %#v %v", frozen, err)
+	}
+	server.dispatchDelegations(ctx)
+	if count, _ := runtime.snapshot(); count != 2 {
+		t.Fatalf("rejected source launched synthesis: %d", count)
+	}
+}
