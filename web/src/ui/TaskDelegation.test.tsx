@@ -113,3 +113,12 @@ it('shows the bound planning run and stops using the planning version without ex
  await waitFor(() => expect(writes).toEqual([{ path: '/api/tasks/task-parent/delegation/planning/stop', body: { expectedVersion: 3 } }]))
  await waitFor(() => expect(screen.queryByRole('button', { name: 'Stop research planning' })).toBeNull())
 })
+
+
+it('keeps planning Stop visible after the parent loses eligibility', async () => {
+ vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ ...initial, eligible: false, planning: { state: 'planning', version: 2, runId: 'run-planner' } }))))
+ render(<LanguageProvider><TaskDelegation taskId="task-parent" onNavigate={vi.fn()} /></LanguageProvider>)
+ expect(await screen.findByRole('button', { name: 'Stop research planning' })).toBeEnabled()
+ expect(screen.queryByRole('button', { name: 'Resume research planning' })).toBeNull()
+ expect(screen.queryByRole('button', { name: 'Start delegation' })).toBeNull()
+})

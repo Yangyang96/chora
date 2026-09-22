@@ -80,7 +80,7 @@ export function TaskDelegation({ taskId, roomId, onNavigate, planningTask = fals
   }
   const valid = assignments.every(a => a.role.trim() && a.title.trim() && a.requirement.trim()) && new Set(assignments.map(a => a.role.trim().toLowerCase())).size === assignments.length
   if (view?.state === 'child') return <section className="panel" aria-label={t('Agent delegation')}><h2>{t('Agent delegation')}</h2><button type="button" onClick={() => view.parentUrl && onNavigate(view.parentUrl)}>{t('Open parent task')}</button></section>
-  if (view && !view.eligible && view.state === 'not_started') return null
+  if (view && !view.eligible && view.state === 'not_started' && !view.planning) return null
   return <section className="panel" aria-label={t('Agent delegation')}>
     <h2>{t('Agent delegation')}</h2>
     {!planningTask && <p>{t('Define up to four research assignments. Start authorizes sequential Agent execution with this task’s frozen material and settings. You review each result; nothing is accepted or delivered automatically.')}</p>}
