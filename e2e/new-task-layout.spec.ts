@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-test('task-level checkboxes stay beside their labels on desktop and mobile', async ({ page, request }) => {
+test('task purpose preserves drafts and choice layouts across languages and widths', async ({ page, request }) => {
   const response = await request.post('/api/v2/projects', { data: { name: 'Task layout' } })
   expect(response.status()).toBe(201)
   const project = await response.json()
@@ -11,8 +11,34 @@ test('task-level checkboxes stay beside their labels on desktop and mobile', asy
     for (const locale of ['EN', '中文']) {
       await page.getByRole('button', { name: locale, exact: true }).click()
       const labels = locale === 'EN'
-        ? ['Work with supplied material only', 'Override Project defaults for this task']
-        : ['仅使用明确提供的材料', '为此任务覆盖项目默认值']
+        ? ['Override Project defaults for this task']
+        : ['为此任务覆盖项目默认值']
+      const codeName = locale === 'EN' ? 'Develop code' : '开发代码'
+      const docName = locale === 'EN' ? 'Research / write a proposal' : '调研／写方案'
+      const code = page.getByRole('radio', { name: codeName, exact: true })
+      const docChoice = page.getByRole('radio', { name: docName, exact: true })
+      await expect(code).toBeChecked()
+      await page.getByRole('textbox').first().fill('Keep this requirement')
+      await docChoice.check()
+      await expect(docChoice).toBeChecked()
+      await expect(page.getByRole('textbox').first()).toHaveValue('Keep this requirement')
+      const materialTitle = page.getByLabel(locale === 'EN' ? 'Material title' : '材料标题')
+      await materialTitle.fill('Keep this material')
+      await code.check()
+      await expect(materialTitle).toHaveCount(0)
+      await docChoice.check()
+      await expect(materialTitle).toHaveValue('Keep this material')
+      for (const radio of [code, docChoice]) {
+        const dimensions = await radio.evaluate(input => {
+          const box = input.getBoundingClientRect()
+          const label = input.closest('label')!.getBoundingClientRect()
+          return { width: box.width, inside: box.x >= label.x && box.right <= label.right }
+        })
+        expect(dimensions.width).toBe(16)
+        expect(dimensions.inside).toBe(true)
+      }
+      await code.check()
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
       for (const name of labels) {
         const checkbox = page.getByRole('checkbox', { name, exact: true })
         await expect(checkbox).toBeVisible()

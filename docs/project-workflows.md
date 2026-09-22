@@ -26,6 +26,18 @@ exist without repositories. The implemented first slice uses explicitly supplied
 capabilities; it does not require a new document connector, editor suite or
 Contexere implementation.
 
+## Start with the intended result
+
+The task composer defaults to **Develop code**: select repositories and review
+code changes. Choose **Research / write a proposal** to supply material and
+produce a document for review without repository changes. Switching preserves
+the requirement and material drafts in the open form; these drafts do not survive
+a page reload. Repository selections must be checked again after switching back.
+
+The material section explains source scope separately: paste the content to use;
+source locators are references, not instructions to fetch URLs or read local paths.
+This choice does not change the execution environment, model, or permissions.
+
 ## Separate the user's choices
 
 | Concern | Meaning | Product treatment |

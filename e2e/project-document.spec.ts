@@ -29,7 +29,7 @@ test('material-only proposal is reviewed, persisted, and explicitly selected by 
   await page.goto(`/rooms/${project.defaultRoomId}`)
   await page.getByRole('button', { name: '＋ New Task', exact: true }).first().click()
   await page.getByLabel('What should Chora build?').fill('Write a sourced compatibility proposal')
-  await page.getByLabel('Work with supplied material only').check()
+  await page.getByLabel('Research / write a proposal').check()
   await page.getByLabel('Material title').fill('Migration notes')
   await page.getByLabel('Source locator').fill('https://example.test/migration-notes')
   await page.getByLabel('Markdown content').fill('# Migration notes\n\nThe public API must remain compatible.')

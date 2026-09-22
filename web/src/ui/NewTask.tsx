@@ -100,12 +100,22 @@ export function NewTask({ projectId, roomId, roomName, busy, preparationPending 
       <div className="panel-context">
         {t('New task in {room}', { room: roomName })}
       </div>
+      {usesTaskResources && <fieldset className="task-purpose" disabled={busy}>
+        <legend>{t('What would you like to do?')}</legend>
+        {[
+          { document: false, label: 'Develop code', description: 'Work in selected repositories, then review code changes.' },
+          { document: true, label: 'Research / write a proposal', description: 'Use supplied material to produce a document for review. No repository changes.' },
+        ].map((purpose) => <label className="task-purpose-choice" key={purpose.label}>
+          <input type="radio" name="task-purpose" aria-label={t(purpose.label)} aria-describedby={purpose.document ? 'document-purpose-description' : 'code-purpose-description'} checked={suppliedOnly === purpose.document} onChange={() => { setSuppliedOnly(purpose.document); setResources(undefined); setResourceBlocker('') }} />
+          <span><strong>{t(purpose.label)}</strong><small id={purpose.document ? 'document-purpose-description' : 'code-purpose-description'}>{t(purpose.description)}</small></span>
+        </label>)}
+      </fieldset>}
       {localWorkbench && !suppliedOnly && <p className="section-note">{t('New tasks start from the current branch’s committed HEAD. Uncommitted and untracked changes stay in the original checkout and are not copied. Commit them externally first if the task needs them.')}</p>}
       <label>
         {t(suppliedOnly ? 'What should Chora investigate or document?' : 'What should Chora build?')}
         <textarea value={requirement} onChange={(event) => setRequirement(event.target.value)} placeholder={t('Describe the requirement…')} autoFocus required />
       </label>
-      {projectId && roomId && <label className="task-choice"><input type="checkbox" checked={suppliedOnly} disabled={busy} onChange={(event) => { setSuppliedOnly(event.target.checked); setResources(undefined); setResourceBlocker('') }} />{t('Work with supplied material only')}</label>}
+
       {projectId && roomId && <TaskMaterials roomId={roomId} enabled={suppliedOnly} busy={busy} onMaterialsChange={setMaterials} onRevisionIdsChange={setRevisionIds} onBlockedChange={setMaterialBlocker} />}
       {projectId && roomId
         ? !suppliedOnly && <TaskResources projectId={projectId} roomId={roomId} busy={busy} onReady={setResources} onBlockedChange={setResourceBlocker} />

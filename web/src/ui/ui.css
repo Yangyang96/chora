@@ -2037,3 +2037,16 @@
   background: #252930; color: #fff; font: 13px/1.6 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   white-space: pre-line; overflow-wrap: anywhere; pointer-events: none; box-shadow: 0 4px 16px #0002; }
 .external-menu-panel .disabled-action { width: 100%; }
+
+/* Task intent is separate from execution settings and material source scope. */
+.task-purpose { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0; padding: 0; border: 0; min-width: 0; }
+.task-purpose legend { margin-bottom: 10px; font-size: 14px; font-weight: 600; }
+.panel label.task-purpose-choice { display: flex; flex-direction: row; align-items: flex-start; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; min-width: 0; }
+.task-purpose-choice:has(input:checked) { border-color: #7185a2; background: #f1f5f9; }
+.task-purpose-choice:has(input:focus-visible) { outline: 2px solid #7185a2; outline-offset: 3px; }
+.task-purpose-choice:has(input:disabled) { cursor: default; opacity: .65; }
+.panel .task-purpose-choice > input { flex: 0 0 16px; width: 16px; height: 16px; padding: 0; margin: 2px 0 0; }
+.task-purpose-choice > span { display: grid; gap: 6px; min-width: 0; line-height: 20px; }
+.task-purpose-choice strong { font-size: 14px; }
+.task-purpose-choice small { color: var(--muted); font-size: 12px; font-weight: 400; overflow-wrap: anywhere; }
+@media (max-width: 600px) { .task-purpose { grid-template-columns: 1fr; } }

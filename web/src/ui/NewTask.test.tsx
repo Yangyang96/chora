@@ -112,7 +112,7 @@ test('submits supplied material without repositories and preserves explicit docu
  })
  render(<NewTask projectId="project-1" roomId="room-1" roomName="Demo" busy={false} initialRequirement="Research the design" isolatedLocal={isolatedReady} onCancel={vi.fn()} onSubmit={onSubmit} onAcknowledgeTrustedLocal={vi.fn()} />)
  await waitFor(() => expect(screen.getAllByText(/Project defaults/).length).toBeGreaterThan(0))
- await userEvent.click(screen.getByLabelText('Work with supplied material only'))
+ await userEvent.click(screen.getByLabelText('Research / write a proposal'))
  await userEvent.type(screen.getByLabelText('Material title'), 'Support notes')
  await userEvent.type(screen.getByLabelText('Source locator'), 'https://example.test/support')
  await userEvent.type(screen.getByLabelText('Markdown content'), '# Observations')
