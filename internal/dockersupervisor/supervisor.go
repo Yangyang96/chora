@@ -1788,7 +1788,12 @@ func (supervisor *Supervisor) confirmStopped(record *attemptRecord) execution.St
 	if record.recovered {
 		return execution.StopOutcome{Kind: execution.StopConfirmed}
 	}
-	if err := supervisor.cleanup(context.Background(), record); err != nil {
+	record.mu.Lock()
+	retainTerminal := record.timedOut
+	record.mu.Unlock()
+	// Expiry uses Stop to prove executor death, but the terminal consumer still
+	// needs its timeout Result. Finalize owns removal after Drain in this case.
+	if err := supervisor.cleanupAttempt(record, retainTerminal); err != nil {
 		return execution.StopOutcome{Kind: execution.StopUncertain, Diagnostic: "process exited but Attempt cleanup is unproven: " + err.Error()}
 	}
 	return execution.StopOutcome{Kind: execution.StopConfirmed}
@@ -1993,6 +1998,10 @@ type dockerResourceInventory struct {
 }
 
 func (supervisor *Supervisor) cleanup(_ context.Context, record *attemptRecord) error {
+	return supervisor.cleanupAttempt(record, false)
+}
+
+func (supervisor *Supervisor) cleanupAttempt(record *attemptRecord, retainTerminal bool) error {
 	record.cleanupMu.Lock()
 	defer record.cleanupMu.Unlock()
 	cleanupContext, cancel := context.WithTimeout(context.Background(), supervisor.config.DeathWait)
@@ -2008,6 +2017,9 @@ func (supervisor *Supervisor) cleanup(_ context.Context, record *attemptRecord) 
 	}
 	if err := supervisor.recoverWorkspaceImport(cleanupContext, record.root); err != nil {
 		return err
+	}
+	if retainTerminal {
+		return nil
 	}
 	return removeAndProveAbsent(record.root, "runtime workspace")
 }

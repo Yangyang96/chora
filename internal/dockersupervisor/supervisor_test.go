@@ -939,6 +939,48 @@ func TestAttemptTimeoutForcesRemoval(t *testing.T) {
 	t.Fatal("attempt timeout did not force removal")
 }
 
+func TestTimedOutStopRetainsEvidenceUntilFinalize(t *testing.T) {
+	process := newFakeProcess()
+	runner := &fakeRunner{processes: []*fakeProcess{process}, inspectMissing: true, exitOnRemove: true}
+	supervisor := newTestSupervisor(t, runner)
+	invocation := testInvocation(t, testSource(t), "launch-timeout-retention")
+	outcome := supervisor.Start(context.Background(), invocation, &testSink{binding: invocation.LaunchToken()})
+	if outcome.Kind != execution.Started {
+		t.Fatalf("Start() = %#v", outcome)
+	}
+	record := supervisor.record(outcome.Handle)
+	if !record.markDeadlineIfLive() {
+		t.Fatal("could not mark running attempt timed out")
+	}
+	// Synchronous Stop completes the same cleanup used by expire, ensuring this
+	// checks the post-cleanup state rather than racing the done notification.
+	stopped, err := supervisor.Stop(context.Background(), outcome.Handle, execution.StopIntent{Kind: execution.StopForCancel, Reason: "attempt timeout"})
+	if err != nil || stopped.Kind != execution.StopConfirmed {
+		t.Fatalf("Stop() = %#v, %v", stopped, err)
+	}
+	waitDone(t, record.done)
+	result, err := os.ReadFile(record.terminal.Paths["result"])
+	if err != nil || !bytes.Contains(result, []byte("attempt timeout exceeded limit")) {
+		t.Fatalf("completed timeout Stop lost terminal evidence: %q, %v", result, err)
+	}
+	if !commandsContain(runner.commands(), "rm -f") {
+		t.Fatal("retained evidence without removing container")
+	}
+	drained, err := supervisor.Drain(context.Background(), outcome.Handle, execution.StreamOffsets{}, persistedLogBytes*2)
+	if err != nil || !drained.EOF[execution.StreamStdout] || !drained.EOF[execution.StreamStderr] || drained.TerminalFiles.TerminationCause != execution.TerminationDeadlineExceeded {
+		t.Fatalf("Drain() = %#v, %v", drained, err)
+	}
+	if _, err = os.ReadFile(drained.TerminalFiles.Paths["result"]); err != nil {
+		t.Fatalf("Drain returned missing timeout result: %v", err)
+	}
+	if err = supervisor.Finalize(context.Background(), outcome.Handle, execution.RetentionPolicy{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = os.Stat(record.root); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("Finalize retained timeout runtime root: %v", err)
+	}
+}
+
 func TestRetryUsesFreshResourcesAndFinalizeCleans(t *testing.T) {
 	p1, p2 := newFakeProcess(), newFakeProcess()
 	runner := &fakeRunner{processes: []*fakeProcess{p1, p2}, inspectMissing: true}
