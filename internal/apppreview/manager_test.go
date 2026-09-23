@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -256,4 +257,81 @@ func waitForLog(t *testing.T, manager *Manager, key, expected string) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatal("timed out waiting for preview log")
+}
+
+func TestHostInspectionWaitsForFinalLogMetadata(t *testing.T) {
+	manager, root := testManager(t, 1024)
+	target := Target{Key: "final-log", Root: root, AttemptID: "attempt", Profile: ProfileLocalConnected}
+	config := Config{Command: `while [ ! -f release ]; do sleep 0.01; done; i=0; while [ $i -lt 2000 ]; do printf x; i=$((i+1)); done`, WorkingDirectory: ".", Port: 43194}
+	if _, err := manager.Start(context.Background(), target, config); err != nil {
+		t.Fatal(err)
+	}
+	var observed View
+	func() {
+		manager.mu.Lock()
+		defer manager.mu.Unlock()
+		child := manager.children[target.Key]
+		record, err := manager.load(target.Key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = os.WriteFile(filepath.Join(root, "release"), nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+		// Wait has drained stdout/stderr and reaped the leader, but its metadata
+		// commit cannot acquire the lock held by this inspection. This reproduces
+		// the exact CI ordering without depending on scheduler timing.
+		select {
+		case <-child.done:
+		case <-time.After(3 * time.Second):
+			t.Fatal("preview did not finish output")
+		}
+		observed = manager.inspectHost(record).View
+	}()
+	for deadline := time.Now().Add(3 * time.Second); ; {
+		view, err := manager.Inspect(context.Background(), target.Key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if view.ExitCode != nil {
+			if view.State != StateStopped || *view.ExitCode != 0 || !view.LogTruncated {
+				t.Fatalf("incomplete final state: %#v", view)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("final log metadata was not published")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if observed.State != StateRunning {
+		t.Fatalf("inspection published terminal state before final metadata: state=%s exit=%v truncated=%v", observed.State, observed.ExitCode, observed.LogTruncated)
+	}
+	logs, err := manager.Logs(target.Key, 0, 1024)
+	if err != nil || logs.Size != 1024 || !logs.Truncated {
+		t.Fatalf("final logs: size=%d truncated=%v err=%v", logs.Size, logs.Truncated, err)
+	}
+}
+
+func TestOldHostWaiterDoesNotRemoveReplacementChild(t *testing.T) {
+	manager, root := testManager(t, 1024)
+	target := Target{Key: "replacement", Root: root, AttemptID: "new-attempt", Profile: ProfileLocalConnected}
+	if _, err := manager.Save(context.Background(), target, Config{Command: "exit 0", WorkingDirectory: ".", Port: 43195}); err != nil {
+		t.Fatal(err)
+	}
+	log, err := openCappedLog(manager.logPath(target.Key), 1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command("/bin/sh", "-c", "exit 0")
+	if err = command.Start(); err != nil {
+		_ = log.Close()
+		t.Fatal(err)
+	}
+	old, replacement := &hostChild{done: make(chan struct{})}, &hostChild{done: make(chan struct{})}
+	manager.children[target.Key] = replacement
+	manager.waitHost(target.Key, "old-generation", command, log, old)
+	if manager.children[target.Key] != replacement {
+		t.Fatal("old waiter removed replacement ownership")
+	}
 }

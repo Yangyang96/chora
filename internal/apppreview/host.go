@@ -118,7 +118,9 @@ func (manager *Manager) waitHost(key, nonce string, command *exec.Cmd, log *capp
 	close(child.done)
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
-	delete(manager.children, key)
+	if manager.children[key] == child {
+		delete(manager.children, key)
+	}
 	record, loadErr := manager.load(key)
 	if loadErr != nil || record.Nonce != nonce {
 		return
@@ -167,6 +169,12 @@ func (manager *Manager) inspectHost(record manifest) manifest {
 		} else {
 			record.View.Reason = "local preview leader is gone but its process group cannot be proven absent"
 		}
+		return record
+	}
+	// An owned child is finalized by waitHost only after exec.Wait has drained
+	// its output and committed exit/log metadata. Process disappearance alone
+	// must not publish a terminal state ahead of that commit.
+	if manager.children[record.View.Key] != nil {
 		return record
 	}
 	record.View.State = StateStopped
