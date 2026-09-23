@@ -289,8 +289,9 @@ stop, restart continuity and unchanged human acceptance. Overall M3 remains in
 progress.
 
 An optional pre-authorized synthesis uses only frozen child results in one
-additional Agent Attempt. Its integrated qualification is in progress.
-
+additional Agent Attempt. It passed the complete development gate and real Pi
+qualification on 2026-09-23, including source-only inputs, active stop, human
+review, restart continuity and preservation of existing schema-48 delegations.
 
 This is a bounded starting point within M3. Multi-human membership/revocation,
 parallel execution and coding integration are not
