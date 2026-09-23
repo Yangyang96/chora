@@ -19,3 +19,10 @@ condition = "AND"
 paths = ['''(^|/)internal/localweb/u3_preflight_gate_test\.go$''']
 regexTarget = "line"
 regexes = ['''^\s*map\[string\]string\{"Idempotency-[K]ey": "u3-cancel-verification"\}, http\.StatusAccepted, nil\)$''']
+
+[[rules.allowlists]]
+description = "Literal research delegation browser-test idempotency key"
+condition = "AND"
+paths = ['''(^|/)e2e/project-document\.spec\.ts$''']
+regexTarget = "line"
+regexes = ['''^\s*const ack = await request\.post\('/api/agent-execution/trusted-local-acknowledgements', \{ headers: \{ 'Idempotency-[K]ey': 'delegation-e2e-ack' \}, data: \{ policyVersion: 'chora\.trusted-local-disclosure\.v1' \} \}\)$''']
