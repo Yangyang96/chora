@@ -182,7 +182,8 @@ func TestInstalledPiWorkspaceMappingFailsResumeClosedBeforeDelegate(t *testing.T
 }
 
 type recordingWorkspaceAdapter struct {
-	execution.AgentAdapter
+	execution.Provider
+	execution.AgentCheckReporter
 	startCalls  int
 	resumeCalls int
 }
@@ -241,4 +242,71 @@ func piWorkspaceTestRun(t *testing.T) (domain.AgentRun, domain.Attempt, []byte) 
 		t.Fatal(err)
 	}
 	return run, attempt, snapshot
+}
+
+type workspacePolicyProbe struct {
+	execution.Provider
+	execution.AgentCheckReporter
+	completes, recovers, reports int
+}
+
+func (p *workspacePolicyProbe) Capabilities() execution.AdapterCapabilities {
+	return execution.AdapterCapabilities{ResumeMode: execution.ResumeExplicitSession}
+}
+func (p *workspacePolicyProbe) Describe() execution.ProviderDescriptor {
+	descriptor := p.Provider.Describe().Clone()
+	descriptor.ResumeMode = execution.ResumeExplicitSession
+	return descriptor
+}
+func (p *workspacePolicyProbe) Complete(execution.CompletionRequest) (execution.TerminalResult, error) {
+	p.completes++
+	return execution.TerminalResult{Kind: execution.TerminalFailed, FailureReason: "policy-probe"}, nil
+}
+func (p *workspacePolicyProbe) Recover(execution.RecoveryRequest) execution.RecoveryPolicy {
+	p.recovers++
+	return execution.RecoveryPolicy{FreshRetry: true, StopOnRestart: true, MissingRouteUncertain: true}
+}
+func (p *workspacePolicyProbe) AgentReportedChecks(raw []byte, events []execution.NormalizedEvent) ([]execution.DeclaredCheck, error) {
+	p.reports++
+	return p.AgentCheckReporter.AgentReportedChecks(raw, events)
+}
+func TestInstalledPiWorkspacePreservesPoliciesAndRejectsUnsupportedCapabilities(t *testing.T) {
+	delegate := newPiWorkspaceTestDelegate(t)
+	probe := &workspacePolicyProbe{Provider: delegate, AgentCheckReporter: delegate}
+	wrapped, err := newPiWorkspaceAdapter(probe, "/logical/repo", "/physical/repo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := newAdapterRegistry()
+	registry.Set(wrapped)
+	registered, err := registry.providers.Resolve(delegate.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if registered.Capabilities().ResumeMode != execution.ResumeUnsupported || registered.Describe().ResumeMode != execution.ResumeUnsupported {
+		t.Fatal("wrapper advertises delegate resume despite refusing it")
+	}
+	if err := registered.Describe().Require(domain.DockerExecutionProvider, "code", "unimplemented-feature"); !errors.Is(err, execution.ErrUnsupportedCapability) {
+		t.Fatalf("wrapped admission did not reject unsupported feature: %v", err)
+	}
+	result, err := registered.Complete(execution.CompletionRequest{})
+	if err != nil || result.FailureReason != "policy-probe" || probe.completes != 1 {
+		t.Fatalf("completion policy lost: %+v %v", result, err)
+	}
+	policy := registered.Recover(execution.RecoveryRequest{})
+	if !policy.FreshRetry || !policy.StopOnRestart || !policy.MissingRouteUncertain || probe.recovers != 1 {
+		t.Fatal("recovery policy lost")
+	}
+	reporter, ok := registered.(execution.AgentCheckReporter)
+	if !ok {
+		t.Fatal("check reporting lost")
+	}
+	_, wrappedErr := reporter.AgentReportedChecks([]byte(`{"invalid":true}`), nil)
+	_, directErr := delegate.AgentReportedChecks([]byte(`{"invalid":true}`), nil)
+	if probe.reports != 1 || (wrappedErr == nil) != (directErr == nil) {
+		t.Fatal("wrapped check observation policy differs")
+	}
+	if _, err := registered.PrepareResume(context.Background(), execution.ResumeRequest{}); !errors.Is(err, errPiWorkspaceResumeUnsupported) {
+		t.Fatalf("resume unexpectedly admitted: %v", err)
+	}
 }

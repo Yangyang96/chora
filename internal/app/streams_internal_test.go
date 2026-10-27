@@ -26,17 +26,17 @@ func TestRuntimePolicyViolationRecognizesUndeclaredCommand(t *testing.T) {
 }
 
 func TestCurrentLocalModesDoNotUseLegacyDeclaredCommandWhitelist(t *testing.T) {
-	if choraEnforcesDeclaredPiCommands(domain.CapabilityEnvelope{speccoding.LocalConnectedNoSandboxCapability: true}) {
+	if enforcesDeclaredCommands(domain.CapabilityEnvelope{speccoding.LocalConnectedNoSandboxCapability: true}) {
 		t.Fatal("Local Connected must use Pi's native command/file permission policy")
 	}
-	if choraEnforcesDeclaredPiCommands(domain.CapabilityEnvelope{speccoding.IsolatedLocalCapability: true}) {
+	if enforcesDeclaredCommands(domain.CapabilityEnvelope{speccoding.IsolatedLocalCapability: true}) {
 		t.Fatal("Isolated Local auto checks must not be rejected by the legacy direct argv whitelist")
 	}
 	for _, capabilities := range []domain.CapabilityEnvelope{
 		{"runtime.command_execution": true},
 		{},
 	} {
-		if !choraEnforcesDeclaredPiCommands(capabilities) {
+		if !enforcesDeclaredCommands(capabilities) {
 			t.Fatalf("unrelated managed capabilities must retain the legacy declared-command boundary: %#v", capabilities)
 		}
 	}

@@ -2,11 +2,14 @@ package localweb
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 
 	"github.com/Yangyang96/chora/internal/execution"
 )
+
+var errRuntimeOwnershipUnproven = errors.New("runtime process ownership unproven")
 
 type routingSupervisor struct {
 	mu sync.RWMutex
@@ -135,6 +138,9 @@ func (supervisor *routingSupervisor) RestoreTarget(ctx context.Context, target e
 	}
 	if err != nil {
 		return err
+	}
+	if outcome.Kind == execution.ReconcileUncertain && !outcome.Handle.Valid() && !outcome.LaunchToken.Valid() {
+		return errRuntimeOwnershipUnproven
 	}
 	if !validReconcileKind(outcome.Kind) || !outcome.Handle.Valid() || outcome.LaunchToken != launch {
 		return fmt.Errorf("restored route outcome does not prove exact target ownership")

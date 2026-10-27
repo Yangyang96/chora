@@ -159,9 +159,11 @@ type AgentExecutionProfileContract struct {
 }
 
 // AgentExecutionProfileBinding is the exact, persisted execution contract of
-// one Pi Charter or Attempt. The zero value means that no Pi profile is bound.
+// one runtime Charter or Attempt. The zero value means no profile is bound.
+// Legacy Pi records retain their exact representation; new bindings are versioned.
 // Fields stay private so callers cannot mutate an accepted binding in place.
 type AgentExecutionProfileBinding struct {
+	runtimeBindingJSON    string
 	profile               AgentExecutionProfile
 	runtimeSource         string
 	executionProvider     string
@@ -170,6 +172,7 @@ type AgentExecutionProfileBinding struct {
 }
 
 type AgentExecutionProfileBindingRecord struct {
+	RuntimeBindingJSON    string `json:",omitempty"`
 	Profile               AgentExecutionProfile
 	RuntimeSource         string
 	ExecutionProvider     string
@@ -248,6 +251,17 @@ func RestoreAgentExecutionProfileBinding(record AgentExecutionProfileBindingReco
 	if record == (AgentExecutionProfileBindingRecord{}) {
 		return AgentExecutionProfileBinding{}, nil
 	}
+	if record.RuntimeBindingJSON != "" {
+		runtime, err := ParseRuntimeBinding(record.RuntimeBindingJSON)
+		if err != nil {
+			return AgentExecutionProfileBinding{}, err
+		}
+		binding, err := NewRuntimeProfileBinding(runtime)
+		if err != nil || binding.Record() != record {
+			return AgentExecutionProfileBinding{}, fmt.Errorf("%w: runtime binding drift", ErrInvalidArgument)
+		}
+		return binding, nil
+	}
 	want, err := NewAgentExecutionProfileBinding(record.Profile)
 	if err != nil {
 		return AgentExecutionProfileBinding{}, err
@@ -291,6 +305,7 @@ func (binding AgentExecutionProfileBinding) TrustDisclosurePolicy() string {
 
 func (binding AgentExecutionProfileBinding) Record() AgentExecutionProfileBindingRecord {
 	return AgentExecutionProfileBindingRecord{
+		RuntimeBindingJSON:    binding.runtimeBindingJSON,
 		Profile:               binding.profile,
 		RuntimeSource:         binding.runtimeSource,
 		ExecutionProvider:     binding.executionProvider,
@@ -300,6 +315,11 @@ func (binding AgentExecutionProfileBinding) Record() AgentExecutionProfileBindin
 }
 
 func validAgentExecutionProfileBinding(adapterID string, binding AgentExecutionProfileBinding) bool {
+	if binding.runtimeBindingJSON != "" {
+		runtime, err := ParseRuntimeBinding(binding.runtimeBindingJSON)
+		restored, restoreErr := RestoreAgentExecutionProfileBinding(binding.Record())
+		return err == nil && restoreErr == nil && runtime.RuntimeID == adapterID && restored == binding
+	}
 	if adapterID != "pi" {
 		return !binding.Bound()
 	}

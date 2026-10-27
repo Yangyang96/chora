@@ -351,29 +351,6 @@ func noChangeOutcome(checks []execution.DeclaredCheck, noChecks bool) execution.
 	return execution.TerminalCompletedNoChange
 }
 
-// Pi result success requires a complete final assistant message for this Attempt.
-// An earlier progress message or a truncated response is not a terminal result.
-func hasCompletePiResult(events []domain.RunEvent) bool {
-	complete := false
-	started := false
-	for _, event := range events {
-		if event.Type() == "attempt.started" {
-			complete = false
-			started = true
-		}
-		if !started || event.Type() != "assistant_message" || event.Source() != "adapter" {
-			continue
-		}
-		var payload struct {
-			Text             string `json:"text"`
-			TerminalComplete bool   `json:"terminal_complete"`
-			Truncated        bool   `json:"truncated"`
-		}
-		complete = json.Unmarshal(event.NormalizedJSON(), &payload) == nil && payload.TerminalComplete && !payload.Truncated && strings.TrimSpace(payload.Text) != "" && len(payload.Text) <= maxPersistedAssistantText
-	}
-	return complete
-}
-
 func artifactIdentity(artifact execution.WorkspaceArtifact) (*[32]byte, string, error) {
 	if artifact.SHA256 == "" && artifact.MediaType == "" {
 		return nil, "", nil

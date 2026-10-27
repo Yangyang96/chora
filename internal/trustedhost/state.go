@@ -307,7 +307,7 @@ func (supervisor *Supervisor) prepare(ctx context.Context, invocation execution.
 		ExecutableIdentity: supervisor.config.AllowedExecutable, Arguments: append([]string(nil), arguments...),
 		Environment: append([]string(nil), environment...), Directory: workspace,
 		Stdin: invocation.Stdin(), Stdout: stdoutFile, Stderr: stderrFile,
-		FilterPiProgress: supervisor.config.AllowedAdapterID == "pi",
+		FilterPiProgress: supervisor.config.FilterPiProgress,
 		GateReceiptPath:  gateReceiptPath, GateNonce: gateNonce, GateWait: supervisor.config.GateWait,
 	}, stdoutFile, stderrFile, nil
 }

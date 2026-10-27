@@ -197,11 +197,11 @@ func (server *Server) requireAgentExecutionRoute(writer http.ResponseWriter, req
 		writeError(writer, http.StatusServiceUnavailable, errors.New("selected Agent execution route is unavailable"))
 		return false
 	}
-	if _, err := server.registry.Get(agentpi.AdapterID); err != nil {
+	if _, err := server.registry.Get(binding.RuntimeID()); err != nil {
 		writeError(writer, http.StatusServiceUnavailable, errors.New("selected Agent execution route is unavailable"))
 		return false
 	}
-	target, err := execution.NewExecutionTarget(agentpi.AdapterID, binding.ExecutionProvider())
+	target, err := execution.NewExecutionTarget(binding.RuntimeID(), binding.ExecutionProvider())
 	if err != nil || !server.supervisor.hasTarget(target) {
 		writeError(writer, http.StatusServiceUnavailable, errors.New("selected Agent execution route is unavailable"))
 		return false

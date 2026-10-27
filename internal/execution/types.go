@@ -251,6 +251,12 @@ func (invocation Invocation) Valid() bool {
 type RuntimeFingerprint struct {
 	Digest  [32]byte
 	Version string
+	// SourceIdentity and SecurityFingerprint independently identify the actual
+	// inspected executable/source and effective launch security policy. Providers
+	// must derive them from preparation, never echo the requested binding. Legacy
+	// adapters may omit them; versioned runtime bindings require both at launch.
+	SourceIdentity      [32]byte
+	SecurityFingerprint [32]byte
 }
 
 func (fingerprint RuntimeFingerprint) Valid() bool {

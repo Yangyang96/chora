@@ -154,7 +154,7 @@ func (s *Service) ConsumeStream(ctx context.Context, request ConsumeStreamReques
 	// command. Persist that terminal signal first, then close the held stdin to
 	// let this one-shot Attempt exit and deliver its trusted exit notification.
 	for _, event := range decoded.Events {
-		if event.Type != "agent_settled" {
+		if event.Type != "agent_settled" || !runtimeClosesSettledStdin(runtime.adapter) {
 			continue
 		}
 		if closer, ok := s.deps.Supervisor.(execution.StdinCloser); ok {
@@ -188,7 +188,7 @@ func hasRuntimePolicyViolation(events []execution.NormalizedEvent) bool {
 func (s *Service) projectRuntimePolicy(ctx context.Context, runtime runtimeContext, events []execution.NormalizedEvent) ([]execution.NormalizedEvent, bool, error) {
 	projected := append([]execution.NormalizedEvent(nil), events...)
 	violated := hasRuntimePolicyViolation(projected)
-	if runtime.adapter.ID() != "pi" {
+	if !runtime.attempt.AgentExecutionProfileBinding().Bound() {
 		return projected, violated, nil
 	}
 	binding, err := s.deps.Store.Reader().GetSpecCodingBinding(ctx, runtime.run.TaskID())
@@ -212,7 +212,7 @@ func (s *Service) projectRuntimePolicy(ctx context.Context, runtime runtimeConte
 	if err != nil {
 		return nil, false, fmt.Errorf("registered Spec Coding execution authority is unavailable")
 	}
-	if !choraEnforcesDeclaredPiCommands(charter.CapabilityEnvelope()) {
+	if !enforcesDeclaredCommands(charter.CapabilityEnvelope()) {
 		// Local Connected delegates permission policy to native Pi. Isolated
 		// Local instead relies on its Docker filesystem and writeback scope while
 		// v1.2 dynamically selects checks. Neither uses the legacy direct-argv
@@ -235,7 +235,7 @@ func (s *Service) projectRuntimePolicy(ctx context.Context, runtime runtimeConte
 	return projected, violated || commandViolation, nil
 }
 
-func choraEnforcesDeclaredPiCommands(capabilities domain.CapabilityEnvelope) bool {
+func enforcesDeclaredCommands(capabilities domain.CapabilityEnvelope) bool {
 	return !capabilities[speccoding.LocalConnectedNoSandboxCapability] && !capabilities[speccoding.IsolatedLocalCapability]
 }
 
@@ -287,153 +287,10 @@ type declaredCommandPolicy struct {
 	focusedGoTest bool
 }
 
-type agentClaimEvent struct {
-	typ        string
-	normalized []byte
-}
-
-type agentCommandClaim struct {
-	status     execution.CheckStatus
-	evidence   string
-	generation int
-}
-
-type activeAgentCommand struct {
-	commandID  string
-	generation int
-}
-
-// derivePiAgentReportedChecks converts only exact, contract-declared
-// verification command executions into AgentReport claims. These observations
-// are intentionally not verifier evidence: callers place them only in
-// TerminalResult.Checks, which is the AgentReport input.
-func derivePiAgentReportedChecks(document speccoding.CoreContractDocument, events []agentClaimEvent) []execution.DeclaredCheck {
-	type commandAuthority struct {
-		id string
-	}
-	summaryAuthorities := make(map[string][]commandAuthority, len(document.Acceptance.VerificationCommands))
-	digestAuthorities := make(map[string][]commandAuthority, len(document.Acceptance.VerificationCommands))
-	states := make(map[string]agentCommandClaim, len(document.Acceptance.VerificationCommands))
-	for _, command := range document.Acceptance.VerificationCommands {
-		text, err := speccoding.CanonicalCommandText(command)
-		if err != nil {
-			continue
-		}
-		digest := sha256.Sum256([]byte(text))
-		digestHex := hex.EncodeToString(digest[:])
-		authority := commandAuthority{id: command.ID}
-		summaryAuthorities[text] = append(summaryAuthorities[text], authority)
-		digestAuthorities[digestHex] = append(digestAuthorities[digestHex], authority)
-		states[command.ID] = agentCommandClaim{status: execution.CheckUnknown, evidence: command.ID + " was not observed"}
-	}
-
-	active := make(map[string][]activeAgentCommand)
-	for _, event := range events {
-		var value struct {
-			ToolName      string  `json:"tool_name"`
-			ToolCallID    string  `json:"tool_call_id"`
-			Command       string  `json:"redacted_command_summary"`
-			CommandDigest *string `json:"command_digest"`
-			ExitCode      *int64  `json:"exit_code"`
-			ToolError     *bool   `json:"tool_error"`
-		}
-		if json.Unmarshal(event.normalized, &value) != nil {
-			continue
-		}
-		switch event.typ {
-		case "tool_start":
-			if value.ToolName != "bash" {
-				continue
-			}
-			commands := summaryAuthorities[value.Command]
-			if value.CommandDigest != nil {
-				// A projected digest is authoritative for correlation even when it
-				// is malformed or unknown. Falling back to the redacted/truncated
-				// summary would let a digest-bearing event claim another command.
-				commands = digestAuthorities[*value.CommandDigest]
-			}
-			if len(commands) == 0 {
-				continue
-			}
-			started := make([]activeAgentCommand, 0, len(commands))
-			for _, command := range commands {
-				state := states[command.id]
-				state.generation++
-				state.status = execution.CheckUnknown
-				state.evidence = command.id + " has no correlatable end event"
-				states[command.id] = state
-				started = append(started, activeAgentCommand{commandID: command.id, generation: state.generation})
-			}
-			if strings.TrimSpace(value.ToolCallID) != "" {
-				active[value.ToolCallID] = append(active[value.ToolCallID], started...)
-			}
-		case "tool_end":
-			if strings.TrimSpace(value.ToolCallID) == "" {
-				continue
-			}
-			started := active[value.ToolCallID]
-			delete(active, value.ToolCallID)
-			for _, executionStart := range started {
-				state := states[executionStart.commandID]
-				if state.generation != executionStart.generation {
-					continue
-				}
-				switch {
-				case value.ToolError != nil && *value.ToolError:
-					state.status = execution.CheckFail
-					state.evidence = executionStart.commandID + " reported a tool error"
-				case value.ExitCode == nil && value.ToolError != nil && !*value.ToolError:
-					state.status = execution.CheckPass
-					state.evidence = executionStart.commandID + " completed successfully according to Pi's tool result; numeric exit code unavailable"
-				case value.ExitCode == nil:
-					state.status = execution.CheckUnknown
-					state.evidence = executionStart.commandID + " ended without an exit code"
-				case *value.ExitCode == 0:
-					state.status = execution.CheckPass
-					state.evidence = executionStart.commandID + " exited 0"
-				default:
-					state.status = execution.CheckFail
-					state.evidence = fmt.Sprintf("%s exited %d", executionStart.commandID, *value.ExitCode)
-				}
-				states[executionStart.commandID] = state
-			}
-		}
-	}
-
-	checks := make([]execution.DeclaredCheck, 0, len(document.Acceptance.Criteria))
-	for _, criterion := range document.Acceptance.Criteria {
-		status := execution.CheckPass
-		if len(criterion.VerificationCommandIDs) == 0 {
-			status = execution.CheckUnknown
-		}
-		parts := make([]string, 0, len(criterion.VerificationCommandIDs))
-		for _, commandID := range criterion.VerificationCommandIDs {
-			state, ok := states[commandID]
-			if !ok {
-				state = agentCommandClaim{status: execution.CheckUnknown, evidence: commandID + " has no declared command authority"}
-			}
-			parts = append(parts, state.evidence)
-			if state.status == execution.CheckFail {
-				status = execution.CheckFail
-			} else if state.status == execution.CheckUnknown && status != execution.CheckFail {
-				status = execution.CheckUnknown
-			}
-		}
-		if len(criterion.VerificationCommandIDs) == 0 {
-			parts = append(parts, "Not run / Unverified: no checks were selected")
-		}
-		checks = append(checks, execution.DeclaredCheck{
-			CriterionID: criterion.ID,
-			Status:      status,
-			Evidence:    "Agent-reported, non-authoritative: " + strings.Join(parts, "; "),
-		})
-	}
-	return checks
-}
-
-func (s *Service) populatePiAgentReportedChecks(ctx context.Context, runtime runtimeContext, terminal execution.TerminalResult) (execution.TerminalResult, error) {
+func (s *Service) populateAgentReportedChecks(ctx context.Context, runtime runtimeContext, terminal execution.TerminalResult) (execution.TerminalResult, error) {
+	reporter, supported := runtime.adapter.(execution.AgentCheckReporter)
 	profile := runtime.attempt.AgentExecutionProfileBinding().Profile()
-	if runtime.adapter.ID() != "pi" || (profile != domain.AgentExecutionProfileTrustedLocal && profile != domain.AgentExecutionProfileIsolatedLocal) || terminal.Kind == execution.TerminalFailed {
+	if !supported || (profile != domain.AgentExecutionProfileTrustedLocal && profile != domain.AgentExecutionProfileIsolatedLocal) || terminal.Kind == execution.TerminalFailed {
 		return terminal, nil
 	}
 	binding, err := s.deps.Store.Reader().GetSpecCodingBinding(ctx, runtime.run.TaskID())
@@ -465,14 +322,14 @@ func (s *Service) populatePiAgentReportedChecks(ctx context.Context, runtime run
 	} else {
 		persisted = nil
 	}
-	events := make([]agentClaimEvent, 0, len(persisted))
+	events := make([]execution.NormalizedEvent, 0, len(persisted))
 	for _, event := range persisted {
 		if event.Source() == "adapter" {
-			events = append(events, agentClaimEvent{typ: event.Type(), normalized: event.NormalizedJSON()})
+			events = append(events, execution.NormalizedEvent{Type: event.Type(), NormalizedJSON: event.NormalizedJSON()})
 		}
 	}
-	terminal.Checks = derivePiAgentReportedChecks(document, events)
-	return terminal, nil
+	terminal.Checks, err = reporter.AgentReportedChecks(binding.ActiveContractJSON, events)
+	return terminal, err
 }
 
 func projectDeclaredCommands(events []execution.NormalizedEvent, policy declaredCommandPolicy) ([]execution.NormalizedEvent, bool) {
@@ -667,7 +524,7 @@ func (s *Service) drainToEOF(ctx context.Context, runtime runtimeContext, handle
 		// Real Pi RPC keeps running until stdin reaches EOF. Once the terminal
 		// signal (agent_settled) is observed, close stdin so the process exits
 		// cleanly and the drain reaches EOF.
-		if s.deps.Supervisor != nil {
+		if s.deps.Supervisor != nil && runtimeClosesSettledStdin(runtime.adapter) {
 			for _, kind := range []execution.StreamKind{execution.StreamStdout, execution.StreamStderr} {
 				for _, event := range decoded[kind].Events {
 					if event.Type == "agent_settled" {
@@ -767,7 +624,17 @@ func (s *Service) HandleExit(ctx context.Context, request ExitRequest) (SubmitTe
 				terminal = execution.TerminalResult{Kind: execution.TerminalFailed, FailureReason: "runtime_exit_nonzero"}
 				break
 			}
-			terminal, err = runtime.adapter.DecodeTerminal(terminalFiles)
+			if provider, ok := runtime.adapter.(execution.Provider); ok {
+				terminal, err = provider.Complete(execution.CompletionRequest{Attempt: runtime.attempt, Files: terminalFiles, Events: events})
+				// Completion is pure provider policy. A decode failure must still drain,
+				// finalize and record failure; it must not strand a dead child as running.
+				if err != nil && !errors.Is(err, execution.ErrResultContractInvalid) {
+					terminal = execution.TerminalResult{Kind: execution.TerminalFailed, FailureReason: "runtime_provider_failed"}
+					err = nil
+				}
+			} else {
+				terminal, err = runtime.adapter.DecodeTerminal(terminalFiles)
+			}
 			if errors.Is(err, execution.ErrResultContractInvalid) {
 				terminal = execution.TerminalResult{Kind: execution.TerminalFailed, FailureReason: "result_contract_invalid"}
 				err = nil
@@ -782,11 +649,6 @@ func (s *Service) HandleExit(ctx context.Context, request ExitRequest) (SubmitTe
 	if terminal.Kind != execution.TerminalFailed && attemptHasModelFailure(events) {
 		terminal = execution.TerminalResult{Kind: execution.TerminalFailed, FailureReason: "agent_model_error"}
 	}
-	if terminal.Kind != execution.TerminalFailed && runtime.adapter.ID() == "pi" && runtime.attempt.AgentExecutionProfileBinding().RuntimeSource() == "local_pi" {
-		if !hasCompletePiResult(events) {
-			terminal = execution.TerminalResult{Kind: execution.TerminalFailed, FailureReason: "result_contract_invalid"}
-		}
-	}
 	var resourceGroup *domain.ResourceResultGroup
 	if _, resourceErr := s.deps.Store.Reader().GetTaskResourceSnapshot(ctx, runtime.run.TaskID()); resourceErr == nil {
 		terminal, resourceGroup, err = s.collectResourceTerminal(ctx, runtime, terminal)
@@ -796,7 +658,7 @@ func (s *Service) HandleExit(ctx context.Context, request ExitRequest) (SubmitTe
 	} else if !errors.Is(resourceErr, storecontract.ErrNotFound) {
 		return SubmitTerminalResult{}, resourceErr
 	}
-	terminal, err = s.populatePiAgentReportedChecks(ctx, runtime, terminal)
+	terminal, err = s.populateAgentReportedChecks(ctx, runtime, terminal)
 	if err != nil {
 		return SubmitTerminalResult{}, err
 	}
@@ -977,4 +839,11 @@ func (r runtimeContext) eventWorkingRoot() string {
 		return "/workspace/repository"
 	}
 	return r.session.WorkingRoot
+}
+
+func runtimeClosesSettledStdin(adapter execution.AgentAdapter) bool {
+	if provider, ok := adapter.(execution.Provider); ok {
+		return provider.Describe().ShutdownMode == "stdin_after_settled"
+	}
+	return true // Historical adapters used the optional StdinCloser contract.
 }

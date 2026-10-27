@@ -44,7 +44,7 @@ func TestV35ReviewCommentMigrationPreservesReview(t *testing.T) {
  DROP TABLE result_closures; DROP TABLE task_delivery_operations; DROP TABLE repository_delivery_defaults;
  DROP TRIGGER task_repository_worktrees_branch_authority_insert; DROP TRIGGER task_repository_worktrees_transition;
  ALTER TABLE task_repository_worktrees DROP COLUMN delivery_mode; ALTER TABLE task_repository_worktrees DROP COLUMN task_branch; ALTER TABLE task_repository_worktrees DROP COLUMN target_ref;`
-	if _, err = raw.Exec(rollback + trigger + `ALTER TABLE review_decisions RENAME COLUMN comment TO reviewer_note; DELETE FROM schema_migrations WHERE version>=36;`); err != nil {
+	if _, err = raw.Exec(sqlite.RollbackRuntimeBindingMigration + rollback + trigger + `ALTER TABLE review_decisions RENAME COLUMN comment TO reviewer_note; DELETE FROM schema_migrations WHERE version>=36;`); err != nil {
 		t.Fatal(err)
 	}
 	raw.Close()

@@ -102,7 +102,7 @@ func (tx *writeTx) InsertCharter(ctx context.Context, charter domain.RunCharter)
 		return err
 	}
 	profile := charter.AgentExecutionProfileBinding()
-	_, err := tx.tx.ExecContext(ctx, `INSERT INTO run_charters(id,task_id,task_goal,workspace_root,adapter_id,sandbox_mode,expected_output,responsible_human,initiator,created_at,agent_execution_profile,agent_runtime_source,agent_execution_provider,agent_capability_policy,agent_trust_disclosure_policy,model_binding) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, charter.ID().String(), charter.TaskID().String(), charter.TaskGoal(), charter.WorkspaceRoot(), charter.AdapterID(), charter.SandboxMode(), charter.ExpectedOutput(), charter.ResponsibleHuman(), charter.Initiator(), timeText(charter.CreatedAt()), string(profile.Profile()), profile.RuntimeSource(), profile.ExecutionProvider(), profile.CapabilityPolicy(), profile.TrustDisclosurePolicy(), nullableString(charter.ModelBinding().JSON()))
+	_, err := tx.tx.ExecContext(ctx, `INSERT INTO run_charters(id,task_id,task_goal,workspace_root,adapter_id,sandbox_mode,expected_output,responsible_human,initiator,created_at,agent_execution_profile,agent_runtime_source,agent_execution_provider,agent_capability_policy,agent_trust_disclosure_policy,model_binding,runtime_binding) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, charter.ID().String(), charter.TaskID().String(), charter.TaskGoal(), charter.WorkspaceRoot(), charter.AdapterID(), charter.SandboxMode(), charter.ExpectedOutput(), charter.ResponsibleHuman(), charter.Initiator(), timeText(charter.CreatedAt()), string(profile.Profile()), profile.RuntimeSource(), profile.ExecutionProvider(), profile.CapabilityPolicy(), profile.TrustDisclosurePolicy(), nullableString(charter.ModelBinding().JSON()), profile.RuntimeBindingJSON())
 	if err != nil {
 		return mapWriteError(err)
 	}
@@ -167,8 +167,9 @@ func (reader *reader) GetCharter(ctx context.Context, id domain.CharterID) (doma
 	var idText, taskText, goal, root, adapter, sandbox, output, human, initiator, created string
 	var profileText, runtimeSource, executionProvider, capabilityPolicy, trustDisclosure string
 	var modelBinding sql.NullString
+	var runtimeBindingJSON string
 	var synthesisOnly bool
-	err := reader.q.QueryRowContext(ctx, `SELECT id,task_id,task_goal,workspace_root,adapter_id,sandbox_mode,expected_output,responsible_human,initiator,created_at,agent_execution_profile,agent_runtime_source,agent_execution_provider,agent_capability_policy,agent_trust_disclosure_policy,model_binding,EXISTS(SELECT 1 FROM synthesis_run_charters WHERE charter_id=run_charters.id) FROM run_charters WHERE id=?`, id.String()).Scan(&idText, &taskText, &goal, &root, &adapter, &sandbox, &output, &human, &initiator, &created, &profileText, &runtimeSource, &executionProvider, &capabilityPolicy, &trustDisclosure, &modelBinding, &synthesisOnly)
+	err := reader.q.QueryRowContext(ctx, `SELECT id,task_id,task_goal,workspace_root,adapter_id,sandbox_mode,expected_output,responsible_human,initiator,created_at,agent_execution_profile,agent_runtime_source,agent_execution_provider,agent_capability_policy,agent_trust_disclosure_policy,model_binding,runtime_binding,EXISTS(SELECT 1 FROM synthesis_run_charters WHERE charter_id=run_charters.id) FROM run_charters WHERE id=?`, id.String()).Scan(&idText, &taskText, &goal, &root, &adapter, &sandbox, &output, &human, &initiator, &created, &profileText, &runtimeSource, &executionProvider, &capabilityPolicy, &trustDisclosure, &modelBinding, &runtimeBindingJSON, &synthesisOnly)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.RunCharter{}, storecontract.ErrNotFound
 	}
@@ -308,7 +309,7 @@ func (reader *reader) GetCharter(ctx context.Context, id domain.CharterID) (doma
 	if err != nil {
 		return domain.RunCharter{}, err
 	}
-	profile, err := domain.RestoreAgentExecutionProfileBinding(domain.AgentExecutionProfileBindingRecord{Profile: domain.AgentExecutionProfile(profileText), RuntimeSource: runtimeSource, ExecutionProvider: executionProvider, CapabilityPolicy: capabilityPolicy, TrustDisclosurePolicy: trustDisclosure})
+	profile, err := domain.RestoreAgentExecutionProfileBinding(domain.AgentExecutionProfileBindingRecord{Profile: domain.AgentExecutionProfile(profileText), RuntimeSource: runtimeSource, ExecutionProvider: executionProvider, CapabilityPolicy: capabilityPolicy, TrustDisclosurePolicy: trustDisclosure, RuntimeBindingJSON: runtimeBindingJSON})
 	if err != nil {
 		return domain.RunCharter{}, err
 	}

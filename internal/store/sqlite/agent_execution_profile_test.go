@@ -112,3 +112,20 @@ func TestIsolatedProfileSQLConstraintAcceptsOnlyExactBindingTuple(t *testing.T) 
 		t.Fatal("persisted Isolated Local binding became mutable")
 	}
 }
+
+func TestRuntimeBindingSQLRejectsMissingAndMalformedIdentity(t *testing.T) {
+	db, seeded := openSeeded(t)
+	defer db.Close()
+	raw, err := sql.Open("sqlite", seeded.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	insert := `INSERT INTO run_charters(id,task_id,task_goal,workspace_root,adapter_id,sandbox_mode,expected_output,responsible_human,initiator,created_at,agent_execution_profile,agent_runtime_source,agent_execution_provider,agent_capability_policy,agent_trust_disclosure_policy,runtime_binding) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+	for _, binding := range []string{"", "{", `{}`, `{"schemaVersion":"chora.runtime-binding.v1","runtimeId":"synthetic","executionProvider":"trusted_host"}`} {
+		_, err = raw.Exec(insert, domain.NewCharterID().String(), seeded.task.ID().String(), "Goal", seeded.room.WorkspaceRoot(), "synthetic", "trusted-host", "patch", "owner", "test", seeded.now.Format(time.RFC3339Nano), "trusted_local", "synthetic", "trusted_host", "chora.runtime-native.v1", domain.TrustedLocalDisclosurePolicy, binding)
+		if err == nil {
+			t.Fatalf("invalid runtime binding accepted: %q", binding)
+		}
+	}
+}

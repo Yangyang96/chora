@@ -56,7 +56,10 @@ var (
 // Config is installation-scoped policy. AllowedExecutable must be the exact
 // absolute Pi path selected and fingerprinted by the Runtime Adapter.
 type Config struct {
-	RuntimeRoot         string
+	RuntimeRoot string
+	// FilterPiProgress is selected by the validated Pi launch composition.
+	// Other protocols retain their bounded stdout without Pi projection.
+	FilterPiProgress    bool
 	AllowedAdapterID    string
 	AllowedExecutable   ExecutableIdentity
 	AllowedArguments    []string

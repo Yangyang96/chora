@@ -49,6 +49,12 @@ func newPiWorkspaceAdapter(delegate execution.AgentAdapter, logical, physical st
 	if delegate == nil || !validPiWorkspaceRoot(logical) || !validPiWorkspaceRoot(physical) {
 		return nil, errInvalidPiWorkspaceMapping
 	}
+	if _, ok := delegate.(execution.Provider); !ok {
+		return nil, errors.New("Pi delegate does not implement provider policy")
+	}
+	if _, ok := delegate.(execution.AgentCheckReporter); !ok {
+		return nil, errors.New("Pi delegate does not implement check reporting")
+	}
 	return &piWorkspaceAdapter{delegate: delegate, logical: logical, physical: physical}, nil
 }
 
@@ -58,7 +64,9 @@ func validPiWorkspaceRoot(root string) bool {
 
 func (adapter *piWorkspaceAdapter) ID() string { return adapter.delegate.ID() }
 func (adapter *piWorkspaceAdapter) Capabilities() execution.AdapterCapabilities {
-	return adapter.delegate.Capabilities()
+	capabilities := adapter.delegate.Capabilities()
+	capabilities.ResumeMode = execution.ResumeUnsupported
+	return capabilities
 }
 func (adapter *piWorkspaceAdapter) PrepareStart(ctx context.Context, request execution.StartRequest) (execution.Invocation, error) {
 	if request.WorkspaceRoot != adapter.logical {
@@ -101,3 +109,21 @@ func (adapter *piWorkspaceAdapter) FingerprintForBinding(ctx context.Context, bi
 var _ execution.AgentAdapter = (*piWorkspaceAdapter)(nil)
 var _ execution.BindingFingerprinter = (*piWorkspaceAdapter)(nil)
 var _ execution.BoundStartPreparer = (*piWorkspaceAdapter)(nil)
+
+func (adapter *piWorkspaceAdapter) Describe() execution.ProviderDescriptor {
+	descriptor := adapter.delegate.(execution.Provider).Describe().Clone()
+	descriptor.ResumeMode = execution.ResumeUnsupported
+	return descriptor
+}
+func (adapter *piWorkspaceAdapter) Complete(request execution.CompletionRequest) (execution.TerminalResult, error) {
+	return adapter.delegate.(execution.Provider).Complete(request)
+}
+func (adapter *piWorkspaceAdapter) Recover(request execution.RecoveryRequest) execution.RecoveryPolicy {
+	return adapter.delegate.(execution.Provider).Recover(request)
+}
+func (adapter *piWorkspaceAdapter) AgentReportedChecks(contract []byte, events []execution.NormalizedEvent) ([]execution.DeclaredCheck, error) {
+	return adapter.delegate.(execution.AgentCheckReporter).AgentReportedChecks(contract, events)
+}
+
+var _ execution.Provider = (*piWorkspaceAdapter)(nil)
+var _ execution.AgentCheckReporter = (*piWorkspaceAdapter)(nil)
