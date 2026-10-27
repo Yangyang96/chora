@@ -86,10 +86,30 @@ is implemented; it must not convert missing observations into passing checks.
 
 ### Configuration and persistence
 
-Separate user preference from the immutable Attempt binding. Store a versioned
-runtime preference with CAS at the existing execution-settings scope; freeze its
-resolved selection into the Run Charter/Attempt. A later preference change affects
-only a new authorized execution, never an existing Attempt.
+Separate reusable execution configuration from the immutable task/Attempt binding.
+A project has a default configuration reference; workflow/task templates may map
+roles and agent identities to configuration references. These mappings belong to
+the template, not to permanent agent records. Configuration references identify an
+exact ID and positive revision; editing a default or configuration creates a new
+revision. Runtime, model provider/model, and execution environment remain distinct.
+
+Before materializing a task, resolve every declared executor using this precedence:
+optional task override > template agent mapping > template role mapping > project
+default. An explicit but unavailable reference is an error, not permission to try
+a lower-priority choice. Missing mappings/defaults, unregistered runtimes, invalid
+bindings and unsupported requirements fail the whole preflight before any runnable
+Attempt exists. Ordinary task creation reuses configured defaults without a new
+runtime checkbox; a one-task override is an optional advanced control.
+
+Freeze the project revision, template identity/revision, resolved configuration
+ID/revision, selection source and each executor's binding into the task contract.
+Children inherit their named executor entry; they do not resolve current defaults
+again. Unknown child roles require a new authorized contract. Later settings changes
+apply only to new tasks, including when the same agent is assigned again. An explicit
+successor-Attempt switch remains subject to the existing authorization flow.
+Persist configuration changes with CAS and preserve the separately frozen model
+selection. A successful configuration preflight does not grant execution authority
+or replace installation/readiness, trust acknowledgement and launch identity checks.
 
 The new binding includes runtime ID, protocol version, executable/source identity,
 configuration fingerprint, execution provider, security policy fingerprint,
@@ -219,6 +239,17 @@ checks registration/capabilities, and launch rechecks configuration identity;
 identity drift creates no child process. This migration does not rewrite old Pi
 bindings, snapshots, events or digests.
 
+`agent.Registry.ResolveExecution` implements the reusable configuration preflight
+above. It returns a value snapshot with named executor lookup, exact revision
+provenance and copied collections; no partial snapshot escapes on failure. Tests
+cover consecutive task resolutions without new choices, changed defaults affecting
+only new tasks, different runtimes for template roles, agent/override precedence,
+child inheritance and invalid-reference/capability/descriptor rejection. This is
+a tested configuration and inheritance contract, not a multi-agent scheduler.
+CHOR-13 must persist these configuration/snapshot records and connect the product
+entry to this resolver; this slice does not claim that new-runtime configuration
+management is already available in the browser.
+
 The composition and materialization seams accept an explicitly bound second
 provider. Product settings, runtime selection/discovery UI and the concrete Codex
 provider remain the subsequent CHOR-12/13 slices. Existing Pi settings and default
@@ -284,7 +315,14 @@ the inspected help), bypass flags or assume resume accepts start's flags unchang
    `internal/localweb/runtime_providers.go` and composition in `server.go`;
    update `models_api.go`, `agent_execution_api.go`, `web/src/api.ts` and
    `web/src/ui/AgentExecutionProfile.tsx` (new runtime picker alongside environment
-   and model). Persist preference and show disabled combinations/recovery reasons.
+   and model) in reusable execution configuration management. Persist project defaults,
+   template role/agent mappings and exact configuration revisions; wire preflight
+   resolution and the complete task snapshot transaction before materialization.
+   Keep optional per-task override in advanced controls, never a required checkbox.
+   Show disabled combinations/recovery reasons. Browser acceptance must configure
+   once, start consecutive tasks without choosing again, change the default and
+   prove only new tasks use it. Verify child mapping inheritance and mixed-runtime
+   role resolution without claiming a complete multi-agent scheduler.
    Update English and existing Chinese README, project-workflows, maintenance and
    native-capabilities docs; revise CONTRIBUTING only to distinguish the new
    qualified route from the still-disabled legacy runtime. Keep Pi default for old
@@ -292,7 +330,9 @@ the inspected help), bypass flags or assume resume accepts start's flags unchang
 4. **CHOR-14: independent boundary review.** Validate Pi regression and Codex
    actual execution, credential/path/process identity, no fallback, stale resume,
    missing auth, cancel/exit race and unchanged human/SCM authority. Review Docker
-   restrictions explicitly. Codex Local Connected does not depend on reopening
+   restrictions and reusable-configuration acceptance explicitly: consecutive tasks
+   without reselection, immutable old tasks after default changes and mixed-runtime
+   role preflight. Codex Local Connected does not depend on reopening
    blocked real-Docker qualification; enabling Codex isolation would.
 
 The CHOR-11 exit gate is structural and behavioral: registering a synthetic second
