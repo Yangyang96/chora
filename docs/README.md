@@ -37,6 +37,9 @@ The references below cover current operation and public-source checks.
 - [Dependency metadata preflight](dependency-metadata.md) — temporary npm SBOM,
   Go module inventory, and deterministic public-candidate export checks.
 
+- [Optional Cernora file adapter](cernora.md) — completed-record inspection,
+  pass/fail/missing-evidence demonstrations and the unchanged human review boundary.
+
 The maintained credential-free public browser journey is `npm run e2e:public`
 or `make public-e2e`. Real Pi validation remains a separate explicit
 `npm run test:e2e:pi-local-connected` run; a skipped real case is not acceptance.

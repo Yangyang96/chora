@@ -227,6 +227,13 @@ M3 先增加有界本地委派，共享认领与交接仍以团队授权／并�
 这是 M3 内的有界起点，不声称多人成员／撤销、并行执行或编码整合已经
 完成。M4 仍按实际需求启动。
 
+## 可选 Cernora 完成记录检查
+
+[Cernora 文件 Adapter](docs/cernora.zh-CN.md) 增加可选离线检查接入点，提供合成
+pass/fail/缺证 CLI 路径。它保留缺失事实，将 Wire 校验交给 Cernora，不授予执行或
+Review 权限。Workbench 自动采集、绑定完整 Profile 的 EvidenceBundle v2 评估与
+真实 Agent 验收仍待完成；检查成功不代表任务接受。M3 整体仍在进行中。
+
 ## 后续方向与需求触发
 
 - M3：项目内多个主题 Room 的多人参与、成员/撤销、并发评审和交接；随后支持

@@ -297,6 +297,15 @@ This is a bounded starting point within M3. Multi-human membership/revocation,
 parallel execution and coding integration are not
 claimed complete. M4 remains demand-gated.
 
+## Optional Cernora completed-record inspection
+
+The [Cernora file adapter](docs/cernora.md) adds an opt-in offline inspection
+seam with synthetic pass/fail/missing-evidence CLI paths. It preserves missing
+facts and delegates wire validation to Cernora without execution or Review
+authority. Automatic Workbench capture, full Profile-bound EvidenceBundle v2
+evaluation and real-Agent qualification remain open; inspection success is not
+task acceptance. Overall M3 remains in progress.
+
 ## Later outcomes and demand gates
 
 - M3: team participation in topic Rooms, membership/revocation, concurrent review

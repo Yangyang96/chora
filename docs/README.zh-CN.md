@@ -32,6 +32,9 @@
 - [依赖元数据预检](dependency-metadata.zh-CN.md) — 临时 npm SBOM、Go Module 清单与
   确定性公开候选导出检查。
 
+- [可选 Cernora 文件 Adapter](cernora.zh-CN.md) — 完成记录检查、pass/fail/缺证演示，
+  以及保持不变的人工评审边界。
+
 长期维护、无需凭据的公开浏览器 Journey 入口是 `npm run e2e:public` 或
 `make public-e2e`。真实 Pi 验证仍通过独立的
 `npm run test:e2e:pi-local-connected` 显式运行；真实用例被 skip 不构成验收。

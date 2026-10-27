@@ -27,6 +27,7 @@
     "e2e:joined:3": "bash e2e/run-joined-room.sh 3",
     "test:e2e:project-entry": "bash e2e/run-project-entry.sh",
     "test:e2e:pi-local-connected": "bash e2e/run-pi-local-connected.sh",
+    "test:e2e:cernora": "bash e2e/run-cernora.sh",
     "e2e": "npm run e2e:oss-alpha-closure && npm run e2e:standard && npm run e2e:joined",
     "e2e:public": "npm run web:build && node e2e/public-journey.mjs && npm run test:e2e:project-entry"
   },
