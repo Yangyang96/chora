@@ -304,7 +304,8 @@ func (supervisor *Supervisor) prepare(ctx context.Context, invocation execution.
 	}
 	cleanup = false
 	return record, processSpec{
-		ExecutableIdentity: supervisor.config.AllowedExecutable, Arguments: append([]string(nil), arguments...),
+		CloseStdinAfterInput: supervisor.config.CloseStdinAfterInput,
+		ExecutableIdentity:   supervisor.config.AllowedExecutable, Arguments: append([]string(nil), arguments...),
 		Environment: append([]string(nil), environment...), Directory: workspace,
 		Stdin: invocation.Stdin(), Stdout: stdoutFile, Stderr: stderrFile,
 		FilterPiProgress: supervisor.config.FilterPiProgress,
