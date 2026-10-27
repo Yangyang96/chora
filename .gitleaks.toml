@@ -26,3 +26,10 @@ condition = "AND"
 paths = ['''(^|/)e2e/project-document\.spec\.ts$''']
 regexTarget = "line"
 regexes = ['''^\s*const ack = await request\.post\('/api/agent-execution/trusted-local-acknowledgements', \{ headers: \{ 'Idempotency-[K]ey': 'delegation-e2e-ack' \}, data: \{ policyVersion: 'chora\.trusted-local-disclosure\.v1' \} \}\)$''']
+
+[[rules.allowlists]]
+description = "Runtime contract prose listing malformed event cases"
+condition = "AND"
+paths = ['''(^|/)docs/runtime-providers\.md$''']
+regexTarget = "line"
+regexes = ['''^\s*failed turn, auth failure, duplicate/reordered/unknown items, truncated streams,\s*$''']
