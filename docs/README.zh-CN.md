@@ -13,6 +13,8 @@
 
 [macOS 应用](macos-application.zh-CN.md)：打包运行时、认证、迁移、更新与分发限制。
 
+- [Runtime provider 契约与迁移设计（英文）](runtime-providers.md) — 多 Runtime 边界与后续实现门禁提案；尚未启用新 Runtime。
+
 ## 已接受的产品方向
 
 - [项目工作流程与执行设置](project-workflows.zh-CN.md)：两种执行环境、可复用设置、
