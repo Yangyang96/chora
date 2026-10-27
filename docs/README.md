@@ -13,6 +13,8 @@ The references below cover current operation and public-source checks.
 
 [macOS application](macos-application.md) — packaged runtime, authentication, migration, updates and distribution limits.
 
+- [Runtime provider contract and migration](runtime-providers.md) — proposed multi-runtime boundary and implementation gates; no new runtime is enabled.
+
 ## Accepted product direction
 
 - [Project workflows and execution settings](project-workflows.md) — two execution
