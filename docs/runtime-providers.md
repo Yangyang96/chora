@@ -1,8 +1,7 @@
 # Runtime provider contract and migration
 
-Status: proposed implementation contract for CHOR-10, part of CHOR-9.
-This document changes no runtime behavior or support claim. The current product
-still uses Pi. The legacy Codex Runtime remains disabled in product/Workbench
+Status: accepted CHOR-10 contract with CHOR-11 provider infrastructure, part of CHOR-9.
+The current product still selects Pi; a second production provider is not yet enabled. The legacy Codex Runtime remains disabled in product/Workbench
 composition. English is authoritative.
 
 ## Decision
@@ -192,6 +191,43 @@ it cannot treat an agent message as human authorization.
 Claude Code is only an extension point: registration, decoder, launch policy and
 capability tests. This phase specifies no command, SDK, minimum version or support
 claim for it.
+
+## Provider infrastructure (CHOR-11)
+
+The first infrastructure slice provides `execution.Provider` over the existing
+adapter and supervisor ports. `agent.Registry` registers exact runtime IDs,
+rejects duplicate/unknown registrations, validates explicit environment/task/feature
+requirements and binds versioned selections. Static descriptions and read-only
+fingerprint inspection are separate; a descriptor alone never establishes readiness.
+`localweb.RuntimeProviderRegistration` pairs a provider with explicitly configured
+supervisors. A new registration does not enable the legacy `codex` runtime.
+
+Pi implements provider-owned completion, recovery and agent-check projection.
+The application retains immutable contract/snapshot admission, current-Attempt
+identity, stream transactions, termination precedence, cancellation, artifact
+collection and human authority. Held stdin closes after persisted settlement only
+when the provider declares `stdin_after_settled`. The trusted-host composition
+explicitly selects Pi progress filtering; the supervisor does not infer it from
+a runtime name.
+
+Schema migration 50 adds `runtime_binding` to Charters and Attempts. Empty values
+retain the existing legacy representation exactly. New `chora.runtime-binding.v1`
+bindings freeze runtime/protocol, source/configuration/security identities,
+execution provider, capability digest and model provenance. They are immutable,
+reject reserved legacy IDs and currently admit only `trusted_host`. Preparation
+checks registration/capabilities, and launch rechecks configuration identity;
+identity drift creates no child process. This migration does not rewrite old Pi
+bindings, snapshots, events or digests.
+
+The composition and materialization seams accept an explicitly bound second
+provider. Product settings, runtime selection/discovery UI and the concrete Codex
+provider remain the subsequent CHOR-12/13 slices. Existing Pi settings and default
+selection retain their behavior; no unknown selection falls back to Pi.
+
+Conformance coverage uses a synthetic provider with its own event and completion
+policy through persistent prepare/start/terminal, cancellation, startup recovery
+and configuration-drift failure. This is infrastructure coverage, not real-model
+qualification. The real Pi Local Connected browser gate remains separate.
 
 ## Codex interface verification and choice
 

@@ -13,6 +13,7 @@ import (
 
 	"github.com/Yangyang96/chora/internal/contextcore"
 	"github.com/Yangyang96/chora/internal/domain"
+	"github.com/Yangyang96/chora/internal/execution"
 	"github.com/Yangyang96/chora/internal/speccoding"
 	storecontract "github.com/Yangyang96/chora/internal/store"
 )
@@ -27,6 +28,22 @@ func (s *Service) MaterializeSpecCodingContract(ctx context.Context, request Mat
 		request.AgentAdapter = "pi"
 	}
 	agentProfile, err := agentExecutionProfileForAdapter(request.AgentAdapter, request.AgentExecutionProfile)
+	if request.RuntimeBinding.RuntimeBindingJSON() != "" {
+		restored, restoreErr := domain.RestoreAgentExecutionProfileBinding(request.RuntimeBinding.Record())
+		if restoreErr != nil || restored != request.RuntimeBinding || s == nil || s.deps.Agents == nil {
+			return MaterializeSpecCodingContractResult{}, invalidSpecCoding("invalid runtime binding")
+		}
+		adapter, resolveErr := s.deps.Agents.Get(request.AgentAdapter)
+		provider, ok := adapter.(execution.Provider)
+		runtime, bindingErr := domain.ParseRuntimeBinding(request.RuntimeBinding.RuntimeBindingJSON())
+		if resolveErr != nil || !ok || bindingErr != nil || runtime.RuntimeID != request.AgentAdapter || runtime.CapabilityDigest != fmt.Sprintf("%x", provider.Describe().Digest()) {
+			return MaterializeSpecCodingContractResult{}, invalidSpecCoding("runtime binding registration mismatch")
+		}
+		if requireErr := provider.Describe().Require(runtime.ExecutionProvider, "code"); requireErr != nil {
+			return MaterializeSpecCodingContractResult{}, requireErr
+		}
+		agentProfile, err = request.RuntimeBinding.Profile(), nil
+	}
 	if err != nil {
 		return MaterializeSpecCodingContractResult{}, err
 	}
@@ -47,8 +64,9 @@ func (s *Service) MaterializeSpecCodingContract(ctx context.Context, request Mat
 	key, err := s.commandKey(request.CommandMeta, "materialize_spec_coding_contract", taskID.String(), 0, struct {
 		ContractDigest, WorkspaceRoot, ContextEntryID, ContextRevisionID, CharterID, AgentAdapter string
 		AgentExecutionProfile                                                                     domain.AgentExecutionProfile
+		RuntimeBinding                                                                            string `json:",omitempty"`
 		FrozenAt                                                                                  time.Time
-	}{request.Contract.DigestHex(), request.WorkspaceRoot, request.ContextEntryID.String(), request.ContextRevisionID.String(), request.CharterID.String(), request.AgentAdapter, agentProfile, request.FrozenAt}, now)
+	}{request.Contract.DigestHex(), request.WorkspaceRoot, request.ContextEntryID.String(), request.ContextRevisionID.String(), request.CharterID.String(), request.AgentAdapter, agentProfile, request.RuntimeBinding.RuntimeBindingJSON(), request.FrozenAt}, now)
 	if err != nil {
 		return MaterializeSpecCodingContractResult{}, err
 	}
@@ -242,7 +260,7 @@ func (s *Service) RegisterSpecCodingContract(ctx context.Context, request Regist
 
 func validateMaterializationRequest(request MaterializeSpecCodingContractRequest) (speccoding.CoreContractDocument, domain.TaskID, domain.RoomID, domain.ContextSnapshotID, [32]byte, error) {
 	if request.Contract.DigestHex() == "" || request.FrozenAt.IsZero() || !request.ContextEntryID.Valid() || !request.ContextRevisionID.Valid() || !request.CharterID.Valid() ||
-		(request.AgentAdapter != "pi" && request.AgentAdapter != "fake") || !filepath.IsAbs(request.WorkspaceRoot) || filepath.Clean(request.WorkspaceRoot) != request.WorkspaceRoot {
+		(request.AgentAdapter != "pi" && request.AgentAdapter != "fake" && request.RuntimeBinding.RuntimeBindingJSON() == "") || !filepath.IsAbs(request.WorkspaceRoot) || filepath.Clean(request.WorkspaceRoot) != request.WorkspaceRoot {
 		return speccoding.CoreContractDocument{}, domain.TaskID{}, domain.RoomID{}, domain.ContextSnapshotID{}, [32]byte{}, invalidSpecCoding("invalid materialization request")
 	}
 	document := request.Contract.Document()
@@ -310,6 +328,9 @@ func contractCharter(request MaterializeSpecCodingContractRequest, task domain.T
 	sandboxMode := "colima-docker"
 	if request.AgentAdapter == "fake" {
 		sandboxMode = "production-fake-verification-fixture"
+	} else if request.RuntimeBinding.RuntimeBindingJSON() != "" {
+		profileBinding = request.RuntimeBinding
+		sandboxMode = sandboxModeForAgentExecutionProfile(profileBinding)
 	} else {
 		profileBinding, err = domain.NewAgentExecutionProfileBinding(profile)
 		if err != nil {

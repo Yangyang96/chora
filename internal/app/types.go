@@ -161,6 +161,7 @@ type RealSpecCodingVerificationCommand struct {
 }
 
 type MaterializeSpecCodingContractRequest struct {
+	RuntimeBinding domain.AgentExecutionProfileBinding
 	CommandMeta
 	Contract              speccoding.CoreContract
 	WorkspaceRoot         string

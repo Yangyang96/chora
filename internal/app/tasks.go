@@ -745,7 +745,7 @@ func (s *Service) acceptanceResources(ctx context.Context, tx storecontract.Writ
 			return domain.RunCharter{}, contextcore.Snapshot{}, err
 		}
 		charter, err := tx.GetCharter(ctx, charterID)
-		if err != nil || charter.AdapterID() != "pi" || charter.TaskID() != task.ID() || !sameRevisionIDs(charter.ContextRevisionIDs(), selection.SelectedRevisionIDs()) || !snapshotMatchesSelection(snapshot, selection) {
+		if err != nil || !charter.AgentExecutionProfileBinding().Bound() || charter.TaskID() != task.ID() || !sameRevisionIDs(charter.ContextRevisionIDs(), selection.SelectedRevisionIDs()) || !snapshotMatchesSelection(snapshot, selection) {
 			return domain.RunCharter{}, contextcore.Snapshot{}, fmt.Errorf("%w: registered SpecCoding acceptance boundary drift", ErrInvalidCommand)
 		}
 		return charter, snapshot, nil
@@ -998,7 +998,7 @@ func (s *Service) CreateRun(ctx context.Context, request CreateRunRequest) (Crea
 				return e
 			}
 		}
-		if charter.AdapterID() == "pi" && !request.delegationPlanning && synthesisErr != nil {
+		if charter.AgentExecutionProfileBinding().Bound() && !request.delegationPlanning && synthesisErr != nil {
 			payload := automaticRetryEvent{Type: automaticRetryEnabledEvent, RunID: run.ID().String(), MaxRetries: AutomaticRetryMaxRetries}
 			if _, err := tx.AppendRunEvent(ctx, run.ID(), storecontract.EventDraft{ID: s.deps.IDs.EventID(), Type: automaticRetryEnabledEvent, Source: "app", OccurredAt: now, RecordedAt: now, NormalizedJSON: responseBody(payload)}); err != nil {
 				return err

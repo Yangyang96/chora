@@ -1335,7 +1335,7 @@ func testConfig(t *testing.T, base string, capacity int64, maxRuntime time.Durat
 	t.Helper()
 	runtimeClosureIdentity := sha256.Sum256([]byte("exact-test-Pi-Runtime-closure"))
 	config := Config{
-		RuntimeRoot: filepath.Join(base, "runtime"), AllowedAdapterID: "pi",
+		RuntimeRoot: filepath.Join(base, "runtime"), AllowedAdapterID: "pi", FilterPiProgress: true,
 		AmbientEnvironment:     []string{"HOME=/ambient/home", "PATH=/ambient/bin", "OPENAI_API_KEY=test-provider-secret", "CHORA_RUN_ID=ambient-chora-must-be-filtered", "PWD=/ambient/stale"},
 		RuntimeClosureIdentity: runtimeClosureIdentity,
 		ValidateRuntimeClosure: func(context.Context) ([sha256.Size]byte, error) { return runtimeClosureIdentity, nil },

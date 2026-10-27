@@ -6,30 +6,49 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/Yangyang96/chora/internal/agent"
 	"github.com/Yangyang96/chora/internal/execution"
 )
 
 type adapterRegistry struct {
-	mu       sync.RWMutex
-	adapters map[string]execution.AgentAdapter
+	mu        sync.RWMutex
+	adapters  map[string]execution.AgentAdapter
+	providers *agent.Registry
 }
 
 func newAdapterRegistry() *adapterRegistry {
-	return &adapterRegistry{adapters: make(map[string]execution.AgentAdapter)}
+	return &adapterRegistry{adapters: make(map[string]execution.AgentAdapter), providers: agent.NewRegistry()}
 }
 
+// Set preserves the historical explicit adapter injection used by dev/E2E
+// composition. Production additional providers use registerRuntimeProviders,
+// whose registry rejects duplicates instead of replacing active code.
 func (registry *adapterRegistry) Set(adapter execution.AgentAdapter) {
 	registry.mu.Lock()
+	defer registry.mu.Unlock()
+	if provider, ok := adapter.(execution.Provider); ok {
+		if _, err := registry.providers.Resolve(adapter.ID()); err != nil {
+			if err := registry.providers.Register(provider); err != nil {
+				panic(err)
+			}
+			delete(registry.adapters, adapter.ID())
+			return
+		}
+	}
 	registry.adapters[adapter.ID()] = adapter
-	registry.mu.Unlock()
 }
 
 func (registry *adapterRegistry) Get(id string) (execution.AgentAdapter, error) {
 	registry.mu.RLock()
 	defer registry.mu.RUnlock()
 	adapter := registry.adapters[id]
+	if adapter == nil {
+		if provider, err := registry.providers.Resolve(id); err == nil {
+			return provider, nil
+		}
+	}
 	if adapter == nil || adapter.ID() != id {
-		return nil, fmt.Errorf("agent adapter %q is disabled", id)
+		return nil, fmt.Errorf("%w: agent adapter %q is disabled", execution.ErrUnknownRuntime, id)
 	}
 	return adapter, nil
 }

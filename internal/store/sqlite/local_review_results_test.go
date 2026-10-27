@@ -77,7 +77,7 @@ func TestV28UpgradePreservesPopulatedLocalReviewResult(t *testing.T) {
 	ddl += "DROP TABLE task_execution_settings; DROP TABLE project_execution_settings; DROP TRIGGER project_settings_identity_immutable; DROP TRIGGER project_settings_no_delete; DROP TABLE project_settings; DROP TRIGGER rooms_ownership_insert_valid; DROP TRIGGER rooms_ownership_immutable; DROP TRIGGER projects_default_room_insert_valid; DROP INDEX rooms_project_idx; DROP INDEX projects_state_idx; DROP TABLE project_repository_resources; ALTER TABLE rooms DROP COLUMN ownership_kind; ALTER TABLE rooms DROP COLUMN project_id; DROP TABLE projects;\n"
 	worktreeSchema := read("0024_task_worktree_siblings.sql")
 	immutable := worktreeSchema[strings.Index(worktreeSchema, "CREATE TRIGGER task_worktrees_immutable_binding"):strings.Index(worktreeSchema, "CREATE TRIGGER task_worktrees_state_transition")]
-	ddl += immutable + "ALTER TABLE review_decisions RENAME COLUMN comment TO reviewer_note; DELETE FROM schema_migrations WHERE version>=29; COMMIT;"
+	ddl += sqlite.RollbackRuntimeBindingMigration + immutable + "ALTER TABLE review_decisions RENAME COLUMN comment TO reviewer_note; DELETE FROM schema_migrations WHERE version>=29; COMMIT;"
 	if _, err := raw.ExecContext(ctx, ddl); err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func TestV28UpgradePreservesPopulatedLocalReviewResult(t *testing.T) {
 	if err != nil || result != fixture.result {
 		t.Fatalf("v28 Result changed during upgrade: %#v, %v", result, err)
 	}
-	if version, err := upgraded.SchemaVersion(ctx); err != nil || version != 49 {
+	if version, err := upgraded.SchemaVersion(ctx); err != nil || version != 50 {
 		t.Fatalf("version=%d, %v", version, err)
 	}
 }

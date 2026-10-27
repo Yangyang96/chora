@@ -68,8 +68,15 @@ func (s *Service) RecoverStartup(ctx context.Context) error {
 			return err
 		}
 		binding := candidate.Attempt.AgentExecutionProfileBinding()
-		pathPiBinding := session.AdapterID == "pi" && binding.Bound() && binding.ExecutionProvider() == domain.TrustedHostExecutionProvider && binding.RuntimeSource() == domain.LocalPiRuntimeSource
-		if outcome.Kind == execution.ReconcileUncertain && pathPiBinding && outcome.LaunchToken != launch {
+		localContinuity := binding.Bound() && binding.ExecutionProvider() == domain.TrustedHostExecutionProvider && binding.RuntimeSource() == domain.LocalPiRuntimeSource
+		stopOnRestart, missingRouteUncertain := localContinuity, binding.Bound() && binding.ExecutionProvider() == domain.TrustedHostExecutionProvider
+		if adapter, adapterErr := s.deps.Agents.Get(session.AdapterID); adapterErr == nil {
+			if provider, ok := adapter.(execution.Provider); ok {
+				policy := provider.Recover(execution.RecoveryRequest{Binding: binding, RunState: recovery.State(), AttemptState: candidate.Attempt.State()})
+				stopOnRestart, missingRouteUncertain = policy.StopOnRestart, policy.MissingRouteUncertain
+			}
+		}
+		if outcome.Kind == execution.ReconcileUncertain && missingRouteUncertain && outcome.LaunchToken != launch {
 			// A missing PATH Pi route after restart proves neither liveness nor
 			// ownership. Keep the durable recovery_required state readable and
 			// never signal or replay an unbound process.
@@ -78,15 +85,18 @@ func (s *Service) RecoverStartup(ctx context.Context) error {
 		if outcome.LaunchToken != launch || outcome.Kind != execution.ReconcileDead && outcome.Kind != execution.ReconcileAlive && outcome.Kind != execution.ReconcileUncertain {
 			return fmt.Errorf("malformed reconcile outcome")
 		}
-		if outcome.Kind == execution.ReconcileAlive && pathPiBinding {
+		if outcome.Kind == execution.ReconcileAlive && stopOnRestart {
 			adapter, adapterErr := s.deps.Agents.Get(session.AdapterID)
-			if adapterErr != nil || adapter.Capabilities().ResumeMode != execution.ResumeExplicitSession {
+			if adapterErr != nil {
+				continue
+			}
+			if _, hasPolicy := adapter.(execution.Provider); !hasPolicy && adapter.Capabilities().ResumeMode != execution.ResumeExplicitSession {
 				continue
 			}
 			if !outcome.Handle.Valid() {
 				continue
 			}
-			stopped, stopErr := s.deps.Supervisor.Stop(ctx, outcome.Handle, execution.StopIntent{Kind: execution.StopForCancel, Reason: "backend restart interrupted PATH Pi continuity"})
+			stopped, stopErr := s.deps.Supervisor.Stop(ctx, outcome.Handle, execution.StopIntent{Kind: execution.StopForCancel, Reason: "backend restart interrupted runtime continuity"})
 			if stopErr != nil || stopped.Kind != execution.StopConfirmed {
 				continue
 			}
@@ -127,7 +137,8 @@ func (s *Service) RecoverStartup(ctx context.Context) error {
 			}
 			adapter, err := s.deps.Agents.Get(session.AdapterID)
 			if err != nil {
-				return err
+				// Missing code cannot decode retained output or prove successful cleanup.
+				continue
 			}
 			runtime := runtimeContext{session: session, attempt: *candidate.Attempt, run: recovery, adapter: adapter}
 			terminalFiles, err := s.drainToEOF(ctx, runtime, outcome.Handle)

@@ -97,7 +97,7 @@ func TestMaterializeAndRegisterSpecCodingContractUsesCanonicalSnapshot(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	executionService := app.NewService(app.Dependencies{Store: db, Context: app.ContextAssembler{}, Agents: fakeRegistry{&fakeAdapter{}}, Supervisor: &fakeSupervisor{}, Authorizer: allowAuthorizer{}, Clock: &fixedClock{now: createdRun.Run.UpdatedAt()}, IDs: app.RandomIDs{}})
+	executionService := app.NewService(app.Dependencies{Store: db, Context: app.ContextAssembler{}, Agents: fakeRegistry{&fakeAdapter{id: "pi"}}, Supervisor: &fakeSupervisor{}, Authorizer: allowAuthorizer{}, Clock: &fixedClock{now: createdRun.Run.UpdatedAt()}, IDs: app.RandomIDs{}})
 	prepared, err := executionService.PrepareRun(ctx, app.PrepareRunRequest{CommandMeta: meta("prepare-accepted-spec-coding", "prepare-accepted-spec-coding"), RunID: createdRun.Run.ID(), ExpectedVersion: createdRun.Run.Version()})
 	if err != nil {
 		t.Fatal(err)

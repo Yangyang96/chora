@@ -83,7 +83,7 @@ func (s *Service) PrepareProfileSwitch(ctx context.Context, request PrepareProfi
 		if err != nil {
 			return err
 		}
-		if charter.AdapterID() != "pi" {
+		if !charter.AgentExecutionProfileBinding().Legacy() {
 			return fmt.Errorf("%w: Agent execution profiles are available only for Pi", ErrInvalidCommand)
 		}
 		oldAttempt, err := tx.GetCurrentAttempt(ctx, run.ID())

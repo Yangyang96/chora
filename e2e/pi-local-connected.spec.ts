@@ -212,6 +212,7 @@ test('Local Connected is selectable and its disclosure acknowledges when discove
   await expect(page.getByText('This Room has no Tasks yet.')).toBeVisible()
   await page.getByRole('button', { name: '＋ New Task' }).first().click()
 
+  await page.getByRole('checkbox', { name: 'Override Project defaults for this task' }).check()
   const trusted = page.getByRole('radio', { name: 'Local execution · No Sandbox' })
   await expect(trusted).toBeEnabled()
   await trusted.click()
@@ -645,6 +646,7 @@ async function startRealPiTask(page: import('@playwright/test').Page, request: A
   await page.getByLabel('What should Chora build?').fill(
     exactRequirement ? requirement : `Update README.md so it contains the exact standalone line "${reviewMarker}". ${requirement} Execute each declared check in its own standalone shell invocation, without chaining other commands. This legacy check recorder requires the exact declared command.`,
   )
+  await page.getByRole('checkbox', { name: 'Override Project defaults for this task' }).check()
   const trusted = page.getByRole('radio', { name: 'Local execution · No Sandbox' })
   await expect(trusted).toBeEnabled()
   await trusted.click()

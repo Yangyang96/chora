@@ -79,7 +79,7 @@ func (s *Service) PrepareVerifiedAgentRetry(ctx context.Context, request Prepare
 		if err != nil || oldAttempt.ID() != change.Binding.AgentAttemptID || oldAttempt.State() != domain.AttemptStateOutputSubmitted {
 			return reviewEvidenceError("predecessor Agent Attempt binding changed")
 		}
-		if oldAttempt.AdapterID() == "pi" {
+		if oldAttempt.AgentExecutionProfileBinding().Legacy() {
 			preference, binding, err := taskAgentExecutionProfileBinding(ctx, tx, run.TaskID())
 			if err != nil {
 				return err
@@ -144,7 +144,7 @@ func (s *Service) PrepareVerifiedAgentRetry(ctx context.Context, request Prepare
 		}); err != nil {
 			return err
 		}
-		if nextAttempt.AdapterID() == "pi" {
+		if nextAttempt.AgentExecutionProfileBinding().Bound() {
 			if err := s.appendAutomaticRetryReset(ctx, tx, run.ID(), nextAttempt.ID(), now); err != nil {
 				return err
 			}
