@@ -88,7 +88,7 @@ func restoreProviderRoutes(ctx context.Context, reader storecontract.Reader, reg
 		if !router.hasTarget(target) {
 			continue
 		}
-		if err := router.RestoreTarget(ctx, target, execution.ProcessIdentity{Value: session.ProcessIdentity}, execution.LaunchToken{Value: session.LaunchToken}); err != nil {
+		if err := router.RestoreTarget(ctx, target, execution.ProcessIdentity{Value: session.ProcessIdentity}, execution.LaunchToken{Value: session.LaunchToken}); err != nil && !errors.Is(err, errRuntimeOwnershipUnproven) {
 			return err
 		}
 	}

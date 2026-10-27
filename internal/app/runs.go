@@ -670,7 +670,10 @@ func (s *Service) StartAttempt(ctx context.Context, request StartAttemptRequest)
 	}
 	if raw := result.Attempt.AgentExecutionProfileBinding().RuntimeBindingJSON(); raw != "" {
 		binding, bindingErr := domain.ParseRuntimeBinding(raw)
-		if bindingErr != nil || binding.ConfigurationFingerprint != fmt.Sprintf("%x", fingerprint.Digest) {
+		if bindingErr != nil || binding.ConfigurationFingerprint != fmt.Sprintf("%x", fingerprint.Digest) ||
+			fingerprint.SourceIdentity == ([32]byte{}) || fingerprint.SecurityFingerprint == ([32]byte{}) ||
+			binding.SourceIdentity != fmt.Sprintf("%x", fingerprint.SourceIdentity) ||
+			binding.SecurityFingerprint != fmt.Sprintf("%x", fingerprint.SecurityFingerprint) {
 			return s.recordStartOutcome(ctx, result, key, execution.StartOutcome{Kind: execution.StartProvenNoChild, LaunchToken: launch, Diagnostic: "runtime configuration identity drift"}, "", fingerprint)
 		}
 	}

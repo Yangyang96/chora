@@ -76,8 +76,8 @@ func (s *Service) RecoverStartup(ctx context.Context) error {
 				stopOnRestart, missingRouteUncertain = policy.StopOnRestart, policy.MissingRouteUncertain
 			}
 		}
-		if outcome.Kind == execution.ReconcileUncertain && missingRouteUncertain && outcome.LaunchToken != launch {
-			// A missing PATH Pi route after restart proves neither liveness nor
+		if outcome.Kind == execution.ReconcileUncertain && (missingRouteUncertain || binding.RuntimeBindingJSON() != "") && outcome.LaunchToken != launch {
+			// A missing provider route after restart proves neither liveness nor
 			// ownership. Keep the durable recovery_required state readable and
 			// never signal or replay an unbound process.
 			continue

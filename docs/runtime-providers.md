@@ -235,9 +235,17 @@ retain the existing legacy representation exactly. New `chora.runtime-binding.v1
 bindings freeze runtime/protocol, source/configuration/security identities,
 execution provider, capability digest and model provenance. They are immutable,
 reject reserved legacy IDs and currently admit only `trusted_host`. Preparation
-checks registration/capabilities, and launch rechecks configuration identity;
-identity drift creates no child process. This migration does not rewrite old Pi
-bindings, snapshots, events or digests.
+checks registration/capabilities. Qualified inspection and atomic preparation
+return independently derived source and security identities alongside the aggregate
+configuration fingerprint; launch compares all three with the frozen binding and
+rejects missing proofs. Providers must not echo requested identity metadata as
+proof. Legacy Pi fingerprints retain their existing representation. Identity drift
+creates no child process. Missing process ownership at restart keeps
+the API readable in recovery_required without routing, signalling, finalizing or
+starting a successor for the unknown process. Storage/configuration errors still
+fail startup. Installed Pi workspace wrappers retain provider and check policies
+while explicitly advertising unsupported resume. This migration does not rewrite
+old Pi bindings, snapshots, events or digests.
 
 `agent.Registry.ResolveExecution` implements the reusable configuration preflight
 above. It returns a value snapshot with named executor lookup, exact revision

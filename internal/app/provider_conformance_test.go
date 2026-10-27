@@ -11,9 +11,14 @@ import (
 	"github.com/Yangyang96/chora/internal/app"
 	"github.com/Yangyang96/chora/internal/domain"
 	"github.com/Yangyang96/chora/internal/execution"
+	"github.com/Yangyang96/chora/internal/localweb"
 	"github.com/Yangyang96/chora/internal/speccoding"
 	storecontract "github.com/Yangyang96/chora/internal/store"
 	"github.com/Yangyang96/chora/internal/store/sqlite"
+	"io"
+	"log"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -21,13 +26,37 @@ import (
 )
 
 type syntheticProvider struct {
-	completionError bool
+	fixtureDatabase   string
+	omitIdentityProof bool
+	completionError   bool
 	*fakeAdapter
 	completions   int
 	recoveries    int
 	stopOnRestart bool
 }
 
+// Independently observed fixture identities; never derive them from the binding.
+func (p *syntheticProvider) Fingerprint(ctx context.Context) (execution.RuntimeFingerprint, error) {
+	fingerprint, err := p.fakeAdapter.Fingerprint(ctx)
+	fingerprint.SourceIdentity = sha256.Sum256([]byte("synthetic-executable"))
+	fingerprint.SecurityFingerprint = sha256.Sum256([]byte("synthetic-security-policy"))
+	return fingerprint, err
+}
+func (p *syntheticProvider) PrepareBoundStart(ctx context.Context, request execution.StartRequest) (execution.StartPreparation, error) {
+	invocation, err := p.PrepareStart(ctx, request)
+	if err != nil {
+		return execution.StartPreparation{}, err
+	}
+	fingerprint, err := p.Fingerprint(ctx)
+	if err != nil {
+		return execution.StartPreparation{}, err
+	}
+	if p.omitIdentityProof {
+		fingerprint.SourceIdentity = [32]byte{}
+		fingerprint.SecurityFingerprint = [32]byte{}
+	}
+	return execution.NewStartPreparation(invocation, fingerprint)
+}
 func (p *syntheticProvider) Describe() execution.ProviderDescriptor {
 	return execution.ProviderDescriptor{ID: p.ID(), Name: "Synthetic", Features: []string{"runtime.agent_loop", "runtime.jsonl_rpc", "runtime.file_edit", "runtime.command_execution", "runtime.progress_events", "runtime.terminal_result", "runtime.cooperative_abort", "runtime.allowlisted_event_projection", "runtime.chora_owned_result", "runtime.zero_implicit_context"}, ProtocolVersion: "synthetic.v1", Environments: []string{domain.TrustedHostExecutionProvider}, TaskKinds: []string{"code"}, ResumeMode: execution.ResumeUnsupported, ShutdownMode: "exit_after_input", ApprovalMode: "native_noninteractive", ModelMode: "native_default", CheckEvidenceMode: "none"}
 }
@@ -51,14 +80,15 @@ func (p *syntheticProvider) Recover(execution.RecoveryRequest) execution.Recover
 	p.recoveries++
 	return execution.RecoveryPolicy{FreshRetry: true, MissingRouteUncertain: true, StopOnRestart: p.stopOnRestart}
 }
-func newSyntheticFixture(t *testing.T, p *syntheticProvider, s *fakeSupervisor) (*app.Service, *sqlite.Store, domain.AgentRun) {
+func newSyntheticFixtureWithMutation(t *testing.T, p *syntheticProvider, s *fakeSupervisor, mutate func(*domain.RuntimeBindingV1)) (*app.Service, *sqlite.Store, domain.AgentRun) {
 	provider, supervisor := p, s
 	ctx := context.Background()
 	root := t.TempDir()
 	if err := os.Chmod(root, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	db, err := openLatestSQLiteTestStore(ctx, filepath.Join(root, "chora.db"))
+	p.fixtureDatabase = filepath.Join(root, "chora.db")
+	db, err := openLatestSQLiteTestStore(ctx, p.fixtureDatabase)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +111,11 @@ func newSyntheticFixture(t *testing.T, p *syntheticProvider, s *fakeSupervisor) 
 
 	descriptor := provider.Describe()
 	fingerprint, _ := provider.Fingerprint(ctx)
-	runtimeBinding, err := registry.Bind(provider.ID(), domain.RuntimeBindingV1{SchemaVersion: "chora.runtime-binding.v1", RuntimeID: provider.ID(), ProtocolVersion: descriptor.ProtocolVersion, SourceIdentity: fmt.Sprintf("%x", fingerprint.Digest), ConfigurationFingerprint: fmt.Sprintf("%x", fingerprint.Digest), ExecutionProvider: domain.TrustedHostExecutionProvider, SecurityFingerprint: fmt.Sprintf("%x", fingerprint.Digest), CapabilityDigest: fmt.Sprintf("%x", descriptor.Digest()), ModelProvenance: "native_default"}, "code")
+	bindingSpec := domain.RuntimeBindingV1{SchemaVersion: "chora.runtime-binding.v1", RuntimeID: provider.ID(), ProtocolVersion: descriptor.ProtocolVersion, SourceIdentity: fmt.Sprintf("%x", fingerprint.SourceIdentity), ConfigurationFingerprint: fmt.Sprintf("%x", fingerprint.Digest), ExecutionProvider: domain.TrustedHostExecutionProvider, SecurityFingerprint: fmt.Sprintf("%x", fingerprint.SecurityFingerprint), CapabilityDigest: fmt.Sprintf("%x", descriptor.Digest()), ModelProvenance: "native_default"}
+	if mutate != nil {
+		mutate(&bindingSpec)
+	}
+	runtimeBinding, err := registry.Bind(provider.ID(), bindingSpec, "code")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -236,5 +270,199 @@ func TestUnknownRuntimeFailsBeforeAllocatingAttempt(t *testing.T) {
 	}
 	if f.supervisor.startCalls != 0 {
 		t.Fatal("unknown runtime started")
+	}
+}
+
+func newSyntheticFixture(t *testing.T, p *syntheticProvider, s *fakeSupervisor) (*app.Service, *sqlite.Store, domain.AgentRun) {
+	return newSyntheticFixtureWithMutation(t, p, s, nil)
+}
+func TestFrozenIdentityMismatchMustNotLaunch(t *testing.T) {
+	for _, field := range []string{"source", "security", "configuration", "missing_proof"} {
+		t.Run(field, func(t *testing.T) {
+			p := &syntheticProvider{fakeAdapter: &fakeAdapter{id: "synthetic", resumeMode: execution.ResumeUnsupported}}
+			sup := &fakeSupervisor{outcome: execution.StartOutcome{Kind: execution.Started, Handle: execution.RuntimeHandle{Value: "handle"}, Identity: execution.ProcessIdentity{Value: "pid:1"}}}
+			service, db, run := newSyntheticFixtureWithMutation(t, p, sup, func(b *domain.RuntimeBindingV1) {
+				mismatch := fmt.Sprintf("%x", [32]byte{9})
+				switch field {
+				case "source":
+					b.SourceIdentity = mismatch
+				case "security":
+					b.SecurityFingerprint = mismatch
+				case "configuration":
+					b.ConfigurationFingerprint = mismatch
+				}
+			})
+			p.omitIdentityProof = field == "missing_proof"
+			prepared, err := service.PrepareRun(context.Background(), app.PrepareRunRequest{CommandMeta: meta("review-prepare", "review-prepare"), RunID: run.ID(), ExpectedVersion: run.Version()})
+			if err != nil {
+				t.Fatalf("identity fixture did not reach launch admission: %v", err)
+			}
+			started, err := service.StartAttempt(context.Background(), app.StartAttemptRequest{CommandMeta: meta("review-start", "review-start"), RunID: run.ID(), ExpectedVersion: prepared.Run.Version(), Mode: app.StartFresh})
+			if err != nil || sup.startCalls != 0 || p.prepareCalls != 1 || started.Run.State() != domain.RunStateRecoveryRequired {
+				t.Fatalf("mismatched %s identity reached Supervisor.Start: calls=%d state=%s err=%v", field, sup.startCalls, started.Run.State(), err)
+			}
+			session, err := db.Reader().GetRuntimeSessionForAttempt(context.Background(), started.Attempt.ID())
+			if err != nil || session.State != "failed" || session.FinalizedAt.IsZero() {
+				t.Fatalf("rejected launch was not finalized: state=%s error=%v", session.State, err)
+			}
+		})
+	}
+}
+
+func TestProviderCannotBypassTrustedExitOrCancel(t *testing.T) {
+	for _, mode := range []string{"no_exit_signal", "still_alive", "cancel_confirmed", "cancel_uncertain", "deadline"} {
+		t.Run(mode, func(t *testing.T) {
+			ctx := context.Background()
+			p := &syntheticProvider{fakeAdapter: &fakeAdapter{id: "synthetic", resumeMode: execution.ResumeUnsupported}}
+			sup := &fakeSupervisor{outcome: execution.StartOutcome{Kind: execution.Started, Handle: execution.RuntimeHandle{Value: "handle"}, Identity: execution.ProcessIdentity{Value: "pid:1"}}}
+			service, db, run := newSyntheticFixture(t, p, sup)
+			prepared, err := service.PrepareRun(ctx, app.PrepareRunRequest{CommandMeta: meta("guard-prepare", "guard-prepare"), RunID: run.ID(), ExpectedVersion: run.Version()})
+			if err != nil {
+				t.Fatal(err)
+			}
+			started, err := service.StartAttempt(ctx, app.StartAttemptRequest{CommandMeta: meta("guard-start", "guard-start"), RunID: run.ID(), ExpectedVersion: prepared.Run.Version(), Mode: app.StartFresh})
+			if err != nil {
+				t.Fatal(err)
+			}
+			p.decode = []execution.NormalizedEvent{{Type: "synthetic.complete", NormalizedJSON: []byte(`{"complete":true}`)}}
+			sup.drainOutcome = execution.DrainOutcome{Chunks: map[execution.StreamKind][]byte{execution.StreamStdout: []byte("done\n")}, Offsets: execution.StreamOffsets{execution.StreamStdout: 5, execution.StreamStderr: 0}, EOF: map[execution.StreamKind]bool{execution.StreamStdout: true, execution.StreamStderr: true}}
+			expected := started.Run.Version()
+			switch mode {
+			case "cancel_confirmed", "cancel_uncertain":
+				if mode == "cancel_uncertain" {
+					sup.stopOutcome = execution.StopOutcome{Kind: execution.StopUncertain}
+				}
+				stopped, e := service.RequestCancel(ctx, app.StopRequest{CommandMeta: meta("guard-cancel", "guard-cancel"), RunID: run.ID(), ExpectedVersion: expected, Reason: "cancel before apparent completion"})
+				if e != nil {
+					t.Fatal(e)
+				}
+				expected = stopped.Run.Version()
+			case "deadline":
+				sup.drainOutcome.TerminalFiles.TerminationCause = execution.TerminationDeadlineExceeded
+			}
+			sup.reconcileOutcome = execution.ReconcileOutcome{Kind: execution.ReconcileDead, Handle: execution.RuntimeHandle{Value: "handle"}}
+			if mode == "still_alive" {
+				sup.reconcileOutcome.Kind = execution.ReconcileAlive
+			}
+			if mode != "no_exit_signal" {
+				sup.sink.Exited()
+			}
+			_, exitErr := service.HandleExit(ctx, app.ExitRequest{CommandMeta: meta("guard-exit", "guard-exit"), SessionID: started.Session.ID, ExpectedVersion: expected})
+			actual, e := db.Reader().GetRun(ctx, run.ID())
+			if e != nil {
+				t.Fatal(e)
+			}
+			switch mode {
+			case "no_exit_signal", "still_alive":
+				if exitErr == nil || p.completions != 0 || actual.State() != domain.RunStateRunning {
+					t.Fatalf("exit proof bypassed: state=%s completes=%d err=%v", actual.State(), p.completions, exitErr)
+				}
+			case "cancel_confirmed":
+				if actual.State() != domain.RunStateCancelled {
+					t.Fatalf("cancel overwritten: %s err=%v", actual.State(), exitErr)
+				}
+			case "cancel_uncertain":
+				if actual.State() != domain.RunStateRecoveryRequired {
+					t.Fatalf("uncertain cancel overwritten: %s err=%v", actual.State(), exitErr)
+				}
+			case "deadline":
+				if exitErr != nil || p.completions != 0 || actual.State() != domain.RunStateRecoveryRequired {
+					t.Fatalf("deadline bypassed: state=%s completes=%d err=%v", actual.State(), p.completions, exitErr)
+				}
+			}
+		})
+	}
+}
+
+// No ownership outcome must remain uncertainty through the real composition
+// entry, not merely through app's test supervisor or a router unit fixture.
+type unownedProviderSupervisor struct{ *fakeSupervisor }
+
+// The core must preserve unknown ownership even if a provider has no optional
+// missing-route policy; provider callbacks cannot authorize a replacement.
+type defaultRecoveryProvider struct{ *syntheticProvider }
+
+func (p defaultRecoveryProvider) Recover(execution.RecoveryRequest) execution.RecoveryPolicy {
+	return execution.RecoveryPolicy{FreshRetry: true}
+}
+
+func (s unownedProviderSupervisor) Reconcile(context.Context, execution.ProcessIdentity) (execution.ReconcileOutcome, error) {
+	return execution.ReconcileOutcome{Kind: execution.ReconcileUncertain}, nil
+}
+func (s unownedProviderSupervisor) ReconcileLaunch(context.Context, execution.LaunchToken) (execution.ReconcileOutcome, error) {
+	return execution.ReconcileOutcome{Kind: execution.ReconcileUncertain}, nil
+}
+func TestProviderOwnershipLossPreservesWorkbenchRestartAPI(t *testing.T) {
+	ctx := context.Background()
+	provider := &syntheticProvider{fakeAdapter: &fakeAdapter{id: "synthetic", resumeMode: execution.ResumeUnsupported}}
+	supervisor := &fakeSupervisor{outcome: execution.StartOutcome{Kind: execution.Started, Handle: execution.RuntimeHandle{Value: "owned"}, Identity: execution.ProcessIdentity{Value: "lost-process"}}}
+	service, db, run := newSyntheticFixture(t, provider, supervisor)
+	prepared, err := service.PrepareRun(ctx, app.PrepareRunRequest{CommandMeta: meta("restart-prepare", "restart-prepare"), RunID: run.ID(), ExpectedVersion: run.Version()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	started, err := service.StartAttempt(ctx, app.StartAttemptRequest{CommandMeta: meta("restart-start", "restart-start"), RunID: run.ID(), ExpectedVersion: prepared.Run.Version(), Mode: app.StartFresh})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	source := t.TempDir()
+	web := filepath.Join(source, "web")
+	if err := os.MkdirAll(web, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(web, "index.html"), []byte("<!doctype html>"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	missing := unownedProviderSupervisor{&fakeSupervisor{}}
+	server, err := localweb.NewWorkbench(ctx, provider.fixtureDatabase, web, log.New(io.Discard, "", 0), localweb.WorkbenchOptions{SourceRoot: source, DataRoot: filepath.Dir(provider.fixtureDatabase), RuntimeProviders: []localweb.RuntimeProviderRegistration{{Provider: defaultRecoveryProvider{provider}, Supervisors: map[string]execution.ProcessSupervisor{"trusted_host": missing}}}})
+	if err != nil {
+		t.Fatalf("restart must retain readable recovery surface: %v", err)
+	}
+	defer server.Close()
+	request := httptest.NewRequest(http.MethodGet, "/api/runs/"+run.ID().String(), nil)
+	request.Host = "localhost"
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("run unreadable: %d %s", response.Code, response.Body.String())
+	}
+	var view struct {
+		State    string `json:"status"`
+		Controls struct {
+			CanRetry bool `json:"canRetry"`
+		} `json:"controls"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &view); err != nil {
+		t.Fatal(err)
+	}
+	if view.State != string(domain.RunStateRecoveryRequired) || view.Controls.CanRetry {
+		t.Fatalf("unsafe recovery view: %s", response.Body.String())
+	}
+	restored, err := sqlite.Open(ctx, provider.fixtureDatabase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restored.Close()
+	session, err := restored.Reader().GetRuntimeSessionForAttempt(ctx, started.Attempt.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !session.FinalizedAt.IsZero() || missing.stopCalls != 0 || missing.startCalls != 0 || missing.finalizeCalls != 0 {
+		t.Fatal("unowned process was signalled, finalized or replaced")
+	}
+	registry := agent.NewRegistry()
+	if err := registry.Register(provider); err != nil {
+		t.Fatal(err)
+	}
+	recoveryService := app.NewService(app.Dependencies{Agents: registry, Supervisor: missing, Store: restored, Context: app.ContextAssembler{}, Authorizer: allowAuthorizer{}, Clock: &fixedClock{now: time.Now()}, IDs: app.RandomIDs{}})
+	recovered, err := restored.Reader().GetRun(ctx, run.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := recoveryService.PrepareRun(ctx, app.PrepareRunRequest{CommandMeta: meta("forbidden-successor", "forbidden-successor"), RunID: run.ID(), ExpectedVersion: recovered.Version()}); err == nil {
+		t.Fatal("unowned process allowed successor")
 	}
 }
