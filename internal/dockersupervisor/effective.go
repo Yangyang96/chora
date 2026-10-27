@@ -314,7 +314,12 @@ func exactMounts(container effectiveContainer, expected map[string]effectiveMoun
 	if len(container.Mounts) != len(expected) {
 		return false
 	}
+	seen := make(map[string]struct{}, len(container.Mounts))
 	for _, mount := range container.Mounts {
+		if _, duplicate := seen[mount.Destination]; duplicate {
+			return false
+		}
+		seen[mount.Destination] = struct{}{}
 		want, ok := expected[mount.Destination]
 		wantType := want.Type
 		if wantType == "" {

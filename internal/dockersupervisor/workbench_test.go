@@ -463,6 +463,11 @@ func TestRestoreExportedMountModesPreventsReferenceModeDrift(t *testing.T) {
 	if err := os.WriteFile(source, []byte("same"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// The restoration assertion needs an exact source mode, independent of
+	// the invoking shell's umask.
+	if err := os.Chmod(source, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	mounts, err := resolveReadOnlyWorkspacePaths(staging, []string{"reference"})
 	if err != nil {
 		t.Fatal(err)
