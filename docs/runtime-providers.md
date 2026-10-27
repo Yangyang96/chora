@@ -363,3 +363,72 @@ of later implementation or authorizes release.
 This documentation-only phase checks source references, local CLI surface, links
 and publication scope. It does not run or claim real-agent, Docker, browser E2E,
 process-cancellation or migration acceptance. Those gates belong to the stages above.
+
+## Codex implementation candidate (CHOR-12)
+
+`internal/agent/codexexec` implements the separate `codex-exec` provider. An
+embedding caller explicitly supplies `codexexec.Config` and calls
+`localweb.NewCodexRuntimeProvider`, then passes the returned registration in
+`Options.RuntimeProviders`. Existing Pi defaults and the disabled historical
+`codex` adapter do not change. `Adapter.Binding` derives the versioned binding
+from the inspected executable and effective launch policy; that binding can be
+referenced by `Registry.ResolveExecution`. This is not the CHOR-13 settings UI
+or persisted, independently selectable model configuration.
+
+This candidate pins CLI `codex-cli 0.155.1`, an explicit existing ChatGPT
+`CODEX_HOME`, a dedicated empty home, and an optional explicit model. Other CLI
+versions and authentication mechanisms fail closed pending qualification. Chora
+runs only bounded version/login-status probes, never reads credential contents,
+never logs in/out and never copies credentials. Native default model selection
+is labelled `native_default`; an explicit configured model is bound into the
+configuration fingerprint, without inventing a model catalog. Independently
+persisted model bindings are rejected until the product slice integrates them.
+
+The launch uses JSONL, ephemeral sessions, workspace-write permissions, no
+interactive approvals, no user config or execpolicy rules, disabled hooks,
+plugins, apps, skill search, multi-agent and shell snapshots, and the inspected
+CLI's experimental `skip_host_skill_discovery` feature. Project/ancestor
+`.codex` and `.agents` directories, system config/requirements and extra native
+config profiles are rejected. A private empty home and explicit minimal child
+and shell environments prevent ambient control-plane credentials and user shell
+startup files from being inherited. The selected native authentication scope is
+still accessible to the trusted process: this remains **Local Connected, No
+Sandbox**, with no adversarial host-read or escaped-process containment claim.
+The experimental resource-discovery switch requires further real successful-task
+qualification; help/flag acceptance is not that evidence.
+
+Preparation independently re-inspects executable bytes and canonical paths,
+validates the frozen binding and returns source, configuration and security
+proofs. The supervisor repeats executable/policy validation at launch, requires
+exact argv/environment, and closes stdin after delivering the one-shot prompt.
+Pi continues to hold stdin until settlement. Resume, Docker, MCP, Pi resource
+projection, automatic check evidence and interactive approvals are unsupported;
+auto-check resource contracts are rejected before launch. Missing named-check
+observations cannot be manufactured into passing evidence.
+
+JSONL projection persists bounded final messages, opaque thread provenance and
+sanitized lifecycle/tool identifiers. It discards reasoning, raw tool output and
+native diagnostics. Completion requires an ordered session/turn/final/settlement
+sequence plus trusted successful exit. Duplicate/reordered terminal or final
+items, truncated/oversized frames, missing final output, model/auth errors and
+nonzero exits fail closed. Cancellation and timeout remain supervisor/application
+owned. Protocol fixtures and persisted application lifecycle tests are synthetic
+coverage, not proof of model access.
+
+Run the opt-in real test with explicitly selected existing local values:
+
+```sh
+CHORA_CODEX_EXECUTABLE="$selected_codex_executable" \
+CHORA_CODEX_AUTH_HOME="$selected_existing_codex_home" \
+CHORA_CODEX_MODEL="$selected_codex_model" \
+go test ./internal/agent/codexexec -run '^TestRealCodexQualification$' -v -count=1
+```
+
+It uses disposable workspaces and tests a bounded document task plus native
+process-group cancellation, without publishing raw diagnostics or credentials.
+The implementation run observed successful existing-login detection but model
+access rejection; real task success remains **unqualified**. Native cancellation
+passed. A separate synthetic shell fixture proves descendant cleanup and EOF
+behavior. Product enablement and stage acceptance must wait for a successful real
+task and resource-loading qualification with an authorized model. Do not infer
+that the implementation or its fixtures establish those gates.

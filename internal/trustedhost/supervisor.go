@@ -57,6 +57,8 @@ var (
 // absolute Pi path selected and fingerprinted by the Runtime Adapter.
 type Config struct {
 	RuntimeRoot string
+	// CloseStdinAfterInput is explicit one-shot protocol policy; Pi keeps stdin open.
+	CloseStdinAfterInput bool
 	// FilterPiProgress is selected by the validated Pi launch composition.
 	// Other protocols retain their bounded stdout without Pi projection.
 	FilterPiProgress    bool
