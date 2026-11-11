@@ -363,3 +363,89 @@ of later implementation or authorizes release.
 This documentation-only phase checks source references, local CLI surface, links
 and publication scope. It does not run or claim real-agent, Docker, browser E2E,
 process-cancellation or migration acceptance. Those gates belong to the stages above.
+
+## Codex implementation candidate (CHOR-12)
+
+`internal/agent/codexexec` implements the separate `codex-exec` provider. An
+embedding caller explicitly supplies `codexexec.Config` and calls
+`localweb.NewCodexRuntimeProvider`, then passes the returned registration in
+`Options.RuntimeProviders`. Existing Pi defaults and the disabled historical
+`codex` adapter do not change. `Adapter.Binding` derives the versioned binding
+from the inspected executable and effective launch policy; that binding can be
+referenced by `Registry.ResolveExecution`. This is not the CHOR-13 settings UI
+or persisted, independently selectable model configuration.
+
+This candidate pins CLI `codex-cli 0.155.1`, an explicit existing ChatGPT
+`CODEX_HOME`, a dedicated empty home, and an optional explicit model. Other CLI
+versions and authentication mechanisms fail closed pending qualification. Chora
+runs only bounded version/login-status probes, never reads credential contents,
+never logs in/out and never copies credentials. Native default model selection
+is labelled `native_default`; an explicit configured model is bound into the
+configuration fingerprint, without inventing a model catalog. Independently
+persisted model bindings are rejected until the product slice integrates them.
+
+The launch uses JSONL, ephemeral sessions, workspace-write permissions, no
+interactive approvals, no user config or execpolicy rules, disabled hooks,
+plugins, apps, skill search, multi-agent and shell snapshots, and the inspected
+CLI's experimental `skip_host_skill_discovery` feature. Project/ancestor
+`.codex` and `.agents` directories, system config/requirements and extra native
+config profiles are rejected. A private empty home and explicit minimal child
+and shell environments prevent ambient control-plane credentials and user shell
+startup files from being inherited. `Config.NetworkEnvironment` accepts explicitly
+selected HTTP/HTTPS/ALL/NO proxy variables (upper/lower case), `SSL_CERT_FILE` and
+`NODE_EXTRA_CA_CERTS`. Chora snapshots these values, includes them in the binding,
+and revalidates selected certificate bytes before launch. It does not discover or
+change system proxies. Conflicting upper/lowercase values, credential-bearing
+proxy URLs, endpoint overrides, TLS-disable switches, certificate directories and
+other environment keys fail closed. Proxy credentials are not supported in v1.
+Without explicit proxy values, native system-proxy behavior is unchanged.
+Workspace/ancestor and authentication-home `.env` files are rejected so native
+dotenv loading cannot silently change routing or credentials. The selected native
+authentication scope is
+still accessible to the trusted process: this remains **Local Connected, No
+Sandbox**, with no adversarial host-read or escaped-process containment claim.
+The experimental resource-discovery switch requires further real successful-task
+qualification; help/flag acceptance is not that evidence.
+
+Preparation independently re-inspects executable bytes and canonical paths,
+validates the frozen binding and returns source, configuration and security
+proofs. The supervisor repeats executable/policy validation at launch, requires
+exact argv/environment, and closes stdin after delivering the one-shot prompt.
+Pi continues to hold stdin until settlement. Resume, Docker, MCP, Pi resource
+projection, automatic check evidence and interactive approvals are unsupported;
+auto-check resource contracts are rejected before launch. Missing named-check
+observations cannot be manufactured into passing evidence.
+
+JSONL projection persists bounded final messages, opaque thread provenance and
+sanitized lifecycle/tool identifiers. It discards reasoning, raw tool output and
+native diagnostics. Completion requires an ordered session/turn/final/settlement
+sequence plus trusted successful exit. Usage accepts the required input/cache-read/
+output counters and optional cache-write/reasoning counters emitted by 0.155.1;
+unknown, negative, null or non-integer counters fail closed. Duplicate/reordered
+terminal or final
+items, truncated/oversized frames, missing final output, model/auth errors and
+nonzero exits fail closed. Cancellation and timeout remain supervisor/application
+owned. Protocol fixtures and persisted application lifecycle tests are synthetic
+coverage, not proof of model access.
+
+Run the opt-in real test with explicitly selected existing local values:
+
+```sh
+CHORA_CODEX_EXECUTABLE="$selected_codex_executable" \
+CHORA_CODEX_AUTH_HOME="$selected_existing_codex_home" \
+CHORA_CODEX_MODEL="$selected_codex_model" \
+go test ./internal/agent/codexexec -run '^TestRealCodexQualification$' -v -count=1
+```
+
+The opt-in test uses disposable workspaces for a bounded document task, an
+ignored project-instruction canary, explicit unavailable-model failure and native
+process-group cancellation. To select existing network configuration for the test,
+prefix the supported variable with `CHORA_CODEX_`, for example
+`CHORA_CODEX_HTTPS_PROXY`; the harness does not infer network settings. No raw
+native diagnostics or credentials are printed. A separate synthetic shell fixture
+checks descendant cleanup and EOF behavior. Login detection does not prove model
+access: a model rejection is not by itself a network diagnosis. Native and provider
+comparisons must use the same authentication, model, routing and permissions.
+Successful qualification of one explicit model does not qualify another model or
+all native resource mechanisms. Product enablement and stage acceptance still
+require independent review; this registration does not enable a browser default.

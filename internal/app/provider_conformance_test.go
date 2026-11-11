@@ -26,6 +26,7 @@ import (
 )
 
 type syntheticProvider struct {
+	providerOverride  execution.Provider
 	fixtureDatabase   string
 	omitIdentityProof bool
 	completionError   bool
@@ -81,7 +82,11 @@ func (p *syntheticProvider) Recover(execution.RecoveryRequest) execution.Recover
 	return execution.RecoveryPolicy{FreshRetry: true, MissingRouteUncertain: true, StopOnRestart: p.stopOnRestart}
 }
 func newSyntheticFixtureWithMutation(t *testing.T, p *syntheticProvider, s *fakeSupervisor, mutate func(*domain.RuntimeBindingV1)) (*app.Service, *sqlite.Store, domain.AgentRun) {
-	provider, supervisor := p, s
+	var provider execution.Provider = p
+	if p.providerOverride != nil {
+		provider = p.providerOverride
+	}
+	supervisor := s
 	ctx := context.Background()
 	root := t.TempDir()
 	if err := os.Chmod(root, 0o700); err != nil {
@@ -109,6 +114,15 @@ func newSyntheticFixtureWithMutation(t *testing.T, p *syntheticProvider, s *fake
 	frozenAt := time.Date(2026, 8, 11, 0, 0, 0, 0, time.UTC)
 	workspaceRoot := filepath.Join(t.TempDir(), "source-baseline-v2", "repo")
 
+	if p.providerOverride != nil {
+		if err := os.MkdirAll(workspaceRoot, 0700); err != nil {
+			t.Fatal(err)
+		}
+		workspaceRoot, err = filepath.EvalSymlinks(workspaceRoot)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 	descriptor := provider.Describe()
 	fingerprint, _ := provider.Fingerprint(ctx)
 	bindingSpec := domain.RuntimeBindingV1{SchemaVersion: "chora.runtime-binding.v1", RuntimeID: provider.ID(), ProtocolVersion: descriptor.ProtocolVersion, SourceIdentity: fmt.Sprintf("%x", fingerprint.SourceIdentity), ConfigurationFingerprint: fmt.Sprintf("%x", fingerprint.Digest), ExecutionProvider: domain.TrustedHostExecutionProvider, SecurityFingerprint: fmt.Sprintf("%x", fingerprint.SecurityFingerprint), CapabilityDigest: fmt.Sprintf("%x", descriptor.Digest()), ModelProvenance: "native_default"}
