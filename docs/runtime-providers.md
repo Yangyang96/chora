@@ -366,6 +366,24 @@ process-cancellation or migration acceptance. Those gates belong to the stages a
 
 ## Codex implementation candidate (CHOR-12)
 
+**Qualification suspended (CHOR-44):** public construction and registration now
+fail closed with `configuration_unqualified: managed_policy_unverifiable`.
+CLI 0.155.1 loads cloud bundles and macOS managed preferences even with
+`--ignore-user-config`. A separate configuration snapshot cannot prove that a
+later exec uses the same policy. No qualified native snapshot-to-launch interface
+is currently integrated, so Chora cannot issue a binding or launch Codex. There
+is no configuration or environment escape hatch. Pi and Claude are unchanged.
+The implementation details below describe the retained candidate, not an enabled
+or currently qualified runtime. The opt-in real test also fails at this gate;
+fixture coverage and historical native results do not establish current readiness.
+
+The system rejection list includes `/etc/codex/managed_config.toml`. File absence
+checks do not detect cloud or MDM policy. Restoring qualification requires a
+native, side-effect-free effective-policy proof covering these sources (including
+additional developer instructions), with consistency enforced at exec startup.
+See the pinned [exec bootstrap](https://github.com/openai/codex/blob/be2951ea34f0d295ed0becf97079f92fa5f6950e/codex-rs/exec/src/lib.rs)
+and [configuration loader](https://github.com/openai/codex/blob/be2951ea34f0d295ed0becf97079f92fa5f6950e/codex-rs/config/src/loader/mod.rs).
+
 `internal/agent/codexexec` implements the separate `codex-exec` provider. An
 embedding caller explicitly supplies `codexexec.Config` and calls
 `localweb.NewCodexRuntimeProvider`, then passes the returned registration in
@@ -423,7 +441,7 @@ sequence plus trusted successful exit. Usage accepts the required input/cache-re
 output counters and optional cache-write/reasoning counters emitted by 0.155.1;
 unknown, negative, null or non-integer counters fail closed. Duplicate/reordered
 terminal or final
-items, truncated/oversized frames, missing final output, model/auth errors and
+items, unmatched/duplicate command or file-change results, pending tools at settlement, truncated/oversized frames, missing final output, model/auth errors and
 nonzero exits fail closed. Cancellation and timeout remain supervisor/application
 owned. Protocol fixtures and persisted application lifecycle tests are synthetic
 coverage, not proof of model access.
