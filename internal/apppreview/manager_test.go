@@ -16,8 +16,35 @@ import (
 	"github.com/Yangyang96/chora/internal/dockersupervisor"
 )
 
+// waitForHostFinalization waits only for tracked host writes, not process death.
+// Callers must stop live hosts themselves. Do not use this for synthetic children.
+func waitForHostFinalization(t *testing.T, manager *Manager) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	tick := time.NewTicker(time.Millisecond)
+	defer tick.Stop()
+	for time.Now().Before(deadline) {
+		// Persistence holds mu, so acquiring it must share the same budget.
+		if manager.mu.TryLock() {
+			pending := len(manager.children)
+			manager.mu.Unlock()
+			// waitHost removes the child and persists under this same lock.
+			// child.done alone only proves output drain, before persistence.
+			if !time.Now().Before(deadline) {
+				break
+			}
+			if pending == 0 {
+				return
+			}
+		}
+		<-tick.C
+	}
+	t.Fatal("host finalization did not finish before runtime cleanup")
+}
+
 func TestHostLifecycleLogsRestartAndPortOwnership(t *testing.T) {
 	manager, root := testManager(t, 1024)
+	t.Cleanup(func() { waitForHostFinalization(t, manager) })
 	port := 43191
 	target := Target{Key: "task-repo", Root: root, AttemptID: "attempt-1", Profile: ProfileLocalConnected}
 	config := Config{Command: `printf 'ready\n'; while :; do sleep 1; done`, WorkingDirectory: ".", Port: port}
@@ -52,18 +79,22 @@ func TestHostLifecycleLogsRestartAndPortOwnership(t *testing.T) {
 
 func TestHostBoundedLogAndForeignOwnership(t *testing.T) {
 	manager, root := testManager(t, 1024)
+	t.Cleanup(func() { waitForHostFinalization(t, manager) })
 	target := Target{Key: "bounded", Root: root, AttemptID: "attempt", Profile: ProfileLocalConnected}
 	config := Config{Command: `i=0; while [ $i -lt 2000 ]; do printf x; i=$((i+1)); done`, WorkingDirectory: ".", Port: 43193}
 	if _, err := manager.Start(context.Background(), target, config); err != nil {
 		t.Fatal(err)
 	}
-	var view View
-	for deadline := time.Now().Add(3 * time.Second); time.Now().Before(deadline); {
-		view, _ = manager.Inspect(context.Background(), target.Key)
-		if view.State != StateRunning {
-			break
-		}
-		time.Sleep(20 * time.Millisecond)
+	// Join the current child and its final persistence with a local lock-wait
+	// budget. Inspect is a separate public API assertion: its synchronous lock
+	// and filesystem work are not cancellable by that budget.
+	waitForHostFinalization(t, manager)
+	view, err := manager.Inspect(context.Background(), target.Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.ExitCode == nil || view.State != StateStopped || *view.ExitCode != 0 {
+		t.Fatalf("incomplete final bounded-log state: %#v", view)
 	}
 	logs, err := manager.Logs(target.Key, 0, 1024)
 	if err != nil || logs.Size != 1024 || !logs.Truncated {
@@ -85,7 +116,9 @@ func TestHostBoundedLogAndForeignOwnership(t *testing.T) {
 		t.Fatalf("foreign Stop() = %#v, %v", view, err)
 	}
 	// Test owns the real child and must not leak it after proving the test PID.
-	_ = stopGroup(record.PGID, time.Second)
+	if err := stopGroup(record.PGID, time.Second); err != nil {
+		t.Fatalf("stop owned foreign process group: %v", err)
+	}
 }
 
 func TestConfigurationTraversalAndDiscovery(t *testing.T) {
