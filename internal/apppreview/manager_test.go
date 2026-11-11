@@ -82,10 +82,23 @@ func TestHostBoundedLogAndForeignOwnership(t *testing.T) {
 		t.Fatal(err)
 	}
 	var view View
-	for deadline := time.Now().Add(3 * time.Second); time.Now().Before(deadline); {
-		view, _ = manager.Inspect(context.Background(), target.Key)
-		if view.State != StateRunning {
+	for deadline := time.Now().Add(3 * time.Second); ; {
+		var err error
+		view, err = manager.Inspect(context.Background(), target.Key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Recovery can be observed while the leader disappears and its group
+		// or output drain is still pending. Only waitHost publishes ExitCode
+		// together with the final log metadata; a non-running state is not a join.
+		if view.ExitCode != nil {
+			if view.State != StateStopped || *view.ExitCode != 0 {
+				t.Fatalf("incomplete final bounded-log state: %#v", view)
+			}
 			break
+		}
+		if !time.Now().Before(deadline) {
+			t.Fatalf("bounded-log final metadata was not published: %#v", view)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
