@@ -21,25 +21,26 @@ func TestHostLifecycleLogsRestartAndPortOwnership(t *testing.T) {
 	// Stop proves process-group death, but waitHost still has to commit its
 	// final manifest. Join that work before TempDir removes the runtime root.
 	t.Cleanup(func() {
-		deadline := time.NewTimer(3 * time.Second)
-		defer deadline.Stop()
+		deadline := time.Now().Add(3 * time.Second)
 		tick := time.NewTicker(time.Millisecond)
 		defer tick.Stop()
-		for {
-			manager.mu.Lock()
-			pending := len(manager.children)
-			manager.mu.Unlock()
-			// waitHost removes the child and persists under this same lock.
-			// child.done alone only proves output drain, before persistence.
-			if pending == 0 {
-				return
+		for time.Now().Before(deadline) {
+			// Persistence holds mu, so acquiring it must share the same budget.
+			if manager.mu.TryLock() {
+				pending := len(manager.children)
+				manager.mu.Unlock()
+				// waitHost removes the child and persists under this same lock.
+				// child.done alone only proves output drain, before persistence.
+				if !time.Now().Before(deadline) {
+					break
+				}
+				if pending == 0 {
+					return
+				}
 			}
-			select {
-			case <-tick.C:
-			case <-deadline.C:
-				t.Fatal("host finalization did not finish before runtime cleanup")
-			}
+			<-tick.C
 		}
+		t.Fatal("host finalization did not finish before runtime cleanup")
 	})
 	port := 43191
 	target := Target{Key: "task-repo", Root: root, AttemptID: "attempt-1", Profile: ProfileLocalConnected}
