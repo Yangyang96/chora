@@ -957,20 +957,26 @@ test('can cancel resource preparation before Task creation returns an ID', async
   })
   vi.stubGlobal('fetch', fetchMock)
 
+  const user = userEvent.setup()
   render(<NewApp />)
-  await userEvent.click((await screen.findAllByRole('button', { name: '＋ New Task' }))[0])
-  await userEvent.type(await screen.findByLabelText('What should Chora build?'), 'Update the frontend')
-  await userEvent.click(await screen.findByLabelText('Override Project defaults for this task'))
-  await userEvent.click(screen.getByRole('radio', { name: LOCAL_EXECUTION_LABEL }))
-  await userEvent.click(screen.getByRole('button', { name: 'Start' }))
+  await user.click((await screen.findAllByRole('button', { name: '＋ New Task' }))[0])
+  // Set up the goal in one input event; this test exercises cancellation,
+  // not per-keystroke rendering of the resource configuration form.
+  await user.click(await screen.findByLabelText('What should Chora build?'))
+  await user.paste('Update the frontend')
+  await user.click(await screen.findByLabelText('Override Project defaults for this task'))
+  await user.click(screen.getByRole('radio', { name: LOCAL_EXECUTION_LABEL }))
+  await user.click(screen.getByRole('button', { name: 'Start' }))
 
   const preparation = await screen.findByRole('region', { name: 'Repository preparation' })
   expect(within(preparation).getByRole('status')).toHaveTextContent(/elapsed/)
   expect(within(preparation).getByText('repo-one').closest('li')).toHaveTextContent('planned')
   await waitFor(() => expect(createSignal).toBeDefined())
+  const createRequest = fetchMock.mock.calls.find(([input, init]) => String(input) === '/api/v2/rooms/room-project/tasks' && init?.method === 'POST')
+  expect(JSON.parse(String(createRequest?.[1]?.body))).toMatchObject({ requirement: 'Update the frontend' })
   expect(fetchMock.mock.calls.map(([input]) => String(input)).filter((path) => path.includes('/api/v2/tasks/') && path.endsWith('/resources'))).toEqual([])
 
-  await userEvent.click(within(preparation).getByRole('button', { name: 'Cancel preparation' }))
+  await user.click(within(preparation).getByRole('button', { name: 'Cancel preparation' }))
   expect(createSignal?.aborted).toBe(true)
   await waitFor(() => expect(screen.queryByRole('region', { name: 'Repository preparation' })).not.toBeInTheDocument())
   expect(screen.queryByRole('alert')).not.toBeInTheDocument()

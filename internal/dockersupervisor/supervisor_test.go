@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/Yangyang96/chora/internal/acceptanceauthority"
@@ -818,55 +819,65 @@ func TestLargeAgentEndClosesStdin(t *testing.T) {
 }
 
 func TestStopAbortsRevokesRemovesAndProvesDeath(t *testing.T) {
-	process := newFakeProcess()
-	runner := &fakeRunner{processes: []*fakeProcess{process}, inspectMissing: true, exitOnRemove: true}
-	supervisor := newTestSupervisor(t, runner)
-	invocation := testInvocation(t, testSource(t), "launch-stop")
-	outcome := supervisor.Start(context.Background(), invocation, &testSink{binding: invocation.LaunchToken()})
+	synctest.Test(t, func(t *testing.T) {
+		process := newFakeProcess()
+		runner := &fakeRunner{processes: []*fakeProcess{process}, inspectMissing: true, exitOnRemove: true}
+		supervisor := newTestSupervisor(t, runner)
+		invocation := testInvocation(t, testSource(t), "launch-stop")
+		outcome := supervisor.Start(context.Background(), invocation, &testSink{binding: invocation.LaunchToken()})
 
-	stopped, err := supervisor.Stop(context.Background(), outcome.Handle, execution.StopIntent{Kind: execution.StopForCancel})
-	if err != nil || stopped.Kind != execution.StopConfirmed {
-		t.Fatalf("Stop() = %#v, %v", stopped, err)
-	}
-	if process.abortCount != 1 {
-		t.Fatalf("abort writes = %d", process.abortCount)
-	}
-	process.mu.Lock()
-	closeCount := process.closeCount
-	process.mu.Unlock()
-	if closeCount != 1 {
-		t.Fatalf("forced stop stdin close count = %d", closeCount)
-	}
-	if process.killCount != 1 {
-		t.Fatalf("forced stop process kill count = %d", process.killCount)
-	}
-	commands := runner.commands()
-	assertCommandOrder(t, commands, []string{"network disconnect", "rm -f", "inspect"})
-	record := supervisor.record(outcome.Handle)
-	if _, err := os.Stat(record.terminal.Paths["patch"]); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("cancelled Attempt derived a Patch: %v", err)
-	}
-	if _, err := os.Stat(record.terminal.Paths["checks"]); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("cancelled Attempt ran declared Checks: %v", err)
-	}
+		stopped, err := supervisor.Stop(context.Background(), outcome.Handle, execution.StopIntent{Kind: execution.StopForCancel})
+		if err != nil || stopped.Kind != execution.StopConfirmed {
+			t.Fatalf("Stop() = %#v, %v", stopped, err)
+		}
+		if process.abortCount != 1 {
+			t.Fatalf("abort writes = %d", process.abortCount)
+		}
+		process.mu.Lock()
+		closeCount := process.closeCount
+		process.mu.Unlock()
+		if closeCount != 1 {
+			t.Fatalf("forced stop stdin close count = %d", closeCount)
+		}
+		if process.killCount != 1 {
+			t.Fatalf("forced stop process kill count = %d", process.killCount)
+		}
+		commands := runner.commands()
+		assertCommandOrder(t, commands, []string{"network disconnect", "rm -f", "inspect"})
+		record := supervisor.record(outcome.Handle)
+		if _, err := os.Stat(record.terminal.Paths["patch"]); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("cancelled Attempt derived a Patch: %v", err)
+		}
+		if _, err := os.Stat(record.terminal.Paths["checks"]); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("cancelled Attempt ran declared Checks: %v", err)
+		}
+	})
 }
 
 func TestStopWaitsForProcessTreeAfterContainerDisappears(t *testing.T) {
-	process := newFakeProcess()
-	process.killDelay = time.Millisecond
-	runner := &fakeRunner{processes: []*fakeProcess{process}, inspectMissing: true}
-	supervisor := newTestSupervisor(t, runner)
-	invocation := testInvocation(t, testSource(t), "launch-delayed-process-death")
-	outcome := supervisor.Start(context.Background(), invocation, &testSink{binding: invocation.LaunchToken()})
+	// Exercise the real deadline with virtual time: host scheduling must not
+	// consume the 5ms budget before the delayed process exit can be observed.
+	synctest.Test(t, func(t *testing.T) {
+		process := newFakeProcess()
+		process.killDelay = time.Millisecond
+		runner := &fakeRunner{processes: []*fakeProcess{process}, inspectMissing: true}
+		supervisor := newTestSupervisor(t, runner)
+		invocation := testInvocation(t, testSource(t), "launch-delayed-process-death")
+		outcome := supervisor.Start(context.Background(), invocation, &testSink{binding: invocation.LaunchToken()})
 
-	stopped, err := supervisor.Stop(context.Background(), outcome.Handle, execution.StopIntent{Kind: execution.StopForCancel})
-	if err != nil || stopped.Kind != execution.StopConfirmed {
-		t.Fatalf("Stop() = %#v, %v", stopped, err)
-	}
-	drained, err := supervisor.Drain(context.Background(), outcome.Handle, execution.StreamOffsets{}, persistedLogBytes)
-	if err != nil || !drained.EOF[execution.StreamStdout] || !drained.EOF[execution.StreamStderr] {
-		t.Fatalf("Drain() after confirmed stop = %#v, %v", drained, err)
-	}
+		started := time.Now()
+		stopped, err := supervisor.Stop(context.Background(), outcome.Handle, execution.StopIntent{Kind: execution.StopForCancel})
+		if err != nil || stopped.Kind != execution.StopConfirmed {
+			t.Fatalf("Stop() = %#v, %v", stopped, err)
+		}
+		if elapsed := time.Since(started); elapsed < supervisor.config.CooperativeWait+process.killDelay || elapsed >= supervisor.config.DeathWait {
+			t.Fatalf("Stop() elapsed = %s, want process exit before death deadline", elapsed)
+		}
+		drained, err := supervisor.Drain(context.Background(), outcome.Handle, execution.StreamOffsets{}, persistedLogBytes)
+		if err != nil || !drained.EOF[execution.StreamStdout] || !drained.EOF[execution.StreamStderr] {
+			t.Fatalf("Drain() after confirmed stop = %#v, %v", drained, err)
+		}
+	})
 }
 
 func TestStopFailsClosedWhenDeathUncertain(t *testing.T) {
@@ -883,18 +894,20 @@ func TestStopFailsClosedWhenDeathUncertain(t *testing.T) {
 }
 
 func TestStopForcesRemovalAfterCallerContextCancellation(t *testing.T) {
-	process := newFakeProcess()
-	runner := &fakeRunner{processes: []*fakeProcess{process}, inspectMissing: true, exitOnRemove: true}
-	supervisor := newTestSupervisor(t, runner)
-	invocation := testInvocation(t, testSource(t), "launch-cancelled-context")
-	outcome := supervisor.Start(context.Background(), invocation, &testSink{binding: invocation.LaunchToken()})
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
+	synctest.Test(t, func(t *testing.T) {
+		process := newFakeProcess()
+		runner := &fakeRunner{processes: []*fakeProcess{process}, inspectMissing: true, exitOnRemove: true}
+		supervisor := newTestSupervisor(t, runner)
+		invocation := testInvocation(t, testSource(t), "launch-cancelled-context")
+		outcome := supervisor.Start(context.Background(), invocation, &testSink{binding: invocation.LaunchToken()})
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
 
-	stopped, err := supervisor.Stop(ctx, outcome.Handle, execution.StopIntent{Kind: execution.StopForCancel})
-	if err != nil || stopped.Kind != execution.StopConfirmed || !commandsContain(runner.commands(), "rm -f") {
-		t.Fatalf("Stop() = %#v, %v; commands=%#v", stopped, err, runner.commands())
-	}
+		stopped, err := supervisor.Stop(ctx, outcome.Handle, execution.StopIntent{Kind: execution.StopForCancel})
+		if err != nil || stopped.Kind != execution.StopConfirmed || !commandsContain(runner.commands(), "rm -f") {
+			t.Fatalf("Stop() = %#v, %v; commands=%#v", stopped, err, runner.commands())
+		}
+	})
 }
 
 func TestAttemptTimeoutForcesRemoval(t *testing.T) {
