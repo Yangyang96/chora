@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 
 	"github.com/Yangyang96/chora/internal/execution"
 )
@@ -280,24 +281,26 @@ func TestFinalizeInventoriesDeclaredCheckResourcesAndProvesRuntimeRootAbsent(t *
 }
 
 func TestStopConfirmedProvesNoAttemptDockerResourcesOrRuntimeRoot(t *testing.T) {
-	process := newFakeProcess()
-	runner := &fakeRunner{processes: []*fakeProcess{process}, inspectMissing: true, exitOnRemove: true}
-	supervisor := newTestSupervisor(t, runner)
-	invocation := testInvocation(t, testSource(t), "launch-cancel-zero-residue")
-	outcome := supervisor.Start(context.Background(), invocation, &testSink{binding: invocation.LaunchToken()})
-	record := supervisor.record(outcome.Handle)
-	stopped, err := supervisor.Stop(context.Background(), outcome.Handle, execution.StopIntent{Kind: execution.StopForCancel})
-	if err != nil || stopped.Kind != execution.StopConfirmed {
-		t.Fatalf("Stop() = %#v, %v", stopped, err)
-	}
-	if _, err := os.Stat(record.root); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("confirmed Stop retained runtime root: %v", err)
-	}
-	commands := runner.commands()
-	if !commandsContain(commands, "label=chora.attempt_id=launch-cancel-zero-residue") ||
-		!commandsContain(commands, record.container+"-check-[0-9]+") {
-		t.Fatalf("confirmed Stop omitted zero-residue proof: %#v", commands)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		process := newFakeProcess()
+		runner := &fakeRunner{processes: []*fakeProcess{process}, inspectMissing: true, exitOnRemove: true}
+		supervisor := newTestSupervisor(t, runner)
+		invocation := testInvocation(t, testSource(t), "launch-cancel-zero-residue")
+		outcome := supervisor.Start(context.Background(), invocation, &testSink{binding: invocation.LaunchToken()})
+		record := supervisor.record(outcome.Handle)
+		stopped, err := supervisor.Stop(context.Background(), outcome.Handle, execution.StopIntent{Kind: execution.StopForCancel})
+		if err != nil || stopped.Kind != execution.StopConfirmed {
+			t.Fatalf("Stop() = %#v, %v", stopped, err)
+		}
+		if _, err := os.Stat(record.root); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("confirmed Stop retained runtime root: %v", err)
+		}
+		commands := runner.commands()
+		if !commandsContain(commands, "label=chora.attempt_id=launch-cancel-zero-residue") ||
+			!commandsContain(commands, record.container+"-check-[0-9]+") {
+			t.Fatalf("confirmed Stop omitted zero-residue proof: %#v", commands)
+		}
+	})
 }
 
 func TestCleanupPreservesExactNameCollisionWithMismatchedOwnership(t *testing.T) {
