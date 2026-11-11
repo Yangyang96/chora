@@ -391,7 +391,17 @@ CLI's experimental `skip_host_skill_discovery` feature. Project/ancestor
 `.codex` and `.agents` directories, system config/requirements and extra native
 config profiles are rejected. A private empty home and explicit minimal child
 and shell environments prevent ambient control-plane credentials and user shell
-startup files from being inherited. The selected native authentication scope is
+startup files from being inherited. `Config.NetworkEnvironment` accepts explicitly
+selected HTTP/HTTPS/ALL/NO proxy variables (upper/lower case), `SSL_CERT_FILE` and
+`NODE_EXTRA_CA_CERTS`. Chora snapshots these values, includes them in the binding,
+and revalidates selected certificate bytes before launch. It does not discover or
+change system proxies. Conflicting upper/lowercase values, credential-bearing
+proxy URLs, endpoint overrides, TLS-disable switches, certificate directories and
+other environment keys fail closed. Proxy credentials are not supported in v1.
+Without explicit proxy values, native system-proxy behavior is unchanged.
+Workspace/ancestor and authentication-home `.env` files are rejected so native
+dotenv loading cannot silently change routing or credentials. The selected native
+authentication scope is
 still accessible to the trusted process: this remains **Local Connected, No
 Sandbox**, with no adversarial host-read or escaped-process containment claim.
 The experimental resource-discovery switch requires further real successful-task
@@ -409,7 +419,10 @@ observations cannot be manufactured into passing evidence.
 JSONL projection persists bounded final messages, opaque thread provenance and
 sanitized lifecycle/tool identifiers. It discards reasoning, raw tool output and
 native diagnostics. Completion requires an ordered session/turn/final/settlement
-sequence plus trusted successful exit. Duplicate/reordered terminal or final
+sequence plus trusted successful exit. Usage accepts the required input/cache-read/
+output counters and optional cache-write/reasoning counters emitted by 0.155.1;
+unknown, negative, null or non-integer counters fail closed. Duplicate/reordered
+terminal or final
 items, truncated/oversized frames, missing final output, model/auth errors and
 nonzero exits fail closed. Cancellation and timeout remain supervisor/application
 owned. Protocol fixtures and persisted application lifecycle tests are synthetic
@@ -424,11 +437,15 @@ CHORA_CODEX_MODEL="$selected_codex_model" \
 go test ./internal/agent/codexexec -run '^TestRealCodexQualification$' -v -count=1
 ```
 
-It uses disposable workspaces and tests a bounded document task plus native
-process-group cancellation, without publishing raw diagnostics or credentials.
-The implementation run observed successful existing-login detection but model
-access rejection; real task success remains **unqualified**. Native cancellation
-passed. A separate synthetic shell fixture proves descendant cleanup and EOF
-behavior. Product enablement and stage acceptance must wait for a successful real
-task and resource-loading qualification with an authorized model. Do not infer
-that the implementation or its fixtures establish those gates.
+The opt-in test uses disposable workspaces for a bounded document task, an
+ignored project-instruction canary, explicit unavailable-model failure and native
+process-group cancellation. To select existing network configuration for the test,
+prefix the supported variable with `CHORA_CODEX_`, for example
+`CHORA_CODEX_HTTPS_PROXY`; the harness does not infer network settings. No raw
+native diagnostics or credentials are printed. A separate synthetic shell fixture
+checks descendant cleanup and EOF behavior. Login detection does not prove model
+access: a model rejection is not by itself a network diagnosis. Native and provider
+comparisons must use the same authentication, model, routing and permissions.
+Successful qualification of one explicit model does not qualify another model or
+all native resource mechanisms. Product enablement and stage acceptance still
+require independent review; this registration does not enable a browser default.

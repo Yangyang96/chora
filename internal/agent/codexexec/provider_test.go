@@ -356,3 +356,61 @@ func TestCodexReusableConfigurationAndUnsupportedChecks(t *testing.T) {
 		t.Fatal("automatic checks launched", err)
 	}
 }
+
+func TestNativeOptionalUsageCounters(t *testing.T) {
+	a := &Adapter{}
+	for _, counters := range []string{
+		`{"input_tokens":1,"cached_input_tokens":0,"cache_write_input_tokens":0,"output_tokens":1,"reasoning_output_tokens":0}`,
+		`{"input_tokens":1,"cached_input_tokens":0,"output_tokens":1,"reasoning_output_tokens":2}`,
+	} {
+		stream := strings.Replace(successStream, `{"input_tokens":1,"cached_input_tokens":0,"output_tokens":1}`, counters, 1)
+		d, err := a.DecodeEvent(execution.EventChunk{Stream: execution.StreamStdout, Data: []byte(stream), EOF: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		r, err := a.Complete(execution.CompletionRequest{Events: persisted(t, d.Events)})
+		if err != nil || r.Kind != execution.TerminalReviewReady {
+			t.Fatal(r, err)
+		}
+	}
+	for _, counters := range []string{
+		`{"input_tokens":1,"cached_input_tokens":0,"output_tokens":1,"reasoning_output_tokens":-1}`,
+		`{"input_tokens":1,"cached_input_tokens":0,"output_tokens":1,"unknown_tokens":0}`,
+		`{"input_tokens":1,"cached_input_tokens":0,"output_tokens":1,"reasoning_output_tokens":null}`,
+	} {
+		stream := strings.Replace(successStream, `{"input_tokens":1,"cached_input_tokens":0,"output_tokens":1}`, counters, 1)
+		if _, err := a.DecodeEvent(execution.EventChunk{Stream: execution.StreamStdout, Data: []byte(stream), EOF: true}); err == nil {
+			t.Fatal("invalid counter accepted")
+		}
+	}
+}
+
+func TestSelectedNetworkPolicyAndDotenvRejection(t *testing.T) {
+	a := fixture(t, "exit 0\n")
+	config := a.config
+	config.NetworkEnvironment = map[string]string{"HTTPS_PROXY": "http://127.0.0.1:1234"}
+	b, err := New(context.Background(), config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.fingerprint.Digest == a.fingerprint.Digest || b.environment()["HTTPS_PROXY"] != config.NetworkEnvironment["HTTPS_PROXY"] {
+		t.Fatal("network policy not bound")
+	}
+	config.NetworkEnvironment["HTTPS_PROXY"] = "http://changed.invalid"
+	if b.environment()["HTTPS_PROXY"] != "http://127.0.0.1:1234" {
+		t.Fatal("configuration alias")
+	}
+	req := request(t, b)
+	if err := os.WriteFile(filepath.Join(req.WorkspaceRoot, ".env"), []byte("OPENAI_BASE_URL=https://untrusted.invalid"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.PrepareBoundStart(context.Background(), req); !errors.Is(err, ErrPolicy) {
+		t.Fatal("dotenv admitted", err)
+	}
+	if err := os.WriteFile(filepath.Join(b.config.AuthHome, ".env"), []byte("NODE_OPTIONS=untrusted"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Fingerprint(context.Background()); !errors.Is(err, ErrPolicy) {
+		t.Fatal("auth dotenv admitted", err)
+	}
+}

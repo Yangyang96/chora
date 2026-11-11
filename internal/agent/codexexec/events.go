@@ -97,12 +97,24 @@ func project(line []byte) (execution.NormalizedEvent, bool, error) {
 		if json.Unmarshal(line, &terminal) != nil || len(terminal) != 2 || terminal["usage"] == nil {
 			return invalid()
 		}
-		var usage map[string]int64
-		if json.Unmarshal(terminal["usage"], &usage) != nil || len(usage) != 3 {
+		var usage map[string]*int64
+		if json.Unmarshal(terminal["usage"], &usage) != nil {
 			return invalid()
 		}
+		// Native 0.155.1 can also report cache writes and reasoning tokens.
+		// These are optional counters, never terminal authority or diagnostics.
+		for key, value := range usage {
+			switch key {
+			case "input_tokens", "cached_input_tokens", "output_tokens", "cache_write_input_tokens", "reasoning_output_tokens":
+				if value == nil || *value < 0 {
+					return invalid()
+				}
+			default:
+				return invalid()
+			}
+		}
 		for _, key := range []string{"input_tokens", "cached_input_tokens", "output_tokens"} {
-			if value, ok := usage[key]; !ok || value < 0 {
+			if value, ok := usage[key]; !ok || value == nil || *value < 0 {
 				return invalid()
 			}
 		}

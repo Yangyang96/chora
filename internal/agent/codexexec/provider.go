@@ -11,11 +11,13 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 
 	"github.com/Yangyang96/chora/internal/codexdiscovery"
 	"github.com/Yangyang96/chora/internal/domain"
 	"github.com/Yangyang96/chora/internal/execution"
+	"github.com/Yangyang96/chora/internal/runtimeenv"
 	"github.com/Yangyang96/chora/internal/speccoding"
 	"github.com/Yangyang96/chora/internal/trustedhost"
 )
@@ -35,11 +37,17 @@ var (
 // Home must be a dedicated empty directory; AuthHome is an explicit existing
 // CODEX_HOME. Model is an explicit selection, not a fabricated model catalog.
 // Model permissions are established only by real execution.
-type Config struct{ Executable, AuthHome, Home, Model string }
+type Config struct {
+	Executable, AuthHome, Home, Model string
+	// NetworkEnvironment is explicitly selected, copied and bound at construction.
+	// Nil preserves native system-proxy behavior; ambient variables are never read.
+	NetworkEnvironment map[string]string
+}
 type Adapter struct {
 	config      Config
 	executable  trustedhost.ExecutableIdentity
 	fingerprint execution.RuntimeFingerprint
+	network     runtimeenv.Network
 }
 
 var _ execution.Provider = (*Adapter)(nil)
@@ -62,7 +70,12 @@ func New(ctx context.Context, config Config) (*Adapter, error) {
 	if err != nil {
 		return nil, ErrInstallation
 	}
-	a := &Adapter{config: config, executable: identity}
+	network, err := runtimeenv.New(config.NetworkEnvironment)
+	if err != nil {
+		return nil, ErrPolicy
+	}
+	config.NetworkEnvironment = nil
+	a := &Adapter{config: config, executable: identity, network: network}
 	version, err := a.probe(ctx, "--version")
 	if err != nil || strings.TrimSpace(version) != QualifiedVersion {
 		return nil, ErrVersion
@@ -103,18 +116,36 @@ func (a *Adapter) Describe() execution.ProviderDescriptor {
 	return execution.ProviderDescriptor{ID: AdapterID, Name: "Codex exec", ProtocolVersion: "codex.exec.jsonl.v1", Environments: []string{domain.TrustedHostExecutionProvider}, TaskKinds: []string{"code", "document", "research"}, Features: []string{"registered_contract", "runtime.agent_loop", "runtime.jsonl_rpc", "runtime.file_edit", "runtime.command_execution", "runtime.progress_events", "runtime.terminal_result", "runtime.cooperative_abort", "runtime.allowlisted_event_projection", "runtime.chora_owned_result", "runtime.zero_implicit_context"}, ResumeMode: execution.ResumeUnsupported, ShutdownMode: "exit_after_input", ApprovalMode: "native_noninteractive", ModelMode: mode, CheckEvidenceMode: "none"}
 }
 func quoted(value string) string { raw, _ := json.Marshal(value); return string(raw) }
+func (a *Adapter) shellEnvironment() string {
+	env := a.network.Values()
+	env["HOME"], env["PATH"] = a.config.Home, "/usr/bin:/bin"
+	keys := make([]string, 0, len(env))
+	for key := range env {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		parts = append(parts, quoted(key)+"="+quoted(env[key]))
+	}
+	return "shell_environment_policy.set={" + strings.Join(parts, ",") + "}"
+}
 func (a *Adapter) arguments() []string {
 	args := []string{"exec", "--json", "--ephemeral", "--ignore-user-config", "--ignore-rules", "--skip-git-repo-check", "--sandbox", "workspace-write", "--color", "never"}
 	if a.config.Model != "" {
 		args = append(args, "--model", a.config.Model)
 	}
-	for _, setting := range []string{`approval_policy="never"`, `project_doc_max_bytes=0`, `features.hooks=false`, `features.plugins=false`, `features.apps=false`, `features.remote_plugin=false`, `features.memories=false`, `features.chronicle=false`, `features.workspace_dependencies=false`, `features.skill_mcp_dependency_install=false`, `features.browser_use=false`, `features.computer_use=false`, `features.image_generation=false`, `features.skip_host_skill_discovery=true`, `features.skill_search=false`, `features.multi_agent=false`, `features.multi_agent_v2=false`, `features.shell_snapshot=false`, `web_search="disabled"`, `shell_environment_policy.inherit="none"`, `shell_environment_policy.set={PATH="/usr/bin:/bin",HOME=` + quoted(a.config.Home) + `}`} {
+	for _, setting := range []string{`approval_policy="never"`, `project_doc_max_bytes=0`, `features.hooks=false`, `features.plugins=false`, `features.apps=false`, `features.remote_plugin=false`, `features.memories=false`, `features.chronicle=false`, `features.workspace_dependencies=false`, `features.skill_mcp_dependency_install=false`, `features.browser_use=false`, `features.computer_use=false`, `features.image_generation=false`, `features.skip_host_skill_discovery=true`, `features.skill_search=false`, `features.multi_agent=false`, `features.multi_agent_v2=false`, `features.shell_snapshot=false`, `web_search="disabled"`, `shell_environment_policy.inherit="none"`, a.shellEnvironment()} {
 		args = append(args, "-c", setting)
 	}
 	return append(args, "-")
 }
 func (a *Adapter) environment() map[string]string {
-	return map[string]string{"HOME": a.config.Home, "CODEX_HOME": a.config.AuthHome, "PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "CHORA_RESULT_PATH": "/output/result.json", "CHORA_PATCH_PATH": "/output/patch.diff", "CHORA_CHECKS_PATH": "/output/checks.json", "CHORA_RUNTIME_IDENTITY_PATH": "/output/runtime-identity.json"}
+	env := map[string]string{"HOME": a.config.Home, "CODEX_HOME": a.config.AuthHome, "PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "CHORA_RESULT_PATH": "/output/result.json", "CHORA_PATCH_PATH": "/output/patch.diff", "CHORA_CHECKS_PATH": "/output/checks.json", "CHORA_RUNTIME_IDENTITY_PATH": "/output/runtime-identity.json"}
+	for k, v := range a.network.Values() {
+		env[k] = v
+	}
+	return env
 }
 func (a *Adapter) probe(ctx context.Context, args ...string) (string, error) {
 	return codexdiscovery.Probe(ctx, a.config.Executable, a.config.Home, a.config.AuthHome, args...)
@@ -129,6 +160,9 @@ func (a *Adapter) Authentication(ctx context.Context) error {
 }
 func absent(path string) bool { _, err := os.Lstat(path); return errors.Is(err, os.ErrNotExist) }
 func (a *Adapter) validatePolicy() error {
+	if a.network.Validate() != nil {
+		return ErrPolicy
+	}
 	if !canonicalDirectory(a.config.AuthHome) || !canonicalDirectory(a.config.Home) {
 		return ErrPolicy
 	}
@@ -138,7 +172,7 @@ func (a *Adapter) validatePolicy() error {
 	}
 	// Fail closed on system requirements/config and extra user config layers.
 	// Never parse these potentially secret-bearing files or execute their hooks.
-	for _, path := range []string{filepath.Join(a.config.Home, ".codex"), filepath.Join(a.config.Home, ".agents"), "/etc/codex/config.toml", "/etc/codex/requirements.toml", filepath.Join(a.config.AuthHome, "managed_config.toml")} {
+	for _, path := range []string{filepath.Join(a.config.AuthHome, ".env"), filepath.Join(a.config.Home, ".env"), filepath.Join(a.config.Home, ".codex"), filepath.Join(a.config.Home, ".agents"), "/etc/codex/config.toml", "/etc/codex/requirements.toml", filepath.Join(a.config.AuthHome, "managed_config.toml")} {
 		if !absent(path) {
 			return ErrPolicy
 		}
@@ -161,7 +195,7 @@ func validateWorkspace(root string) error {
 	// Reject project/ancestor config and native resource directories, including
 	// symlinks. This slice never promises to load or project native resources.
 	for dir := root; ; dir = filepath.Dir(dir) {
-		for _, name := range []string{".codex", ".agents"} {
+		for _, name := range []string{".codex", ".agents", ".env"} {
 			if !absent(filepath.Join(dir, name)) {
 				return ErrPolicy
 			}
@@ -176,10 +210,11 @@ func hash(v any) [32]byte { b, _ := json.Marshal(v); return sha256.Sum256(b) }
 func (a *Adapter) deriveFingerprint(identity trustedhost.ExecutableIdentity) execution.RuntimeFingerprint {
 	source := hash(identity)
 	policy := hash(struct {
-		Args   []string
-		Env    map[string]string
-		Policy string
-	}{a.arguments(), a.environment(), "chora.codex-exec.local.v1:empty-home:reject-project-config:no-native-resources:no-check-evidence"})
+		Args    []string
+		Env     map[string]string
+		Policy  string
+		Network [32]byte
+	}{a.arguments(), a.environment(), "chora.codex-exec.local.v2:empty-home:reject-project-config:no-native-resources:no-check-evidence", a.network.Digest()})
 	return execution.RuntimeFingerprint{Version: QualifiedVersion, SourceIdentity: source, SecurityFingerprint: policy, Digest: hash([][32]byte{source, policy})}
 }
 func (a *Adapter) Fingerprint(ctx context.Context) (execution.RuntimeFingerprint, error) {
