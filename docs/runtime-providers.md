@@ -449,3 +449,69 @@ comparisons must use the same authentication, model, routing and permissions.
 Successful qualification of one explicit model does not qualify another model or
 all native resource mechanisms. Product enablement and stage acceptance still
 require independent review; this registration does not enable a browser default.
+
+## Claude Code print provider (candidate)
+
+`claude-print` is a separate, explicitly registered provider, using the native
+Claude Code `2.1.251` executable and `--print --output-format stream-json`.
+`localweb.NewClaudeRuntimeProvider` composes it with its own trusted-host
+supervisor. It does not change defaults or claim the browser configuration flow
+is complete. The reusable execution-configuration resolver can bind it before a
+task; persistence and configure-once UX remain the later product slice.
+
+Configuration selects an executable, dedicated private home, existing native
+`CLAUDE_CONFIG_DIR` authentication scope, optional model and explicit network
+settings using the same allowlist as Codex. Bounded native version and
+`auth status` probes require an existing first-party Claude login (`claude.ai`).
+API keys, helpers, third-party providers and interactive login are unsupported;
+Chora never reads or copies credentials. Installation/login detection is separate
+from real inference qualification. Changes to executable bytes, frozen policy,
+selected certificate bytes or the bound request fail before launch.
+
+Launch uses safe mode, restricted mode, no setting sources, strict empty MCP
+configuration, disabled skills/Chrome, no session persistence and `dontAsk`
+permissions. The explicit tool set is Read, Glob, Grep, Edit, Write and Bash;
+there is no Agent tool, browser, MCP or fallback model. Explicitly enabling Bash
+in restricted mode permits command execution. This is **Local Connected, No
+Sandbox**: the native process and shell retain the selected user's host access.
+It does not promise adversarial filesystem or escaped-process containment.
+Known managed configuration sources are rejected instead of overridden. Native
+project/ancestor customization paths and dotenv files are rejected before launch.
+Safe mode disables native user customizations; the native init event must report
+the exact tool set, version and permissions and empty MCP/skill/plugin/command
+lists. Model success and all authenticated policy channels still need independent
+qualification; native init alone is not that evidence.
+
+Only bounded assistant text, lifecycle identifiers and tool names are projected.
+Thinking, native diagnostics, tool inputs/outputs and account/path metadata are
+discarded. Completion requires the same session's ordered init, assistant output,
+all started tools settled, a successful native result and trusted exit zero.
+`subtype=success` with `is_error=true` is a failure, including the native
+missing-login response. Permission denials, turn limits, duplicate/reordered or
+cross-session events, truncated frames and unexpected tools/resources fail closed.
+Cancellation and deadlines remain supervisor-owned. Resume, Docker, native
+resource projection, interactive approvals and automatic check evidence are
+unsupported; no missing evidence becomes a passing check.
+
+Run opt-in qualification with explicitly selected existing values:
+
+```sh
+CHORA_CLAUDE_EXECUTABLE="$selected_claude_executable" \
+CHORA_CLAUDE_AUTH_HOME="$selected_existing_claude_config_dir" \
+CHORA_CLAUDE_MODEL="$selected_claude_model" \
+go test ./internal/agent/claudeprint -run '^TestRealClaudeQualification$' -v -count=1
+```
+
+The harness uses disposable workspaces and canaries. Supported network values
+are opt-in via `CHORA_CLAUDE_HTTPS_PROXY` and the analogous allowlisted names.
+When the selected login is unavailable, the bounded-task subtest explicitly
+skips; the test can still verify native missing-auth failure, resource disabling
+and live-process cancellation. A passing overall command with that skip does
+**not** qualify successful inference. Synthetic lifecycle and descendant-cleanup
+tests are separate from real model access. This candidate stays unqualified for
+production enablement until a real task passes using authorized existing login.
+
+Native interfaces: [Claude CLI reference](https://code.claude.com/docs/en/cli-reference)
+and [streaming output](https://code.claude.com/docs/en/agent-sdk/streaming-output).
+The installed version remains the binding authority; later documentation does
+not automatically qualify another version.
