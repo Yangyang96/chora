@@ -66,7 +66,8 @@ func TestCertificateFormats(t *testing.T) {
 	badDER := string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: []byte("not DER")}))
 	badBase64 := "-----BEGIN CERTIFICATE-----\n!bad!\n-----END CERTIFICATE-----\n"
 	truncated := "-----BEGIN CERTIFICATE-----\nYWJj\n"
-	private := "-----BEGIN PRIVATE KEY-----\nbm90IGEga2V5\n-----END PRIVATE KEY-----\n"
+	// Construct the synthetic block at runtime so source publication scans stay meaningful.
+	private := string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: []byte("not a key")}))
 	other := string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: []byte("synthetic")}))
 	cases := []struct {
 		name, data string
