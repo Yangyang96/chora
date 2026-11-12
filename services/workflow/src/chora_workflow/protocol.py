@@ -2,7 +2,7 @@
 
 import hashlib
 import json
-from typing import Annotated, Literal, TypedDict
+from typing import Annotated, Literal, NotRequired, TypedDict
 from uuid import NAMESPACE_URL, uuid5
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -27,6 +27,7 @@ def digest(value) -> str:
 
 
 def operation_id(thread: str, node: str, iteration: int, attempt: int = 0) -> str:
+    # attempt is a logical attempt only, never a delivery/process/owner counter.
     return str(uuid5(NAMESPACE_URL, f"chora:{thread}:{GRAPH_VERSION}:{node}:{iteration}:{attempt}"))
 
 
@@ -74,6 +75,7 @@ class Decision(StrictModel):
 
 
 class State(TypedDict):
+    sample: NotRequired[dict]
     workflow_execution_id: str
     trace_id: str
     graph_version: str

@@ -14,6 +14,8 @@ def main():
         "command", choices=["init-db", "submit", "inspect", "resume", "stop", "events"]
     )
     parser.add_argument("--thread")
+    parser.add_argument("--sample-type", help="Collection purpose; see PROTOCOL.md")
+    parser.add_argument("--code-revision", help="Operator-supplied exact candidate commit SHA")
     parser.add_argument("--question")
     parser.add_argument("--decision-file", help="JSON decision, including gate_id and input_digest")
     args = parser.parse_args()
@@ -28,7 +30,9 @@ def main():
         parser.error("--thread is required")
     # Inspect/stop/events need no model credentials. Identity is only used on execution.
     model = SDKModel() if args.command in {"submit", "resume"} else None
-    worker = Worker(dsn, model, PublicCatalog())
+    worker = Worker(
+        dsn, model, PublicCatalog(), sample_type=args.sample_type, code_revision=args.code_revision
+    )
     if args.command == "submit":
         if not args.question:
             parser.error("--question is required")

@@ -79,6 +79,16 @@ pending writes or add a saver mutation entry. The decision recovery tests cover
 current-owner binding, stale-owner refusal, constraint rollback, command persistence
 before resume, and process death after actual pending writes commit.
 
+Versioned collection metadata adds no saver entry. Reservation metadata is part
+of the operation INSERT, receipt metadata part of its UPDATE, and decision
+metadata part of the decision INSERT, all inside the existing owner-lock/epoch
+transaction. Event metadata uses the fenced checkpoint/pending-write paths.
+`test_observation.py` holds the actual receipt UPDATE in a PostgreSQL trigger,
+observes takeover lock timeout, then verifies committed metadata and stale-owner
+refusal. Constraint failures roll back reservation or receipt and its metadata
+together; failed receipt persistence leaves an unknown operation, never a resend.
+Nullable-column DDL remains an offline `init-db` operation, not a worker path.
+
 ## Locked-source fingerprints
 
 SHA-256 of installed source files (not generated application artifacts):

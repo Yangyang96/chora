@@ -5,6 +5,7 @@ from chora_workflow.protocol import Call, Reply, digest
 
 
 class FixtureModel:
+    observation_mode = "fixture"
     identity = {"adapter": "deterministic-test", "model": "fixture-v1"}
 
     def __init__(self, fail_first=False):
@@ -33,6 +34,7 @@ class FixtureModel:
 
 
 class FixtureCatalog:
+    observation_mode = "fixture"
     identity = {"revision": "synthetic-v1"}
 
     def fetch(self, evidence_id, timeout):

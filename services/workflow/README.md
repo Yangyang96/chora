@@ -81,7 +81,7 @@ uv run --project services/workflow --frozen python -m chora_workflow inspect \
 ```
 
 For an existing M0 database, run `init-db` again with workers stopped to add the
-decision journal. See [upgrade and recovery semantics](PROTOCOL.md) before resuming
+decision journal and nullable collection metadata columns. See [upgrade and recovery semantics](PROTOCOL.md) before resuming
 checkpoints created by an older executable.
 
 At `waiting`, the command exits and closes its connections. Copy the returned
@@ -101,6 +101,30 @@ The first durably recorded review decision wins. Retry the same gate/digest/deci
 after an interrupted delivery; the opposite decision returns an explicit conflict.
 `waiting` is a checkpoint projection and can briefly coexist with a committed
 decision after a crash. Cancellation and budget limits still prevent acceptance.
+
+## Execution observations
+
+New events, operation reservations/receipts and review commands carry versioned
+worker/epoch, time, sample and optional code-reference metadata. They preserve the
+logical workflow/trace/operation identity and cumulative budgets across restart.
+Receipt replay retains its original provenance; old records are never relabeled.
+See [collection schema and upgrade rules](PROTOCOL.md#collection-schema-1).
+
+For an authorized real-model acceptance run, pass `--sample-type real_model_acceptance`
+on both submit and resume. Actual use is `real_usage`;
+`deterministic_injection`, `fixture`, `mock` and `load_test` stay separate. With no
+explicit purpose, live adapters remain `unknown`. `--code-revision` accepts an
+operator-supplied exact commit SHA; omitted references remain null/unknown.
+These options classify records; they do not grant model access or establish
+acceptance. New submissions freeze the sample declaration. Existing historical
+records with missing metadata stay legacy/unknown. Stop all writers for `init-db`;
+mixed versions/downgrades are unsupported.
+
+`test_observation.py` covers fresh-process identities, immutable receipt replay,
+retry links, sample/field refusal, legacy schema fixtures, transactional collection
+failure and an actual PG receipt-write/owner-lock race. Its model and catalog are
+deterministic fixtures, including injected faults, not real-model or two-worker
+scheduler acceptance.
 
 ## Research behavior and limits
 

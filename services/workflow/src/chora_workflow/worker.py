@@ -10,12 +10,16 @@ from langgraph.types import Command
 from .checkpoint import FencedSaver
 from .graph import Research, initial_state, frozen_config
 from .protocol import Decision, Limits
+from .observation import Execution, validate_observation
 from .storage import Journal, connect
 
 
 class Worker:
-    def __init__(self, dsn, model, catalog):
+    def __init__(self, dsn, model, catalog, *, sample_type=None, code_revision=None):
         self.dsn, self.model, self.catalog = dsn, model, catalog
+        self.execution = Execution(
+            model, catalog, sample_type=sample_type, code_revision=code_revision
+        )
 
     def config(self, thread):
         UUID(thread)
@@ -24,8 +28,10 @@ class Worker:
     @contextmanager
     def graph(self, thread):
         epoch = Journal.claim(self.dsn, thread)
+        journal = Journal(self.dsn, thread, epoch, self.execution)
+        journal.validate_sample()
         with connect(self.dsn) as conn:
-            yield Research(self.model, self.catalog, Journal(self.dsn, thread, epoch)).compile(
+            yield Research(self.model, self.catalog, journal).compile(
                 FencedSaver(conn, thread, epoch)
             )
 
@@ -41,7 +47,10 @@ class Worker:
             self.dsn,
             thread,
             submission,
-            initial_state(thread, question, self.model, self.catalog, limits),
+            {
+                **initial_state(thread, question, self.model, self.catalog, limits),
+                "sample": self.execution.sample.model_dump(),
+            },
         )
         with self.graph(thread) as graph:
             snapshot = graph.get_state(config)
@@ -69,8 +78,8 @@ class Worker:
                 raise ValueError("workflow not started")
             # Must precede Command(resume): LangGraph can commit pending resume
             # writes before the review node gets to validate the executable.
-            Research(self.model, self.catalog, None).validate_frozen(snapshot.values)
-            journal = Journal(self.dsn, thread, graph.checkpointer.epoch)
+            journal = Journal(self.dsn, thread, graph.checkpointer.epoch, self.execution)
+            Research(self.model, self.catalog, journal).validate_frozen(snapshot.values)
             parsed = Decision.model_validate(decision) if decision is not None else None
             gate = snapshot.values.get("gate")
             bound = journal.decision(gate["gate_id"]) if gate else None
@@ -120,4 +129,12 @@ class Worker:
         # Persisted intent stops future dispatch. In-flight calls can still finish.
 
     def read_events(self, thread, after=0):
-        return [e for e in self.inspect(thread).values.get("events", []) if e["sequence"] > after]
+        state = self.inspect(thread).values
+        events = []
+        for event in state.get("events", []):
+            for key in ("observation", "receipt_observation"):
+                if key in event and (key == "observation" or event[key] is not None):
+                    validate_observation(event[key], thread, state["trace_id"])
+            if event["sequence"] > after:
+                events.append({"observation": None, **event})
+        return events

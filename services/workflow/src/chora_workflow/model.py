@@ -25,6 +25,8 @@ class ModelFailure(Exception):
 
 
 class SDKModel:
+    observation_mode = "live"
+
     def __init__(self):
         names = ("CHORA_WORKFLOW_BASE_URL", "CHORA_WORKFLOW_MODEL", "CHORA_WORKFLOW_API_KEY")
         missing = [name for name in names if not os.environ.get(name)]

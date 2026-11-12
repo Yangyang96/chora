@@ -10,6 +10,7 @@ from langgraph.types import interrupt
 from pydantic import ValidationError
 
 from .model import ModelFailure
+from .observation import Sample, validate_observation
 from .protocol import (
     Decision,
     GRAPH_VERSION,
@@ -66,36 +67,51 @@ def initial_state(thread, question, model, catalog, limits=None):
     )
 
 
-def event(state, node, kind, **fields):
-    return {
-        "sequence": len(state["events"]) + 1,
-        "trace_id": state["trace_id"],
-        "workflow_execution_id": state["workflow_execution_id"],
-        "node_key": node,
-        "logical_iteration": state["steps"],
-        "kind": kind,
-        **fields,
-    }
-
-
-def fail(state, category, **fields):
-    events = fields.pop("events", state["events"])
-    return {
-        "status": "stopped" if category == "cancelled" else "failed",
-        "error": category,
-        "messages": state["messages"],
-        "evidence": state["evidence"],
-        "events": events
-        + [event({**state, "events": events}, "control", "failed", category=category)],
-        **fields,
-    }
-
-
 class Research:
     def __init__(self, model, catalog, journal):
         self.model, self.catalog, self.journal = model, catalog, journal
 
+    def event(self, state, node, kind, **fields):
+        return {
+            "observation": self.journal.execution.record(
+                state["workflow_execution_id"],
+                state["trace_id"],
+                self.journal.epoch,
+                state,
+                occurred_at=time.time(),
+            ),
+            "sequence": len(state["events"]) + 1,
+            "trace_id": state["trace_id"],
+            "workflow_execution_id": state["workflow_execution_id"],
+            "node_key": node,
+            "logical_iteration": state["steps"],
+            "kind": kind,
+            **fields,
+        }
+
+    def fail(self, state, category, **fields):
+        events = fields.pop("events", state["events"])
+        return {
+            "status": "stopped" if category == "cancelled" else "failed",
+            "error": category,
+            "messages": state["messages"],
+            "evidence": state["evidence"],
+            "events": events
+            + [self.event({**state, "events": events}, "control", "failed", category=category)],
+            **fields,
+        }
+
     def validate_frozen(self, state):
+        if "sample" in state:
+            sample = Sample.model_validate(state["sample"])
+            if self.journal and sample != self.journal.execution.sample:
+                raise ValueError("workflow sample classification changed")
+        for item in state["events"]:
+            for key in ("observation", "receipt_observation"):
+                if key in item and (key == "observation" or item[key] is not None):
+                    validate_observation(
+                        item[key], state["workflow_execution_id"], state["trace_id"]
+                    )
         if (
             state["graph_version"] != GRAPH_VERSION
             or state["state_schema_version"] != STATE_VERSION
@@ -122,9 +138,9 @@ class Research:
             receipt = self.journal.lookup(op, inputs)
             if receipt is None:
                 if reason := self.check(state):
-                    return fail(state, reason)
+                    return self.fail(state, reason)
                 if state["steps"] >= state["limits"]["max_steps"]:
-                    return fail(state, "step_budget")
+                    return self.fail(state, "step_budget")
 
             def call():
                 try:
@@ -141,14 +157,26 @@ class Research:
                     return {"error": "invalid_result"}
 
             if receipt is None:
-                receipt = self.journal.perform(op, inputs, call)
+                receipt = self.journal.perform(op, inputs, call, state=state)
         except Stopped:
-            return fail(state, "cancelled")
+            return self.fail(state, "cancelled")
         except OutcomeUnknown:
-            return fail(state, "outcome_unknown", usage_unknown=True)
+            return self.fail(state, "outcome_unknown", usage_unknown=True)
         step = state["steps"] + 1
         events = state["events"] + [
-            event(state, "model", "model_receipt", operation_id=op, receipt=receipt)
+            self.event(
+                state,
+                "model",
+                "model_receipt",
+                operation_id=op,
+                receipt_observation=self.journal.receipt_observation(op),
+                input_digest=digest(inputs),
+                logical_attempt=0,
+                retry_of_operation_id=(
+                    state["events"][-1].get("operation_id") if state["status"] == "retry" else None
+                ),
+                receipt=receipt,
+            )
         ]
         if "error" in receipt:
             error = receipt["error"]
@@ -160,7 +188,7 @@ class Research:
                     "status": "retry",
                     "calls": [],
                 }
-            return fail(
+            return self.fail(
                 state,
                 error,
                 steps=step,
@@ -176,9 +204,9 @@ class Research:
             "events": events,
         }
         if usage is None:
-            return fail(state, "usage_unknown", **updates)
+            return self.fail(state, "usage_unknown", **updates)
         if not reply.calls:
-            return fail(state, "invalid_result", **updates)
+            return self.fail(state, "invalid_result", **updates)
         calls = [c.model_dump() for c in reply.calls]
         return {
             **updates,
@@ -205,16 +233,16 @@ class Research:
         # Validate the whole batch before dispatching the first call.
         calls = state["calls"]
         if len({c["id"] for c in calls}) != len(calls):
-            return fail(state, "duplicate_tool_call")
+            return self.fail(state, "duplicate_tool_call")
         try:
             for call in calls:
                 if call["name"] not in SCHEMAS:
-                    return fail(state, "unknown_tool")
+                    return self.fail(state, "unknown_tool")
                 SCHEMAS[call["name"]].model_validate(call["arguments"])
                 if call["name"] == "submit_report" and len(calls) != 1:
-                    return fail(state, "report_must_be_alone")
+                    return self.fail(state, "report_must_be_alone")
         except ValidationError:
-            return fail(state, "invalid_arguments")
+            return self.fail(state, "invalid_arguments")
         messages, evidence, events = (
             list(state["messages"]),
             dict(state["evidence"]),
@@ -227,15 +255,15 @@ class Research:
                 name, args = call["name"], call["arguments"]
                 if name == "submit_report":
                     if reason := self.check(state):
-                        return fail(partial, reason)
+                        return self.fail(partial, reason)
                     if not any(e.get("tool") == "query_public" for e in events):
-                        return fail(state, "missing_query")
+                        return self.fail(state, "missing_query")
                     if (
                         any(c not in evidence for c in args["citations"])
                         or (not args["no_answer"] and not args["citations"])
                         or (args["no_answer"] and args["citations"])
                     ):
-                        return fail(state, "invalid_citations")
+                        return self.fail(state, "invalid_citations")
                     report = SCHEMAS[name].model_validate(args).model_dump()
                     gate = {
                         "gate_id": operation_id(state["workflow_execution_id"], "review", 0),
@@ -245,14 +273,15 @@ class Research:
                         "report": report,
                         "gate": gate,
                         "status": "waiting",
-                        "events": events + [event({**state, "events": events}, "tools", "report")],
+                        "events": events
+                        + [self.event({**state, "events": events}, "tools", "report")],
                     }
                 op = operation_id(state["workflow_execution_id"], f"tool:{index}", state["steps"])
                 inputs = {"tool": name, "args": args, "corpus": state["frozen"]["corpus"]}
                 receipt = self.journal.lookup(op, inputs)
                 if receipt is None:
                     if reason := self.check(state):
-                        return fail(partial, reason)
+                        return self.fail(partial, reason)
 
                 def execute():
                     try:
@@ -273,32 +302,35 @@ class Research:
                         return {"error": "invalid_tool_result"}
 
                 if receipt is None:
-                    receipt = self.journal.perform(op, inputs, execute)
+                    receipt = self.journal.perform(op, inputs, execute, state=state)
                 if "error" in receipt:
-                    return fail(partial, receipt["error"])
+                    return self.fail(partial, receipt["error"])
                 result = validate_result(name, receipt["result"])
                 if name == "read_evidence":
                     if result["evidence_id"] != args["evidence_id"]:
-                        return fail(partial, "invalid_tool_result")
+                        return self.fail(partial, "invalid_tool_result")
                     evidence[result["evidence_id"]] = result
                 messages.append(
                     {"role": "tool", "tool_call_id": call["id"], "content": json.dumps(result)}
                 )
                 events.append(
-                    event(
+                    self.event(
                         {**state, "events": events},
                         "tools",
                         "tool_receipt",
                         operation_id=op,
+                        receipt_observation=self.journal.receipt_observation(op),
                         tool=name,
-                        input_digest=digest(args),
+                        input_digest=digest(inputs),
+                        arguments_digest=digest(args),
+                        logical_attempt=0,
                         result_digest=digest(result),
                     )
                 )
             except Stopped:
-                return fail(partial, "cancelled")
+                return self.fail(partial, "cancelled")
             except OutcomeUnknown:
-                return fail(partial, "tool_outcome_unknown")
+                return self.fail(partial, "tool_outcome_unknown")
         return {"messages": messages, "evidence": evidence, "events": events, "status": "running"}
 
     def review_node(self, state):
@@ -314,13 +346,13 @@ class Research:
         command = self.journal.verify_decision(decision.model_dump())
         try:
             if reason := self.check(state):
-                return fail(state, reason)
+                return self.fail(state, reason)
         except Stopped:
-            return fail(state, "cancelled")
+            return self.fail(state, "cancelled")
         return {
             "status": "accepted" if decision.decision == "accept" else "rejected",
             "events": state["events"]
-            + [event(state, "review", decision.decision, command_id=command["command_id"])],
+            + [self.event(state, "review", decision.decision, command_id=command["command_id"])],
         }
 
     def compile(self, saver):

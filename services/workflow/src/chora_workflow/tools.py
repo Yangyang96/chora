@@ -27,6 +27,8 @@ TOOL_SCHEMAS = [
 
 
 class PublicCatalog:
+    observation_mode = "live"
+
     identity = {"revision": PUBLIC_REVISION, "catalog_digest": digest(CATALOG)}
 
     def fetch(self, evidence_id, timeout):
