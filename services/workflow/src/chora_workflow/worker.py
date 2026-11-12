@@ -67,28 +67,44 @@ class Worker:
             snapshot = graph.get_state(config)
             if not snapshot.values:
                 raise ValueError("workflow not started")
-            if snapshot.values["frozen"] != frozen_config(self.model, self.catalog):
-                raise ValueError("frozen workflow configuration changed")
-            if not snapshot.next:
-                if decision:
-                    parsed = Decision.model_validate(decision)
-                    gate = snapshot.values.get("gate")
-                    expected = "accepted" if parsed.decision == "accept" else "rejected"
-                    if (
-                        not gate
-                        or parsed.gate_id != gate["gate_id"]
-                        or parsed.input_digest != gate["input_digest"]
-                        or snapshot.values["status"] != expected
-                    ):
-                        raise ValueError("conflicting or stale decision")
-                return snapshot
-            if snapshot.interrupts:
-                parsed = Decision.model_validate(decision)
+            # Must precede Command(resume): LangGraph can commit pending resume
+            # writes before the review node gets to validate the executable.
+            Research(self.model, self.catalog, None).validate_frozen(snapshot.values)
+            journal = Journal(self.dsn, thread, graph.checkpointer.epoch)
+            parsed = Decision.model_validate(decision) if decision is not None else None
+            gate = snapshot.values.get("gate")
+            bound = journal.decision(gate["gate_id"]) if gate else None
+            saved = graph.checkpointer.get_tuple(config)
+            if not bound and any(
+                channel == "__resume__" for _, channel, _ in saved.pending_writes or []
+            ):
+                # Old, unjournaled decisions cannot safely be attributed to this
+                # request. Preserve evidence for operator reconciliation.
+                raise ValueError("conflicting unbound pending resume; reconciliation required")
+            if parsed:
                 if (
-                    parsed.gate_id != snapshot.values["gate"]["gate_id"]
-                    or parsed.input_digest != snapshot.values["gate"]["input_digest"]
+                    not gate
+                    or parsed.gate_id != gate["gate_id"]
+                    or parsed.input_digest != gate["input_digest"]
                 ):
                     raise ValueError("stale review decision")
+                if bound:
+                    journal.verify_decision(parsed.model_dump())
+            if not snapshot.next:
+                if parsed and not bound:
+                    expected = "accepted" if parsed.decision == "accept" else "rejected"
+                    if snapshot.values["status"] != expected:
+                        raise ValueError("conflicting or stale decision")
+                if saved.pending_writes:
+                    # get_state projects pending node outputs, which are not yet
+                    # a terminal checkpoint. Drain them without another decision.
+                    graph.invoke(None, config, durability="sync")
+                    return graph.get_state(config)
+                return snapshot
+            if snapshot.interrupts:
+                if parsed is None:
+                    raise ValueError("review decision required")
+                journal.bind_decision(parsed.model_dump(), snapshot.interrupts[0].id)
                 # Bind to the persisted interrupt ID, not a positional anonymous resume.
                 command = Command(resume={snapshot.interrupts[0].id: parsed.model_dump()})
             else:

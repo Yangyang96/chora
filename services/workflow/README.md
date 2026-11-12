@@ -31,6 +31,11 @@ a skipped suite is not persistence acceptance. `test_process_restart...` starts
 and exits independent Python processes, then resumes the same thread.
 `test_receipt_replay...` exits a process after its model receipt is durable but
 before the node returns, and proves that recovery uses the receipt.
+`test_decision_recovery.py` kills processes after the decision journal commits and
+after the real pending resume write commits, and before the terminal checkpoint
+after node output commits. It checks accept/reject conflicts in
+both directions, same-decision retries, version refusal, database failures and
+controls that remain effective during recovery.
 
 No Docker daemon is required when local PostgreSQL binaries are available.
 For an isolated cluster, substitute external paths and an unused port:
@@ -75,6 +80,10 @@ uv run --project services/workflow --frozen python -m chora_workflow inspect \
   --thread 00000000-0000-4000-8000-000000000001
 ```
 
+For an existing M0 database, run `init-db` again with workers stopped to add the
+decision journal. See [upgrade and recovery semantics](PROTOCOL.md) before resuming
+checkpoints created by an older executable.
+
 At `waiting`, the command exits and closes its connections. Copy the returned
 `gate_id` and `input_digest` into an external JSON file with `decision: "accept"`
 or `"reject"`. A fresh process can resume it:
@@ -88,6 +97,10 @@ uv run --project services/workflow --frozen python -m chora_workflow resume \
 `events` and `stop` require the database but no model credentials. CLI JSON includes
 public evidence, reports and model calls: keep captured output outside the source
 tree. Raw CLI failures are local diagnostics, not a public HTTP error contract.
+The first durably recorded review decision wins. Retry the same gate/digest/decision
+after an interrupted delivery; the opposite decision returns an explicit conflict.
+`waiting` is a checkpoint projection and can briefly coexist with a committed
+decision after a crash. Cancellation and budget limits still prevent acceptance.
 
 ## Research behavior and limits
 

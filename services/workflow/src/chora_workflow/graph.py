@@ -302,13 +302,16 @@ class Research:
         return {"messages": messages, "evidence": evidence, "events": events, "status": "running"}
 
     def review_node(self, state):
-        # No I/O before interrupt except validation. Re-execution must be safe.
+        self.validate_frozen(state)
         decision = Decision.model_validate(interrupt({**state["gate"], "report": state["report"]}))
         if (
             decision.gate_id != state["gate"]["gate_id"]
             or decision.input_digest != state["gate"]["input_digest"]
         ):
             raise ValueError("stale review decision")
+        # Cached pending writes must agree with the durable command, not merely
+        # with the gate/digest. Never let an old accept consume a new reject.
+        command = self.journal.verify_decision(decision.model_dump())
         try:
             if reason := self.check(state):
                 return fail(state, reason)
@@ -316,7 +319,8 @@ class Research:
             return fail(state, "cancelled")
         return {
             "status": "accepted" if decision.decision == "accept" else "rejected",
-            "events": state["events"] + [event(state, "review", decision.decision)],
+            "events": state["events"]
+            + [event(state, "review", decision.decision, command_id=command["command_id"])],
         }
 
     def compile(self, saver):

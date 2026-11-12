@@ -24,6 +24,12 @@ CREATE TABLE IF NOT EXISTS workflow_operations (
     receipt jsonb,
     PRIMARY KEY (thread_id, operation_id)
 );
+CREATE TABLE IF NOT EXISTS workflow_decisions (
+    thread_id text NOT NULL REFERENCES workflow_owners(thread_id),
+    gate_id text NOT NULL,
+    command jsonb NOT NULL,
+    PRIMARY KEY (thread_id, gate_id)
+);
 """
 
 
@@ -92,6 +98,39 @@ class Journal:
                 "SELECT stopped FROM workflow_owners WHERE thread_id=%s", (self.thread,)
             ).fetchone()["stopped"]:
                 raise Stopped("stop requested")
+
+    def decision(self, gate_id):
+        with self.transaction() as conn:
+            row = conn.execute(
+                "SELECT command FROM workflow_decisions WHERE thread_id=%s AND gate_id=%s",
+                (self.thread, gate_id),
+            ).fetchone()
+            return row["command"] if row else None
+
+    def bind_decision(self, decision, interrupt_id):
+        """First committed command wins, even if no resume/checkpoint follows it."""
+        binding = {"thread_id": self.thread, "interrupt_id": interrupt_id, **decision}
+        command = {**binding, "command_id": digest(binding)}
+        with self.transaction() as conn:
+            row = conn.execute(
+                "SELECT command FROM workflow_decisions WHERE thread_id=%s AND gate_id=%s",
+                (self.thread, decision["gate_id"]),
+            ).fetchone()
+            if row:
+                if row["command"] != command:
+                    raise ValueError("conflicting or stale decision")
+                return row["command"]
+            conn.execute(
+                "INSERT INTO workflow_decisions VALUES (%s,%s,%s)",
+                (self.thread, decision["gate_id"], Jsonb(command)),
+            )
+        return command
+
+    def verify_decision(self, decision):
+        command = self.decision(decision["gate_id"])
+        if command is None or any(command[key] != value for key, value in decision.items()):
+            raise ValueError("conflicting or unbound review decision")
+        return command
 
     def lookup(self, op, inputs):
         """Recover an existing receipt even after stop/deadline, without dispatch."""

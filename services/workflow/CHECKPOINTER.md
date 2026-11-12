@@ -72,6 +72,13 @@ M0 still runs one advancing worker per workflow. Full M6 leases, automatic
 scheduling, fencing of external effects and dual-worker end-to-end recovery are
 not implemented or certified by these tests.
 
+The separate review-command journal also locks the workflow owner row and checks
+the current epoch in the insertion/comparison transaction. Its first committed
+decision cannot be replaced by a conflicting delivery. It does not modify upstream
+pending writes or add a saver mutation entry. The decision recovery tests cover
+current-owner binding, stale-owner refusal, constraint rollback, command persistence
+before resume, and process death after actual pending writes commit.
+
 ## Locked-source fingerprints
 
 SHA-256 of installed source files (not generated application artifacts):
