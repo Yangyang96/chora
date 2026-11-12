@@ -17,10 +17,13 @@ export UV_PROJECT_ENVIRONMENT="${TMPDIR:-/tmp}/chora-workflow-venv"
 export PYTHONDONTWRITEBYTECODE=1
 uv sync --project services/workflow --frozen --python 3.12
 export CHORA_WORKFLOW_TEST_DSN='postgresql://localhost/chora_workflow_test'
-uv run --project services/workflow --frozen pytest -q -p no:cacheprovider
+uv run --project services/workflow --frozen pytest -c services/workflow/pyproject.toml services/workflow/tests -q -p no:cacheprovider
 uv run --project services/workflow --frozen ruff check --no-cache services/workflow
 uv run --project services/workflow --frozen ruff format --check --no-cache services/workflow
 ```
+
+The explicit pytest config and test path scope collection to this service:
+`uv --project` selects the environment but does not change the working directory.
 
 The test database must already exist and be disposable. Tests create and drop
 only their own random schemas. Without `CHORA_WORKFLOW_TEST_DSN`, PG tests skip;
