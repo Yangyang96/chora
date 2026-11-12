@@ -160,14 +160,17 @@ identity does not change the sample. Inspect/ReadEvents need no deployment label
 Neither sample labels nor metadata grant authority, change a receipt's dedup key,
 reset budget, bypass frozen-version checks, or authorize Go actions.
 
-Stop all writers and run `init-db` before upgrading: it adds the three nullable
-JSONB columns without backfilling history. Legacy events lacking `observation`
+Stop all writers and run `init-db` offline before upgrading. It adds the three
+nullable JSONB columns without backfilling history. Legacy events lacking `observation`
 are returned by ReadEvents with null; stored events remain untouched. Legacy
 journal columns are null. An absent initial sample is legacy/unknown, not evidence
 of real use; new events can describe the current adapter context without certifying
 old history. A present but partial observation is malformed, not legacy. Mixed
-old/new writers and downgrade are unsupported (old positional INSERT statements
-cannot write the expanded tables). The old unjournaled-resume refusal still applies.
+old/new writers and downgrade are unsupported. The nullable columns allow old
+writers to continue writing rows with null metadata. Operators must control
+deployed executable versions before restarting writers. Null metadata remains
+legacy/unknown and cannot certify real execution. The old unjournaled-resume
+refusal still applies.
 
 All new journal metadata is committed in the same owner-lock/epoch-check
 transaction as its reservation, receipt or decision; event metadata goes through
