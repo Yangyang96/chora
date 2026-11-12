@@ -1,0 +1,41 @@
+name: Workflow Python
+
+on:
+  push:
+    branches: [main]
+    paths: ['services/workflow/**', '.github/workflows/workflow-python.yml']
+  pull_request:
+    paths: ['services/workflow/**', '.github/workflows/workflow-python.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17.11
+        env:
+          POSTGRES_USER: workflow
+          POSTGRES_PASSWORD: local-test-only
+          POSTGRES_DB: workflow_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd 'pg_isready -U workflow -d workflow_test'
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      CHORA_WORKFLOW_TEST_DSN: postgresql://workflow:local-test-only@localhost:5432/workflow_test
+      UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/workflow-venv
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: python -m pip install uv==0.13.7
+      - run: uv sync --project services/workflow --frozen
+      - run: uv run --project services/workflow --frozen ruff check --no-cache services/workflow
+      - run: uv run --project services/workflow --frozen ruff format --check --no-cache services/workflow
+      - run: uv run --project services/workflow --frozen pytest -q -p no:cacheprovider
