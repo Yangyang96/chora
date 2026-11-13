@@ -119,8 +119,12 @@ argument, executable restrictions and provider assumptions. Unsupported inputs a
 reservations exceeding remaining tokens refuse before sending. Actual usage above
 the bound is retained and halts the batch for reconciliation. The policy, source
 identities, schema digest and coefficients are frozen in the workflow's model
-identity. Old policies/workflows refuse without rewriting their ledger or state;
-there is no automatic migration or renewed authorization.
+identity. Old policies require [explicit audited continuation](CONTINUATION.md) to adopt
+v2 in the same cumulative batch. That operation retains the original policy,
+window, stops and request history and binds a fresh linked workflow. Explicit
+approval and completed independent checks precede registration. The first durable
+continuation reservation starts its single 1200-second window. Old workflows
+retain their frozen identity and refuse execution through the new adapter.
 
 Failed requests consume a request slot. Missing or inconsistent usage remains
 null and halts the batch. A request left pending after a crash blocks further

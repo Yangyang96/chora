@@ -41,6 +41,7 @@ class SDKModel:
         endpoint = urlsplit(os.environ[names[0]])
         self.deepseek = endpoint.hostname == "api.deepseek.com"
         self.batch = None
+        self.batch_context = {}
         if self.deepseek:
             if (
                 endpoint.scheme != "https"
@@ -77,6 +78,11 @@ class SDKModel:
             base_url=os.environ[names[0]], api_key=os.environ[names[2]], max_retries=0
         )
 
+    def bind_workflow(self, thread, code_revision):
+        if self.batch:
+            self.batch.validate_workflow(thread, code_revision)
+            self.batch_context = {"workflow_id": thread, "code_revision": code_revision}
+
     def invoke(self, messages, tools, timeout, max_tokens):
         options = {
             "model": self.model,
@@ -90,7 +96,7 @@ class SDKModel:
                 max_tokens=min(2048, max_tokens), thinking={"type": "disabled"}, stream=False
             )
             try:
-                reservation = self.batch.reserve(options)
+                reservation = self.batch.reserve(options, **self.batch_context)
             except BatchRefused as exc:
                 raise ModelFailure(
                     exc.category, usage_unknown=exc.category in {"outcome_unknown", "usage_unknown"}

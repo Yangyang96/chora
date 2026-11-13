@@ -91,16 +91,16 @@ The batch policy freezes the encoder revision/hashes, schema digest, formula
 version and each coefficient alongside the existing caps. The SDK identity
 includes the batch ID and entire policy; workflow preflight compares that frozen
 identity before dispatch, decision journaling or graph progression. Old batch
-policies refuse to open. Old SDK workflow identities also refuse to resume.
-No automatic migration, ledger rewrite, allowance reset or new time window is
-provided. Inspect historical ledgers with their matching executable or read-only
-SQLite tooling; retain external operator stop records as well as database fields.
+policies require the explicit audited compatibility operation described in
+[acceptance continuation](CONTINUATION.md). Old SDK workflow identities refuse
+to resume. The compatibility operation preserves the original policy and every
+request in an audit snapshot, adopts v2 for a linked fresh workflow in the same
+cumulative batch and requires explicit approval and independent check references.
 
-An expired or externally stopped batch remains unauthorized even when its known
-usage leaves numeric allowance. Offline replay must use separate **fixture**
-ledgers. A future real continuation requires explicit authorization covering the
-expired window and policy compatibility, retention of every historical request,
-usage, pending/unknown outcome and stop record, plus independently reviewed
-migration/reconciliation of both ledger and workflow identity if continuation of
-an old execution is intended. Do not initialize a replacement real batch to work
-around these refusals. A policy update alone grants no authorization.
+An expired or externally stopped batch requires explicit continuation authority
+in addition to numeric allowance. Offline replay uses separate fixture ledgers.
+The one continuation window starts with its first durable reservation, retains
+all historical usage and refusals, and preserves the original expired window.
+Unknown outcomes, pending requests and other stops require reconciliation. The
+input formula and provider assumptions above apply to both fresh v2 batches and
+explicitly continued batches. A policy update grants no additional allowance.

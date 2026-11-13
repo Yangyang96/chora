@@ -5,6 +5,7 @@ import os
 from .model import SDKModel
 from .batch import BatchLedger
 from .storage import initialize
+from .protocol import digest
 from .tools import PublicCatalog
 from .worker import Worker
 
@@ -16,6 +17,7 @@ def main():
         choices=[
             "init-batch",
             "inspect-batch",
+            "register-continuation",
             "init-db",
             "submit",
             "inspect",
@@ -25,21 +27,36 @@ def main():
         ],
     )
     parser.add_argument("--batch-file", help="External shared acceptance ledger")
+    parser.add_argument("--authorization-file", help="Audited continuation authorization JSON")
     parser.add_argument("--thread")
     parser.add_argument("--sample-type", help="Collection purpose; see PROTOCOL.md")
     parser.add_argument("--code-revision", help="Operator-supplied exact candidate commit SHA")
     parser.add_argument("--question")
     parser.add_argument("--decision-file", help="JSON decision, including gate_id and input_digest")
     args = parser.parse_args()
-    if args.command in {"init-batch", "inspect-batch"}:
+    if args.command in {"init-batch", "inspect-batch", "register-continuation"}:
         if not args.batch_file:
             parser.error("--batch-file is required")
-        batch = (
-            BatchLedger.create(args.batch_file)
-            if args.command == "init-batch"
-            else BatchLedger(args.batch_file)
+        if args.command == "init-batch":
+            snapshot = BatchLedger.create(args.batch_file).snapshot()
+        elif args.command == "register-continuation":
+            if not args.authorization_file:
+                parser.error("--authorization-file is required")
+            with open(args.authorization_file) as file:
+                authorization = json.load(file)
+            snapshot = BatchLedger.register_continuation(args.batch_file, authorization)
+        else:
+            snapshot = BatchLedger.inspect(args.batch_file)
+        print(
+            json.dumps(
+                {
+                    **snapshot,
+                    "history_digest": digest(
+                        {"batch": snapshot["batch"], "requests": snapshot["requests"]}
+                    ),
+                }
+            )
         )
-        print(json.dumps(batch.snapshot()))
         return
     dsn = os.environ.get("CHORA_WORKFLOW_DATABASE_URL")
     if not dsn:

@@ -7,6 +7,7 @@ from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.types import Command
 
+from .batch import LEGACY_POLICY
 from .checkpoint import FencedSaver
 from .graph import Research, initial_state, frozen_config
 from .protocol import Decision, Limits
@@ -35,9 +36,47 @@ class Worker:
                 FencedSaver(conn, thread, epoch)
             )
 
+    def bind_model(self, thread):
+        if not getattr(self.model, "batch", None):
+            return
+        self.model.bind_workflow(thread, self.execution.code_revision)
+        continuation = self.model.batch.identity.get("continuation")
+        if not continuation:
+            return
+        previous_thread = continuation["previous_workflow_id"]
+        previous = self.inspect(previous_thread)
+        state = previous.values
+        expected_batch = {
+            "batch_id": self.model.batch.identity["batch_id"],
+            "policy": LEGACY_POLICY,
+        }
+        if (
+            previous.next
+            or state.get("status") != "failed"
+            or state.get("error") != "token_budget"
+            or state.get("usage_unknown", True)
+            or state.get("spent_tokens", 0) >= state.get("limits", {}).get("max_tokens", 0)
+            or state.get("frozen", {}).get("model", {}).get("acceptance_batch") != expected_batch
+        ):
+            raise ValueError("continuation predecessor requires input-admission reconciliation")
+        with connect(self.dsn) as conn:
+            owner = conn.execute(
+                "SELECT stopped FROM workflow_owners WHERE thread_id=%s", (previous_thread,)
+            ).fetchone()
+            pending = conn.execute(
+                "SELECT 1 FROM workflow_operations WHERE thread_id=%s AND receipt IS NULL LIMIT 1",
+                (previous_thread,),
+            ).fetchone()
+            saved = PostgresSaver(
+                conn, serde=JsonPlusSerializer(allowed_msgpack_modules=[])
+            ).get_tuple(self.config(previous_thread))
+            if owner is None or owner["stopped"] or pending or (saved and saved.pending_writes):
+                raise ValueError("continuation predecessor stopped or outcome unknown")
+
     def submit(self, thread, question, limits=None):
         config = self.config(thread)
         limits = limits or Limits()
+        self.bind_model(thread)
         submission = {
             "question": question,
             "limits": limits.model_dump(),
@@ -72,6 +111,7 @@ class Worker:
 
     def resume(self, thread, decision=None):
         config = self.config(thread)
+        self.bind_model(thread)
         with self.graph(thread) as graph:
             snapshot = graph.get_state(config)
             if not snapshot.values:

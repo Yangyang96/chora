@@ -26,3 +26,10 @@ condition = "AND"
 paths = ['''(^|/)e2e/project-document\.spec\.ts$''']
 regexTarget = "line"
 regexes = ['''^\s*const ack = await request\.post\('/api/agent-execution/trusted-local-acknowledgements', \{ headers: \{ 'Idempotency-[K]ey': 'delegation-e2e-ack' \}, data: \{ policyVersion: 'chora\.trusted-local-disclosure\.v1' \} \}\)$''']
+
+[[rules.allowlists]]
+description = "Pinned public DeepSeek tokenizer SHA256"
+condition = "AND"
+paths = ['''(^|/)services/workflow/src/chora_workflow/batch\.py$''']
+regexTarget = "line"
+regexes = ['''^\s*"tokenizer_sha256": "8f9f37ca37fdc4f5fd36d5cf4d3b0e8392edb4e894fd10cc0d70b4957c8633cf",$''']
