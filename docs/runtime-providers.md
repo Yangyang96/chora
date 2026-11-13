@@ -56,7 +56,7 @@ Each registration owns the following operations:
 | Operation | Input → output | Authority / failure rule |
 | --- | --- | --- |
 | Describe | Stable ID → display name, protocol version, supported environments and task kinds, capability descriptor | Description is static; it cannot claim this installation is ready. Unknown IDs fail. |
-| Inspect | Explicit executable/config references + environment → redacted readiness, version, fingerprint, model-selection support | Bounded read-only probes. No install, login, model call, global config mutation or automatic alternative executable. |
+| Inspect | Explicit executable/config references + environment → redacted readiness, version, fingerprint, model-selection support | Bounded metadata probes use disposable directories; native bootstrap writes there are cleaned up. Selected-scope authentication probes require separate policy acceptance. No install, login or model call. |
 | Bind | User selection + current probe + frozen task contract → immutable runtime binding | Validate capability/environment/model compatibility before new Attempt; transactional persistence. Failed binding creates no runnable Attempt. |
 | Prepare | Bound Attempt + snapshot/contract + launch token + owned cwd → `StartPreparation` | Revalidate executable/config identity and produce exact argv/env/stdin. No spawn. Existing `BoundStartPreparer` is the seam. |
 | Decode | `EventChunk` → bounded normalized events + consumed bytes | Deterministic framing; no DB writes, process signals or review authority. Preserve partial frames and consume only complete input. |
@@ -279,15 +279,18 @@ Choose CLI exec for the bounded first slice; reconsider App Server when Chora
 requires steering or human approval round trips. A TypeScript SDK adds a process
 bridge to this Go service without removing its supervisor requirements.
 
-Read-only local inspection on 2026-10-27 found Codex CLI **0.155.1**. `--version`,
+Local interface inspection on 2026-10-27 found Codex CLI **0.155.1**. `--version`,
 `exec --help`, `exec resume --help`, `login --help` and `login status` succeeded;
 status reported an existing ChatGPT login. Help confirmed `--json`, stdin prompt,
 `--cd`, `--sandbox`, `--output-schema`, `--output-last-message`,
 `--ignore-user-config` and `--ephemeral`. This is an interface baseline, not a
 minimum supported version or a successful model execution. The executable was
 available outside this run's PATH: discovery must distinguish an explicit path
-from missing installation. No credentials were read/copied, login performed,
-model request made or global configuration changed.
+from missing installation. Chora did not read/copy credential contents, perform
+login, request a model or change global configuration. This historical inspection
+did not prove unchanged authentication directories: native metadata bootstrap
+can write helper files before argument parsing. Current metadata isolation and
+selected-scope authentication boundaries are described below.
 
 Candidate launch shape for implementation qualification: resolved executable,
 `exec --json --sandbox workspace-write --cd <owned-root> -`, with frozen prompt on
@@ -391,8 +394,9 @@ Codex uses one `codex.exec.jsonl.v1` implementation, with source-reviewed releas
 anchors and live bounded `--version` / `exec --help` probes. The help probe checks
 the actual required flags, then executable identity is rechecked to reject mixed
 binary observations. Version strings alone cannot grant qualification. Unknown
-versions remain pending even with matching help: they require protocol-semantic
-review and bounded authorized validation. No downgrade or global CLI change is
+versions start pending even with matching help. The host-owned protocol review
+service below can update semantic evidence after bounded validation and signed
+review, independently of native configuration-source safety. No downgrade or global CLI change is
 required by the diagnostic. `codexexec.Inspect` exposes the report in
 `Readiness.Qualification`; refused construction/registration exposes the same
 report through `codexexec.QualificationError` (`errors.As`). Generic
@@ -403,6 +407,8 @@ report through `codexexec.QualificationError` (`errors.As`). Generic
 | 0.155.1 | Same JSONL generation; reviewed upstream source and real no-model version/help probes | Rejected: `managed_policy_unverifiable` | Refused |
 | 0.167.2 | Same JSONL generation; reviewed upstream source and real no-model version/help probes | Rejected: `managed_policy_unverifiable` | Refused |
 | Unreviewed version, matching flags | Pending event/tool/terminal semantic evidence | Pending, not inferred from login or help | Refused |
+| Unknown executable after trusted protocol review | Event/tool/terminal evidence verified for that exact identity and validity window | Still independently rejected: `managed_policy_unverifiable` | Refused |
+| Reviewed shell fixture | Explicitly labelled signed fixture conformance; never native evidence | Cannot authorize a launch, even with a synthetic policy checker | Refused |
 | Required flag absent | Rejected with `missing_flag:<flag>` | Not probed further | Refused |
 
 These are evidence anchors, not a claim that every intermediate or future SemVer
@@ -425,6 +431,85 @@ rewritten. OpenCode and Hermes should use the shared types with their own requir
 capabilities and evidence, without copying Codex's source or policy assumptions.
 Unverified resume, skills and MCP must stay unsupported. Claude's existing
 candidate is retained without expanding its scope.
+
+### Reviewing an unknown Codex protocol
+
+`codexexec.NewProtocolReviews` creates a process-local registry with an explicit
+copy of the embedding host's trusted Ed25519 reviewer public keys. The host and
+its reviewer-key provisioning are the trust boundary. Task/agent configuration,
+HTTP requests, CLI configuration and returned reports cannot provision keys or
+register arbitrary `CapabilityEvidence`. The default `New`/`Inspect` path has no
+review registry. An embedding host retains the registry and passes it to
+`NewReviewed`, `InspectReviewed`, or
+`localweb.NewCodexRuntimeProviderWithProtocolReviews`. These constructors still
+apply the independent configuration-source gate; there is no policy override.
+
+The executable review sequence is:
+
+1. Call `reviews.Validate(ctx, config, fixture, validity)` with a validity greater
+   than zero and at most 24 hours. It uses the same selected-source preflight,
+   disposable version/help probes, exact identity and argument checks as normal
+   construction. It runs a fixed public synthetic corpus through the real adapter
+   decoder/completion path, covering additive metadata, required fields, unknown
+   terminal states, explicit failures and tool pairing. It runs no native task or
+   caller-provided transcript. Shell scripts are always marked as fixtures.
+2. A trusted reviewer checks the exact executable provenance, protocol generation,
+   corpus and immutable public source reference. For a native binary, establishing
+   that its source implements these semantics is the reviewer's responsibility;
+   the replay corpus alone cannot establish native behavior. Sign the 32 bytes
+   returned by `ProtocolReviewMessage(request, reviewerID, sourceReference)` with
+   the reviewer's separately held Ed25519 private key. The source reference and
+   reviewer identity are part of the signed message.
+3. Call `reviews.Register(request, signature)`. Only an outstanding, unexpired,
+   unchanged request from that registry and a trusted signature are accepted.
+   Registration consumes its random nonce exactly once. It updates event/tool/
+   terminal evidence only; it does not establish native configuration safety,
+   authentication, model permission or authenticated cancellation.
+4. Call `InspectReviewed`/`NewReviewed` with the same registry and configuration.
+   An unknown fixture can now report verified protocol evidence, explicitly
+   `signed_fixture_conformance:not_native`, while still refusing
+   `managed_policy_unverifiable`. A real unknown binary without a source review
+   and trusted signature remains pending. No real unknown version is qualified
+   by the fixture demonstration.
+
+Approvals bind executable paths and bytes, observed version, protocol generation,
+configuration, network/CA identity, policy revision and corpus digest. A changed
+identity cannot consume the old approval. The approval digest is also frozen into
+the task fingerprint. Expiration, reviewer revocation or replacement invalidates
+an existing binding at fingerprint/preparation/spawn checks. `RevokeReviewer`
+invalidates that reviewer's approvals. Restarting/recreating the registry loses
+approvals and outstanding challenges: fresh validation/review is required, and
+old signatures cannot be imported into a new registry. Approvals are intentionally
+not persisted or exposed as a browser setting. This trusts the embedding host;
+it does not defend against a malicious host, compromised reviewer key or a
+same-user process replacing the host itself.
+
+An operator can exercise this complete sequence without modifying product
+settings using the review command (all paths below are operator-selected):
+
+```sh
+go run ./cmd/chora-codex-review \
+  -executable "$CODEX_EXECUTABLE" -home "$EMPTY_HOME" -auth-home "$SELECTED_CODEX_HOME" \
+  -reviewer-key "$REVIEWER_PUBLIC_KEY" -reviewer "$REVIEWER_ID" \
+  -source-reference "$IMMUTABLE_PUBLIC_SOURCE_REFERENCE"
+```
+
+The command loads only a PKIX PEM public key, prints a JSON proposal containing
+`Request`, `MessageHex`, `Reviewer`, `SourceReference` and the initial `Before`
+readiness. After reviewing them, sign the decoded `MessageHex` bytes externally
+(for example, Ed25519 `openssl pkeyutl -sign -rawin` with the reviewer's key).
+Supply one stdin JSON object, `{"SignatureHex":"<hex signature>"}`. The same
+process registers and consumes the signed request and prints the resulting
+qualification/refusal. It exits without starting a native task or installing a
+lasting product authorization. Use `-fixture` for synthetic executables; a
+shebang executable is labelled fixture even without that flag. Do not sign a
+fixture as evidence of native behavior or auto-sign proposals before review.
+
+The reproducible no-key/no-model demonstration is
+`go test -race ./cmd/chora-codex-review -run TestReviewCommand -v`; its key is
+created solely for the disposable test session. It demonstrates a 0.168.0 shell
+fixture moving from pending to signed protocol evidence and then independent
+managed-policy refusal, not native 0.168.0 support.
 
 ## Codex implementation candidate (CHOR-12)
 
@@ -464,7 +549,14 @@ or persisted, independently selectable model configuration.
 The candidate uses the protocol/capability qualification described below, an
 explicit existing ChatGPT `CODEX_HOME`, a dedicated empty home, and an optional
 explicit model. Other authentication mechanisms remain unsupported. Chora
-runs only bounded version, exec-help and login-status probes, never reads credential contents,
+runs bounded version and exec-help probes in disposable HOME/CODEX_HOME/cwd
+directories with a controlled environment. Native bootstrap writes in those
+directories are permitted and cleaned up on success, failure, cancellation and
+timeout. A temporary-directory base within either selected scope is rejected
+before allocation. It rejects prohibited selected-scope configuration sources
+before starting metadata. Selected-scope login-status probes can perform native bootstrap
+writes and require configuration-policy acceptance first; public construction
+currently never reaches them. It never reads credential contents,
 never logs in/out and never copies credentials. Native default model selection
 is labelled `native_default`; an explicit configured model is bound into the
 configuration fingerprint, without inventing a model catalog. Independently
