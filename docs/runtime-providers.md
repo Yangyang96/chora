@@ -608,3 +608,91 @@ Native interfaces: [Claude CLI reference](https://code.claude.com/docs/en/cli-re
 and [streaming output](https://code.claude.com/docs/en/agent-sdk/streaming-output).
 The installed version remains the binding authority; later documentation does
 not automatically qualify another version.
+
+## OpenCode run provider (candidate)
+
+`opencode-run` implements the `opencode.run.jsonl.v1` generation behind the
+existing provider registry and `Options.RuntimeProviders` composition.
+`localweb.NewOpenCodeRuntimeProvider` constructs the provider and its bound
+trusted-host supervisor. Public construction currently refuses native execution
+with per-capability diagnostics in `opencoderun.QualificationError` and
+`opencoderun.Inspect`. Configuration, retry control and authentication scope need
+additional native qualification before a binding can be issued.
+
+Configuration explicitly selects the executable, existing native home, optional
+existing XDG directories and a `provider/model` selection. Omitted XDG directories
+use native defaults under that home. The provider uses the shared
+`execution.QualificationCache` and freezes observed version, executable bytes and
+resolved paths, selected scope, model, argv, environment, descriptor and network
+policy. Certificate bytes and live policy are rechecked at preparation and the
+supervisor's spawn gate. Selected network settings use `runtimeenv`'s allowlist.
+Readiness performs only bounded `--version`, `run --help` and `auth list` probes.
+Authentication files remain native-owned. Chora consumes metadata diagnostics
+and discards raw probe output.
+
+OpenCode 1.19.5 is a reviewed source anchor for the current event implementation.
+Other versions retain pending semantic evidence, even when required flags are
+present. A second native version has yet to be verified. Each new executable or
+configuration identity requires fresh qualification, and an existing task keeps
+its frozen identity. Source and fixture observations are identified separately
+from native probes in the capability report.
+
+The current native gaps follow the pinned upstream implementation.
+
+- `--pure` skips external plugins. Global configuration, home resource directories,
+  remote well-known/organization configuration and managed files/preferences still
+  participate in configuration loading. The candidate's project/skill/plugin
+  switches cover only their documented channels. Chora has no qualified effective
+  configuration consumption proof for this launch path. Construction reports
+  `native_configuration_sources_unverifiable`.
+- The session processor independently retries eligible model failures up to five
+  times. Its reviewed implementation exposes no qualified per-run disable
+  interface. Construction reports `native_retry_control_unavailable`.
+- `auth list` supplies human-readable presence/type metadata. Zero credentials
+  produce `authentication_unavailable`. Other output still requires proof of the
+  selected provider's authentication scope and produces
+  `native_authentication_scope_unverifiable`. Login or an empty home cannot grant
+  qualification.
+
+The retained launch candidate uses `run --pure --format json --model`, closes stdin
+after the single prompt and pins exact arguments/environment in the trusted-host
+supervisor. Native permissions retain the user's shell and filesystem access.
+The execution environment is **Local Connected, No Sandbox**. Unsupported resume,
+skills, MCP, native resource projection, Docker, interactive approvals and automatic
+check evidence are rejected through capability admission. Project/ancestor native
+configuration and instruction paths are additionally rejected at preparation and
+spawn. Native resource and retry gaps continue to prevent public launch.
+
+JSON projection retains bounded assistant text and opaque session/message/part
+identifiers. Native `tool_use` frames contain completed/error observations only.
+Chora records those statuses without inventing tool-start frames. Tool arguments,
+output, reasoning, snapshots, paths and raw error details are discarded. Completion
+requires ordered matching step/session/message identifiers, final text, a native
+`step_finish` reason of `stop`, and trusted exit zero. Intermediate `tool-calls`
+steps must contain observed tool results. Repeated/cross-session frames, missing
+results, unsupported tools, unknown terminal authority, malformed/truncated output,
+non-success finish reasons and nonzero exit fail closed. Supervisor cancellation
+and deadlines take precedence over native output.
+
+The opt-in native test verifies the current refusal using explicitly selected
+existing scope. Its model label is diagnostic input and sends no model request.
+
+```sh
+CHORA_OPENCODE_EXECUTABLE="$selected_opencode_executable" \
+CHORA_OPENCODE_HOME="$selected_existing_native_home" \
+CHORA_OPENCODE_MODEL="$selected_provider_model" \
+go test ./internal/agent/opencoderun -run '^TestRealOpenCodeQualificationRefusal$' -v -count=1
+```
+
+Optional `CHORA_OPENCODE_DATA_HOME`, `CHORA_OPENCODE_CONFIG_HOME`,
+`CHORA_OPENCODE_CACHE_HOME` and `CHORA_OPENCODE_STATE_HOME` select existing XDG
+directories for this probe. Deterministic tests cover stream framing, terminal
+pairing, identity drift, stdin EOF and controlled process-group cleanup. Application
+fixtures exercise Run/Attempt persistence and cancellation with synthetic launch
+identity. Real successful execution and authenticated cancellation remain pending
+native qualification and independent acceptance.
+
+Upstream references cover [run JSON projection](https://github.com/anomalyco/opencode/blob/810c0eba1a7348036f8bdf61e6632d0c36c6876c/packages/opencode/src/cli/cmd/run.ts),
+[configuration loading](https://github.com/anomalyco/opencode/blob/810c0eba1a7348036f8bdf61e6632d0c36c6876c/packages/opencode/src/config/config.ts),
+[managed sources](https://github.com/anomalyco/opencode/blob/810c0eba1a7348036f8bdf61e6632d0c36c6876c/packages/opencode/src/config/managed.ts)
+and [session retries](https://github.com/anomalyco/opencode/blob/810c0eba1a7348036f8bdf61e6632d0c36c6876c/packages/opencode/src/session/retry.ts).
