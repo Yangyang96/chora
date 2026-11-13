@@ -5,6 +5,7 @@ package codexdiscovery
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,13 +17,18 @@ import (
 
 var ErrProbe = errors.New("codex_readiness_probe_failed")
 
+// ErrCleanup means the disposable metadata tree could not be fully removed.
+// Cleanup failure invalidates that probe's metadata.
+var ErrCleanup = fmt.Errorf("%w: codex_metadata_cleanup_unverifiable", ErrProbe)
+
 // Probe permits only executable version, exec help and existing login status.
 // Metadata uses a disposable HOME/CODEX_HOME/cwd, never the selected scope.
-// Native bootstrap may write inside that disposable tree; it is removed on every
-// exit. Login status intentionally uses the selected scope and may perform native
-// bootstrap writes there. Callers must accept and preflight that separate boundary.
+// Native bootstrap may write inside that disposable tree; cleanup failure clears
+// the output and returns ErrCleanup. Login status uses the selected scope and
+// may perform native bootstrap writes there. Callers must accept and preflight
+// that separate boundary.
 // No probe installs, logs in/out, or starts a model request.
-func Probe(ctx context.Context, executable, home, authHome string, args ...string) (string, error) {
+func Probe(ctx context.Context, executable, home, authHome string, args ...string) (result string, probeErr error) {
 	help := reflect.DeepEqual(args, []string{"exec", "--help"})
 	if !reflect.DeepEqual(args, []string{"--version"}) && !reflect.DeepEqual(args, []string{"login", "status"}) && !help {
 		return "", ErrProbe
@@ -48,7 +54,14 @@ func Probe(ctx context.Context, executable, home, authHome string, args ...strin
 		if err != nil {
 			return "", ErrProbe
 		}
-		defer os.RemoveAll(root)
+		defer func(root string) {
+			// RemoveAll preserves symlink targets and existing permissions.
+			// Capture the allocated path before canonicalization.
+			if err := os.RemoveAll(root); err != nil {
+				result = ""
+				probeErr = errors.Join(probeErr, ErrCleanup)
+			}
+		}(root)
 		root, err = filepath.EvalSymlinks(root)
 		if err != nil {
 			return "", ErrProbe
@@ -81,7 +94,10 @@ func Probe(ctx context.Context, executable, home, authHome string, args ...strin
 	cmd.Stdout = output
 	cmd.Stderr = output
 	cmd.WaitDelay = time.Second
-	if err := cmd.Run(); err != nil || output.exceeded {
+	if err := cmd.Run(); err != nil {
+		return "", errors.Join(ErrProbe, err, ctx.Err())
+	}
+	if output.exceeded {
 		return "", ErrProbe
 	}
 	return string(output.data), nil

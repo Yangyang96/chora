@@ -56,7 +56,7 @@ Each registration owns the following operations:
 | Operation | Input → output | Authority / failure rule |
 | --- | --- | --- |
 | Describe | Stable ID → display name, protocol version, supported environments and task kinds, capability descriptor | Description is static; it cannot claim this installation is ready. Unknown IDs fail. |
-| Inspect | Explicit executable/config references + environment → redacted readiness, version, fingerprint, model-selection support | Bounded metadata probes use disposable directories; native bootstrap writes there are cleaned up. Selected-scope authentication probes require separate policy acceptance. No install, login or model call. |
+| Inspect | Explicit executable/config references + environment → redacted readiness, version, fingerprint, model-selection support | Bounded metadata probes use disposable directories. Metadata consumption requires completed cleanup; cleanup uncertainty discards the output and fails readiness. Selected-scope authentication probes require separate policy acceptance. No install, login or model call. |
 | Bind | User selection + current probe + frozen task contract → immutable runtime binding | Validate capability/environment/model compatibility before new Attempt; transactional persistence. Failed binding creates no runnable Attempt. |
 | Prepare | Bound Attempt + snapshot/contract + launch token + owned cwd → `StartPreparation` | Revalidate executable/config identity and produce exact argv/env/stdin. No spawn. Existing `BoundStartPreparer` is the seam. |
 | Decode | `EventChunk` → bounded normalized events + consumed bytes | Deterministic framing; no DB writes, process signals or review authority. Preserve partial frames and consume only complete input. |
@@ -551,9 +551,13 @@ explicit existing ChatGPT `CODEX_HOME`, a dedicated empty home, and an optional
 explicit model. Other authentication mechanisms remain unsupported. Chora
 runs bounded version and exec-help probes in disposable HOME/CODEX_HOME/cwd
 directories with a controlled environment. Native bootstrap writes in those
-directories are permitted and cleaned up on success, failure, cancellation and
-timeout. A temporary-directory base within either selected scope is rejected
-before allocation. It rejects prohibited selected-scope configuration sources
+directories are permitted. Every exit attempts cleanup of the allocated root.
+Successful metadata requires completed cleanup. A cleanup failure discards output
+and returns `codex_metadata_cleanup_unverifiable` through construction, readiness
+and protocol review. Execution failures retain their cause alongside cleanup
+uncertainty. Cleanup uses a single `RemoveAll` on the allocated root, preserving
+symlink targets and file permissions. A temporary-directory base within either
+selected scope is rejected before allocation. It rejects prohibited selected-scope configuration sources
 before starting metadata. Selected-scope login-status probes can perform native bootstrap
 writes and require configuration-policy acceptance first; public construction
 currently never reaches them. It never reads credential contents,
