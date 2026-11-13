@@ -72,11 +72,12 @@ func project(line []byte) (execution.NormalizedEvent, bool, error) {
 			Message string `json:"message"`
 		} `json:"error"`
 		Item struct {
-			ID      string `json:"id"`
-			Type    string `json:"type"`
-			Text    string `json:"text"`
-			Status  string `json:"status"`
-			Message string `json:"message"`
+			ID       string `json:"id"`
+			Type     string `json:"type"`
+			Text     string `json:"text"`
+			Status   string `json:"status"`
+			ExitCode *int   `json:"exit_code"`
+			Message  string `json:"message"`
 		} `json:"item"`
 	}
 	if json.Unmarshal(line, &f) != nil || f.Type == "" {
@@ -94,27 +95,31 @@ func project(line []byte) (execution.NormalizedEvent, bool, error) {
 		return event("turn_start", map[string]any{}), true, nil
 	case "turn.completed":
 		var terminal map[string]json.RawMessage
-		if json.Unmarshal(line, &terminal) != nil || len(terminal) != 2 || terminal["usage"] == nil {
+		if json.Unmarshal(line, &terminal) != nil || terminal["usage"] == nil {
 			return invalid()
 		}
-		var usage map[string]*int64
+		for _, critical := range []string{"status", "outcome", "error", "is_error", "stop_reason"} {
+			if _, exists := terminal[critical]; exists {
+				return invalid()
+			}
+		}
+		var usage map[string]json.RawMessage
 		if json.Unmarshal(terminal["usage"], &usage) != nil {
 			return invalid()
 		}
 		// Native 0.155.1 can also report cache writes and reasoning tokens.
 		// These are optional counters, never terminal authority or diagnostics.
-		for key, value := range usage {
+		for key, raw := range usage {
 			switch key {
 			case "input_tokens", "cached_input_tokens", "output_tokens", "cache_write_input_tokens", "reasoning_output_tokens":
-				if value == nil || *value < 0 {
+				var value *int64
+				if json.Unmarshal(raw, &value) != nil || value == nil || *value < 0 {
 					return invalid()
 				}
-			default:
-				return invalid()
 			}
 		}
 		for _, key := range []string{"input_tokens", "cached_input_tokens", "output_tokens"} {
-			if value, ok := usage[key]; !ok || value == nil || *value < 0 {
+			if _, ok := usage[key]; !ok {
 				return invalid()
 			}
 		}
@@ -125,6 +130,9 @@ func project(line []byte) (execution.NormalizedEvent, bool, error) {
 		}
 		return event("runtime_failure", map[string]any{"failure": failureClass(f.Error.Message)}), true, nil
 	case "error":
+		if f.Message == "" {
+			return invalid()
+		}
 		return event("runtime_failure", map[string]any{"failure": failureClass(f.Message)}), true, nil
 	case "item.started", "item.updated", "item.completed":
 		if !identifier(f.Item.ID) || f.Item.Type == "" {
@@ -140,6 +148,18 @@ func project(line []byte) (execution.NormalizedEvent, bool, error) {
 			if f.Item.Type == "mcp_tool_call" {
 				return invalid()
 			} // Not in the launch policy.
+			// Only reviewed lifecycle states can settle a tool. Additive metadata
+			// is ignored, but an unknown/missing status is never success.
+			if f.Type == "item.completed" {
+				if f.Item.Status != "completed" && f.Item.Status != "failed" && !(f.Item.Type == "command_execution" && f.Item.Status == "declined") {
+					return invalid()
+				}
+				if f.Item.Type == "command_execution" && f.Item.Status == "completed" && f.Item.ExitCode == nil {
+					return invalid()
+				}
+			} else if f.Item.Status != "in_progress" || f.Item.ExitCode != nil {
+				return invalid()
+			}
 			kind := "tool_start"
 			if f.Type == "item.completed" {
 				kind = "tool_result"
@@ -147,13 +167,15 @@ func project(line []byte) (execution.NormalizedEvent, bool, error) {
 			if f.Type == "item.updated" {
 				return execution.NormalizedEvent{}, false, nil
 			}
-			return event(kind, map[string]any{"call_id": f.Item.ID, "tool": f.Item.Type}), true, nil
+			return event(kind, map[string]any{"call_id": f.Item.ID, "tool": f.Item.Type, "status": f.Item.Status}), true, nil
 		}
-		// Warnings (item.error), reasoning and unknown informational items are not
-		// terminal protocol outcomes and never become persisted diagnostics.
-		return execution.NormalizedEvent{}, false, nil
+		// These reviewed informational items have no execution authority.
+		if f.Item.Type == "reasoning" || f.Item.Type == "error" || f.Item.Type == "todo_list" || f.Item.Type == "agent_message" {
+			return execution.NormalizedEvent{}, false, nil
+		}
+		return invalid()
 	default:
-		if strings.HasPrefix(f.Type, "turn.") || strings.HasPrefix(f.Type, "thread.") {
+		if strings.HasPrefix(f.Type, "turn.") || strings.HasPrefix(f.Type, "thread.") || strings.HasPrefix(f.Type, "item.") {
 			return invalid()
 		}
 		return execution.NormalizedEvent{}, false, nil
@@ -179,6 +201,8 @@ func (a *Adapter) Complete(r execution.CompletionRequest) (execution.TerminalRes
 	started, thread, turn, settled := false, false, false, false
 	final := ""
 	seen := map[string]bool{}
+	pending := map[string]string{}
+	protocolInvalid := false
 	failure := ""
 	for _, e := range r.Events {
 		if e.Type() == "attempt.started" {
@@ -189,6 +213,8 @@ func (a *Adapter) Complete(r execution.CompletionRequest) (execution.TerminalRes
 			final = ""
 			failure = ""
 			seen = map[string]bool{}
+			pending = map[string]string{}
+			protocolInvalid = false
 			continue
 		}
 		if !started || e.Source() != "adapter" {
@@ -196,13 +222,17 @@ func (a *Adapter) Complete(r execution.CompletionRequest) (execution.TerminalRes
 		}
 		var p struct {
 			Text     string `json:"text"`
+			CallID   string `json:"call_id"`
+			Tool     string `json:"tool"`
 			ID       string `json:"item_id"`
 			Failure  string `json:"failure"`
 			Outcome  string `json:"outcome"`
+			Status   string `json:"status"`
 			Complete bool   `json:"terminal_complete"`
 		}
 		if json.Unmarshal(e.NormalizedJSON(), &p) != nil {
-			return failed("protocol_invalid"), nil
+			protocolInvalid = true
+			continue
 		}
 		if e.Type() == "runtime_failure" {
 			failure = p.Failure
@@ -211,28 +241,47 @@ func (a *Adapter) Complete(r execution.CompletionRequest) (execution.TerminalRes
 		switch e.Type() {
 		case "runtime_session":
 			if thread || turn {
-				return failed("protocol_invalid"), nil
+				protocolInvalid = true
+				continue
 			}
 			thread = true
 		case "turn_start":
 			if !thread || turn || settled {
-				return failed("protocol_invalid"), nil
+				protocolInvalid = true
+				continue
 			}
 			turn = true
 		case "assistant_message":
-			if !turn || settled || !p.Complete || p.Text == "" || len(p.Text) > maxMessage || seen[p.ID] {
-				return failed("protocol_invalid"), nil
+			if !turn || settled || !p.Complete || p.Text == "" || len(p.Text) > maxMessage || seen[p.ID] || !identifier(p.ID) {
+				protocolInvalid = true
+				continue
 			}
 			seen[p.ID] = true
 			final = p.Text
 		case "agent_settled":
-			if !turn || settled || p.Outcome != "completed" {
-				return failed("protocol_invalid"), nil
+			if !turn || settled || p.Outcome != "completed" || len(pending) != 0 {
+				protocolInvalid = true
+				continue
 			}
 			settled = true
 		case "tool_start", "tool_result":
-			if !turn || settled {
-				return failed("protocol_invalid"), nil
+			if !turn || settled || !identifier(p.CallID) || (p.Tool != "command_execution" && p.Tool != "file_change") {
+				protocolInvalid = true
+				continue
+			}
+			if e.Type() == "tool_start" {
+				if seen[p.CallID] || p.Status != "in_progress" {
+					protocolInvalid = true
+					continue
+				}
+				seen[p.CallID] = true
+				pending[p.CallID] = p.Tool
+			} else {
+				if pending[p.CallID] != p.Tool || (p.Status != "completed" && p.Status != "failed" && !(p.Tool == "command_execution" && p.Status == "declined")) {
+					protocolInvalid = true
+					continue
+				}
+				delete(pending, p.CallID)
 			}
 		}
 	}
@@ -241,6 +290,9 @@ func (a *Adapter) Complete(r execution.CompletionRequest) (execution.TerminalRes
 	}
 	if r.Files.ExitCode != 0 {
 		return failed("process_failure"), nil
+	}
+	if protocolInvalid || len(pending) != 0 {
+		return failed("protocol_invalid"), nil
 	}
 	if !started || !settled || final == "" {
 		return failed("protocol_incomplete"), nil
