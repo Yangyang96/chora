@@ -704,3 +704,84 @@ Native interfaces: [Claude CLI reference](https://code.claude.com/docs/en/cli-re
 and [streaming output](https://code.claude.com/docs/en/agent-sdk/streaming-output).
 The installed version remains the binding authority; later documentation does
 not automatically qualify another version.
+
+## Hermes Agent candidate
+
+The `hermes` candidate implements pure projection of NousResearch Hermes Agent's
+`hermes chat -q ... --format stream-json` protocol. **Native launch is unavailable.**
+It does not enable a browser runtime option, change Pi defaults, or qualify
+Local Connected execution. If enabled in a future slice, it would still be
+**Local Connected, No Sandbox**; shell tools retain the user's host access.
+Resume, skills, MCP, interactive approvals, automatic check evidence, Docker,
+file editing and command execution are not advertised as supported capabilities.
+
+The inspected upstream installation reports `0.23.1` in its install stamp at
+commit `3b421578588243f920886e6fe79a6faa87ea026e`. This is **static metadata**, not
+a CLI version observation, authenticated inference or a version allowlist.
+Other well-formed versions stay pending under the same qualification mechanism.
+No synthetic transcript, login file, matching flag or signature grants launch.
+
+This source exposes three concrete integration gaps:
+
+- The installed launcher contains interrupted-update recovery before CLI argument
+  handling. Running `--version` or `--help` cannot be assumed free of writes.
+  The dotenv loader can normalize files before loading them, and can load external
+  secret sources. A replacement empty HOME would not establish safety for the
+  selected authentication scope.
+- Stream JSON routes through `gateway_chat_startup` and a gateway session. CLI
+  termination and its process group do not establish worker termination or that
+  an existing daemon consumed the same frozen configuration. Cancellation and
+  restart custody therefore remain unverified.
+- Disabling SDK retries does not disable native auxiliary retry/fallback policy.
+  The inspected source has its own transient retry defaults. A task limit or
+  process deadline alone cannot prove the requested no-retry policy.
+
+Relevant upstream source:
+[stream emitter](https://github.com/NousResearch/hermes-agent/blob/3b421578588243f920886e6fe79a6faa87ea026e/hermes_cli/stream_json.py),
+[CLI routing](https://github.com/NousResearch/hermes-agent/blob/3b421578588243f920886e6fe79a6faa87ea026e/hermes_cli/main.py),
+[dotenv loader](https://github.com/NousResearch/hermes-agent/blob/3b421578588243f920886e6fe79a6faa87ea026e/hermes_cli/env_loader.py),
+[auxiliary retry policy](https://github.com/NousResearch/hermes-agent/blob/3b421578588243f920886e6fe79a6faa87ea026e/agent/auxiliary_client.py).
+
+`hermes.Inspect` only reads explicitly selected executable identities, bounded
+implementation metadata and authentication-file **existence/type**. It never
+executes a native process, connects to a daemon, reads credentials, writes the
+selected scope or makes a model request. `present_unverified` is not a valid login.
+Its identity binds the launcher chain and selected semantic files; it deliberately
+does **not** claim the complete Python/runtime/configuration closure is frozen.
+Public `New`, `NewReviewed`, fingerprinting and preparation fail closed with
+`hermes_safe_start_unverifiable`. Composition creates no supervisor or route.
+Unknown installations without the required static metadata are unavailable.
+
+To inspect an explicitly selected existing installation without invoking Hermes:
+
+```sh
+go run ./cmd/chora-hermes-review \
+  -executable "$HERMES_ENTRY" -native-launcher "$HERMES_NATIVE_LAUNCHER" \
+  -interpreter "$HERMES_PYTHON" -source-root "$HERMES_SOURCE" \
+  -auth-home "$HERMES_AUTH_HOME"
+```
+
+For an unknown version's **semantic** review, add `-reviewer-key` (Ed25519 public
+key in PKIX PEM), `-reviewer` and `-source-reference` (immutable public HTTPS
+source). The host provisions that trust key; no task or HTTP input can provision
+one. The command reads metadata, runs its fixed in-process positive/negative
+corpus, and emits an identity/nonce/corpus/expiry challenge and `MessageHex`.
+An independent trusted reviewer audits the exact source mapping and signs the
+32 decoded message bytes externally. Send `{"SignatureHex":"..."}` on stdin
+to that same process. It verifies the signature, registers the outstanding
+challenge once and consumes it through `NewReviewed`, printing `Ready: false`.
+Only the event/tool/terminal semantic observations change to verified; startup,
+retry, worker custody, complete closure and authentication remain pending.
+Replays, changed identities, unknown keys and expired requests are rejected;
+revocation or process restart loses approval. This uses the existing shared
+qualification types and a Hermes-specific host trust service, not Codex's review
+registry. It is not native execution acceptance.
+
+Protocol projection retains bounded text, session/call identifiers and tool names;
+stderr, native errors, tool inputs/outputs and token/account metadata are discarded.
+Completion requires ordered init, paired tools, final assistant text matching the
+terminal text, a successful terminal and trusted exit zero. An initially empty
+gateway session is allowed; the terminal must supply a valid session. A replay
+gap, malformed/truncated frame, unknown event, duplicate terminal or mismatched
+tool/session fails closed. Deterministic Run/Attempt tests use a test-only synthetic
+launcher; they do not establish native worker cleanup or real-model success.
