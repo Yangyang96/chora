@@ -9,14 +9,24 @@ from pathlib import Path
 from uuid import uuid4
 
 from .protocol import digest
+from .tools import TOOL_SCHEMAS
 
 POLICY = {
-    "version": 1,
+    "version": 2,
     "max_requests": 20,
     "max_tokens": 100000,
     "max_output_tokens": 2048,
     "duration_seconds": 1200,
-    "input_bound": "text-json-utf8-framing.v1",
+    "input_bound": "text-json-utf8-framing.v2",
+    "encoder_revision": "0e1a0e5e52aea73055f50fef6f2423db370265b6",
+    "encoder_sha256": "bdbd57c132a1b3725042323d02b98b9d1df28e5f388f134399555d041f5055e0",
+    "tokenizer_sha256": "8f9f37ca37fdc4f5fd36d5cf4d3b0e8392edb4e894fd10cc0d70b4957c8633cf",
+    "tool_schema_digest": digest(TOOL_SCHEMAS),
+    "json_byte_multiplier": 2,
+    "global_framing_bytes": 4096,
+    "message_framing_bytes": 128,
+    "call_framing_bytes": 128,
+    "argument_framing_bytes": 128,
 }
 
 
@@ -28,29 +38,70 @@ class BatchRefused(RuntimeError):
 
 
 def input_bound(payload):
-    # Only the harness's text/function subset is bounded. Twice the escaped
-    # JSON byte length covers text/schema serialization, with 4096 tokens per
-    # framing element for the published V4 non-thinking tool template.
-    # Multimodal inputs and server-side tools have no such bound here.
+    """Byte envelope for the pinned non-thinking renderer; see INPUT_BOUND.md."""
+    try:
+        return _input_bound(payload)
+    except (KeyError, TypeError, ValueError, OverflowError, RecursionError, UnicodeError):
+        raise BatchRefused("unbounded_input") from None
+
+
+def _input_bound(payload):
+    if (
+        not isinstance(payload, dict)
+        or set(payload)
+        - {"model", "messages", "tools", "tool_choice", "max_tokens", "thinking", "stream"}
+        or payload["model"] != "deepseek-v4-pro"
+        or payload["thinking"] != {"type": "disabled"}
+        or payload.get("stream", False) is not False
+        or payload.get("tool_choice", "required") != "required"
+        or not isinstance(payload["messages"], list)
+        or payload["tools"] not in ([], TOOL_SCHEMAS)
+    ):
+        raise BatchRefused("unbounded_input")
+    call_count = argument_count = 0
     for message in payload["messages"]:
         if (
-            message.get("role") not in {"system", "user", "assistant", "tool"}
+            not isinstance(message, dict)
+            or message.get("role") not in {"system", "user", "assistant", "tool"}
             or not isinstance(message.get("content"), (str, type(None)))
             or set(message) - {"role", "content", "tool_calls", "tool_call_id"}
         ):
             raise BatchRefused("unbounded_input")
         calls = message.get("tool_calls", [])
-        if len(calls) > 4:
+        if (
+            not isinstance(calls, list)
+            or len(calls) > 4
+            or (calls and message["role"] != "assistant")
+        ):
             raise BatchRefused("unbounded_input")
         for call in calls:
+            if (
+                not isinstance(call, dict)
+                or set(call) - {"id", "type", "function"}
+                or call["type"] != "function"
+                or not isinstance(call["id"], str)
+                or not isinstance(call["function"], dict)
+                or set(call["function"]) != {"name", "arguments"}
+                or not isinstance(call["function"]["name"], str)
+                or not isinstance(call["function"]["arguments"], str)
+            ):
+                raise BatchRefused("unbounded_input")
             arguments = json.loads(call["function"]["arguments"])
             if not isinstance(arguments, dict) or len(arguments) > 3:
                 raise BatchRefused("unbounded_input")
-    if any(tool.get("type") != "function" for tool in payload["tools"]):
-        raise BatchRefused("unbounded_input")
+            json.dumps(arguments, ensure_ascii=False, allow_nan=False).encode("utf-8")
+            call_count += 1
+            argument_count += len(arguments)
     encoded = json.dumps(payload, ensure_ascii=True, separators=(",", ":"), allow_nan=False)
-    return 2 * len(encoded.encode("utf-8")) + 4096 * (
-        1 + len(payload["messages"]) + len(payload["tools"])
+    json.dumps(payload, ensure_ascii=False, allow_nan=False).encode("utf-8")
+    # Text/schema/argument bytes are covered by 2B. Fixed additions are charged
+    # once per actual construct, rather than repeating the whole tools template.
+    return (
+        POLICY["json_byte_multiplier"] * len(encoded.encode("utf-8"))
+        + POLICY["global_framing_bytes"]
+        + POLICY["message_framing_bytes"] * len(payload["messages"])
+        + POLICY["call_framing_bytes"] * call_count
+        + POLICY["argument_framing_bytes"] * argument_count
     )
 
 

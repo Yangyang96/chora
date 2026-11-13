@@ -107,15 +107,20 @@ completion and total usage. The ledger uses local SQLite transactions and permit
 one outstanding request across participating processes. Keep it on a durable
 local filesystem with reliable SQLite locking.
 
-Preflight bounds this harness's text/function input by twice its ASCII-escaped
-JSON byte length plus 4096 tokens for each request/message/tool framing element.
-The bound includes the entire message history and tool definitions. It is based
-on the published V4 encoding at revision `0e1a0e5e52aea73055f50fef6f2423db370265b6`
-and restricts historical calls to the harness's four-call/three-argument surface.
-Unsupported inputs and input-bound-plus-output reservations exceeding remaining
-tokens are refused before sending. A provider response exceeding either bound
-is recorded with its actual usage and halts the batch for reconciliation.
-See the [fixed encoding source](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/0e1a0e5e52aea73055f50fef6f2423db370265b6/encoding/encoding_dsv4.py).
+Preflight policy `text-json-utf8-framing.v2` bounds the complete text/function
+payload by `2B + 4096 + 128M + 128C + 128A`, where B is its ASCII-escaped compact
+JSON byte length, M is the message count, C the historical call count and A their
+argument member count. The global tool instructions are allocated once; each
+message/call/argument gets its own source-derived framing allowance. Full history,
+full results and repeated reads remain intact. Only the frozen harness schemas and
+non-thinking text/function surface are supported. See [input-bound proof and
+compatibility rules](INPUT_BOUND.md) for the fixed encoder/tokenizer, byte-envelope
+argument, executable restrictions and provider assumptions. Unsupported inputs and
+reservations exceeding remaining tokens refuse before sending. Actual usage above
+the bound is retained and halts the batch for reconciliation. The policy, source
+identities, schema digest and coefficients are frozen in the workflow's model
+identity. Old policies/workflows refuse without rewriting their ledger or state;
+there is no automatic migration or renewed authorization.
 
 Failed requests consume a request slot. Missing or inconsistent usage remains
 null and halts the batch. A request left pending after a crash blocks further

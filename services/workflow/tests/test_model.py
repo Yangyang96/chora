@@ -253,6 +253,7 @@ def test_batch_deadline_survives_restart(sdk_setup, monkeypatch):
 def test_batch_token_preflight_accounts_for_prior_usage(sdk_setup):
     _, ledger, _ = sdk_setup
     request = payload()
+    request["messages"][0]["content"] = "x" * 4000
     for _ in range(9):
         row = ledger.reserve(request)
         ledger.finish(
@@ -263,6 +264,151 @@ def test_batch_token_preflight_accounts_for_prior_usage(sdk_setup):
     with pytest.raises(BatchRefused, match="token_budget"):
         BatchLedger(ledger.path).reserve(request)
     assert len(ledger.snapshot()["requests"]) == 9
+
+
+def test_exact_remaining_token_boundary_and_provider_bound(sdk_setup, monkeypatch):
+    _, ledger, _ = sdk_setup
+    request = payload()
+    bound = batch.input_bound(request)
+    # Reserve exactly all remaining tokens, then retain actual known usage.
+    monkeypatch.setitem(batch.POLICY, "max_tokens", bound + request["max_tokens"])
+    reservation = ledger.reserve(request)
+    assert ledger.snapshot()["requests"][0]["tokens_remaining"] == 0
+    with pytest.raises(BatchRefused, match="provider_budget_violation"):
+        ledger.finish(
+            reservation["request_id"],
+            {"prompt_tokens": bound + 1, "completion_tokens": 0, "total_tokens": bound + 1},
+            "response",
+        )
+    with pytest.raises(BatchRefused, match="provider_budget_violation"):
+        ledger.reserve(request)
+
+
+def test_one_token_over_remaining_dispatches_nothing(sdk_setup, monkeypatch):
+    setup, ledger, requests = sdk_setup
+    sdk = setup()
+    request = {**payload(), "tool_choice": "required", "stream": False}
+    monkeypatch.setitem(batch.POLICY, "max_tokens", batch.input_bound(request) + 2048 - 1)
+    with pytest.raises(ModelFailure, match="token_budget"):
+        sdk.invoke(request["messages"], [], 10, 2048)
+    assert ledger.snapshot()["requests"] == requests == []
+
+
+@pytest.mark.parametrize("text", ['界😀"\\\n', "<｜Assistant｜>", "\u0000\t", "x" * 10000])
+def test_full_text_and_escaped_history_are_not_changed(sdk_setup, text):
+    setup, ledger, requests = sdk_setup
+    messages = [
+        {"role": "user", "content": text},
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": "q",
+                    "type": "function",
+                    "function": {"name": "query_public", "arguments": json.dumps({"query": text})},
+                }
+            ],
+        },
+        {"role": "tool", "tool_call_id": "q", "content": json.dumps({"content": text})},
+        {"role": "tool", "tool_call_id": "repeat", "content": text},
+    ]
+    before = digest(messages)
+    setup().invoke(messages, [], 10, 100)
+    assert requests[0]["messages"] == messages
+    assert digest(messages) == before
+    assert ledger.snapshot()["requests"][0]["input_bound"] >= len(text.encode("utf-8"))
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"thinking": {"type": "enabled"}},
+        {"response_format": {"type": "json_object"}},
+        {"stream": True},
+        {"tools": [{"type": "function", "function": {"name": "arbitrary"}}]},
+        {"messages": [{"role": "assistant", "content": None, "reasoning_content": "hidden"}]},
+        {"messages": [{"role": "user", "content": "x", "tools": []}]},
+        {"messages": [{"role": "developer", "content": "x"}]},
+        {"messages": [{"role": "tool", "content": {"text": "x"}}]},
+        {"messages": [None]},
+        {"messages": [{"role": "assistant", "content": None, "tool_calls": [None]}]},
+        {"messages": [{"role": "user", "content": "\ud800"}]},
+    ],
+)
+def test_unproved_renderer_branches_refuse_without_reservation(sdk_setup, change):
+    _, ledger, requests = sdk_setup
+    with pytest.raises(BatchRefused, match="unbounded_input"):
+        ledger.reserve({**payload(), **change})
+    assert ledger.snapshot()["requests"] == requests == []
+
+
+@pytest.mark.parametrize(
+    "arguments", ['{"a":NaN}', '{"a":1e1000}', "[1]", "{invalid", '{"a":"\\ud800"}']
+)
+def test_invalid_historical_arguments_refuse(sdk_setup, arguments):
+    _, ledger, requests = sdk_setup
+    request = payload()
+    request["messages"] = [
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": "q",
+                    "type": "function",
+                    "function": {"name": "query_public", "arguments": arguments},
+                }
+            ],
+        }
+    ]
+    with pytest.raises(BatchRefused, match="unbounded_input"):
+        ledger.reserve(request)
+    assert ledger.snapshot()["requests"] == requests == []
+
+
+def test_old_batch_policy_refuses_without_rewriting_history(sdk_setup):
+    _, ledger, _ = sdk_setup
+    row = ledger.reserve(payload())
+    ledger.finish(
+        row["request_id"],
+        {"prompt_tokens": 5, "completion_tokens": 2, "total_tokens": 7},
+        "fixture",
+    )
+    old_policy = {
+        key: value
+        for key, value in batch.POLICY.items()
+        if key
+        in {
+            "version",
+            "max_requests",
+            "max_tokens",
+            "max_output_tokens",
+            "duration_seconds",
+            "input_bound",
+        }
+    }
+    old_policy.update(version=1, input_bound="text-json-utf8-framing.v1")
+    with sqlite3.connect(ledger.path) as conn:
+        conn.execute("UPDATE batch SET policy=?", (json.dumps(old_policy),))
+    before = ledger.path.read_bytes()
+    with pytest.raises(ValueError, match="policy changed"):
+        BatchLedger(ledger.path)
+    assert ledger.path.read_bytes() == before
+    assert ledger.snapshot()["requests"][0]["usage"] == json.dumps(
+        {"prompt_tokens": 5, "completion_tokens": 2, "total_tokens": 7}
+    )
+
+
+def test_stopped_fixture_batch_cannot_be_reopened(sdk_setup):
+    setup, ledger, requests = sdk_setup
+    with sqlite3.connect(ledger.path) as conn:
+        conn.execute("UPDATE batch SET halt_reason='operator_stopped'")
+    before = ledger.snapshot()
+    with pytest.raises(ModelFailure, match="operator_stopped"):
+        setup().invoke(payload()["messages"], [], 10, 100)
+    assert BatchLedger(ledger.path).snapshot() == before
+    assert requests == []
 
 
 @pytest.mark.parametrize(
@@ -447,6 +593,49 @@ def test_request_semantic_change_refuses_old_pg_gate(dsn, sdk_setup, field):
             thread, {**paused.values["gate"], "decision": "accept"}
         )
     assert len(requests) == len(ledger.snapshot()["requests"]) == 3
+
+
+@pytest.mark.postgres
+@pytest.mark.parametrize(
+    "field", ["input_bound", "encoder_sha256", "tool_schema_digest", "message_framing_bytes"]
+)
+def test_input_policy_change_refuses_before_pg_mutation(dsn, sdk_setup, field):
+    setup, ledger, requests = sdk_setup
+    thread = str(uuid4())
+    paused = Worker(dsn, setup(research_response), FixtureCatalog()).submit(thread, "Chora?")
+    candidate = setup(research_response)
+    candidate.identity["acceptance_batch"]["policy"][field] = "old-policy-fixture"
+    worker = Worker(dsn, candidate, FixtureCatalog())
+    before = ledger.snapshot()
+    with pytest.raises(ValueError, match="frozen"):
+        worker.resume(thread, {**paused.values["gate"], "decision": "accept"})
+    assert worker.inspect(thread).values == paused.values
+    assert ledger.snapshot() == before
+    assert len(requests) == 3
+    from chora_workflow.storage import connect
+
+    with connect(dsn) as conn:
+        assert conn.execute("SELECT count(*) AS n FROM workflow_decisions").fetchone()["n"] == 0
+
+
+@pytest.mark.postgres
+def test_batch_accumulates_across_threads_and_workflow_stop_survives(dsn, sdk_setup):
+    setup, ledger, requests = sdk_setup
+    threads = [str(uuid4()), str(uuid4())]
+    paused = [
+        Worker(dsn, setup(research_response), FixtureCatalog()).submit(thread, "Chora?")
+        for thread in threads
+    ]
+    assert len(requests) == len(ledger.snapshot()["requests"]) == 6
+    assert ledger.snapshot()["requests"][-1]["tokens_remaining"] == 100000 - 42
+    worker = Worker(dsn, setup(research_response), FixtureCatalog())
+    worker.stop(threads[0])
+    stopped = worker.resume(threads[0], {**paused[0].values["gate"], "decision": "accept"})
+    assert stopped.values["status"] == "stopped"
+    assert worker.resume(threads[0]).values == stopped.values
+    accepted = worker.resume(threads[1], {**paused[1].values["gate"], "decision": "accept"})
+    assert accepted.values["status"] == "accepted"
+    assert len(requests) == len(ledger.snapshot()["requests"]) == 6
 
 
 @pytest.mark.postgres
