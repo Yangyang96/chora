@@ -23,7 +23,7 @@ import (
 )
 
 const AdapterID = "codex-exec"
-const QualifiedVersion = "codex-cli 0.155.1"
+const protocolVersion = "codex.exec.jsonl.v1"
 
 var (
 	ErrInstallation   = errors.New("installation_unavailable")
@@ -45,10 +45,12 @@ type Config struct {
 	NetworkEnvironment map[string]string
 }
 type Adapter struct {
-	config      Config
-	executable  trustedhost.ExecutableIdentity
-	fingerprint execution.RuntimeFingerprint
-	network     runtimeenv.Network
+	config        Config
+	executable    trustedhost.ExecutableIdentity
+	fingerprint   execution.RuntimeFingerprint
+	version       string
+	qualification execution.QualificationCache
+	network       runtimeenv.Network
 	// Only package tests supply a synthetic policy proof. Public construction
 	// has no override until native policy-to-exec consistency is qualified.
 	managedPolicyCheck func() error
@@ -85,17 +87,27 @@ func newAdapter(ctx context.Context, config Config, managedPolicyCheck func() er
 	config.NetworkEnvironment = nil
 	a := &Adapter{config: config, executable: identity, network: network, managedPolicyCheck: managedPolicyCheck}
 	version, err := a.probe(ctx, "--version")
-	if err != nil || strings.TrimSpace(version) != QualifiedVersion {
+	if err != nil || len(strings.TrimSpace(version)) > 128 || !nativeVersion.MatchString(strings.TrimSpace(version)) {
 		return nil, ErrVersion
+	}
+	a.version = strings.TrimSpace(version)
+	if err := a.qualifyProtocol(ctx); err != nil {
+		return nil, err
 	}
 	// Reject configuration channels that --ignore-user-config does not disable.
 	if err := a.validatePolicy(); err != nil {
-		return nil, err
+		return nil, a.qualificationFailure(err)
 	}
 	if err := a.Authentication(ctx); err != nil {
 		return nil, err
 	}
-	a.fingerprint = a.deriveFingerprint(identity)
+	if err := a.recordPolicyQualification(); err != nil {
+		return nil, err
+	}
+	a.fingerprint, err = a.Fingerprint(ctx)
+	if err != nil {
+		return nil, err
+	}
 	return a, nil
 }
 
@@ -106,10 +118,17 @@ func Inspect(ctx context.Context, config Config) execution.Readiness {
 	adapter, err := New(ctx, config)
 	if err != nil {
 		result.Failure = err.Error()
+		var qualification *QualificationError
+		if errors.As(err, &qualification) {
+			report := qualification.Report
+			result.Qualification = &report
+		}
 		return result
 	}
 	result.Ready = true
 	result.Fingerprint = adapter.fingerprint
+	report, _ := adapter.qualification.Lookup(adapter.qualificationIdentity())
+	result.Qualification = &report
 	return result
 }
 func (a *Adapter) ID() string { return AdapterID }
@@ -121,7 +140,7 @@ func (a *Adapter) Describe() execution.ProviderDescriptor {
 	if a.config.Model != "" {
 		mode = "explicit"
 	}
-	return execution.ProviderDescriptor{ID: AdapterID, Name: "Codex exec", ProtocolVersion: "codex.exec.jsonl.v1", Environments: []string{domain.TrustedHostExecutionProvider}, TaskKinds: []string{"code", "document", "research"}, Features: []string{"registered_contract", "runtime.agent_loop", "runtime.jsonl_rpc", "runtime.file_edit", "runtime.command_execution", "runtime.progress_events", "runtime.terminal_result", "runtime.cooperative_abort", "runtime.allowlisted_event_projection", "runtime.chora_owned_result", "runtime.zero_implicit_context"}, ResumeMode: execution.ResumeUnsupported, ShutdownMode: "exit_after_input", ApprovalMode: "native_noninteractive", ModelMode: mode, CheckEvidenceMode: "none"}
+	return execution.ProviderDescriptor{ID: AdapterID, Name: "Codex exec", ProtocolVersion: protocolVersion, Environments: []string{domain.TrustedHostExecutionProvider}, TaskKinds: []string{"code", "document", "research"}, Features: []string{"registered_contract", "runtime.agent_loop", "runtime.jsonl_rpc", "runtime.file_edit", "runtime.command_execution", "runtime.progress_events", "runtime.terminal_result", "runtime.cooperative_abort", "runtime.allowlisted_event_projection", "runtime.chora_owned_result", "runtime.zero_implicit_context"}, ResumeMode: execution.ResumeUnsupported, ShutdownMode: "exit_after_input", ApprovalMode: "native_noninteractive", ModelMode: mode, CheckEvidenceMode: "none"}
 }
 func quoted(value string) string { raw, _ := json.Marshal(value); return string(raw) }
 func (a *Adapter) shellEnvironment() string {
@@ -194,7 +213,7 @@ func (a *Adapter) validatePolicy() error {
 			return ErrPolicy
 		}
 	}
-	// 0.155.1 still reads cloud bundles and macOS managed preferences under
+	// Reviewed protocol generations still read cloud bundles and macOS managed preferences under
 	// --ignore-user-config. Neither a filesystem absence check nor a separate
 	// config/read snapshot proves what a later exec will load. Do not bypass
 	// organization policy, expose policy contents, or offer an opt-out flag.
@@ -232,8 +251,11 @@ func (a *Adapter) deriveFingerprint(identity trustedhost.ExecutableIdentity) exe
 		Env     map[string]string
 		Policy  string
 		Network [32]byte
-	}{a.arguments(), a.environment(), "chora.codex-exec.local.v3:managed-policy-proof-required:empty-home:reject-project-config:no-native-resources:no-check-evidence", a.network.Digest()})
-	return execution.RuntimeFingerprint{Version: QualifiedVersion, SourceIdentity: source, SecurityFingerprint: policy, Digest: hash([][32]byte{source, policy})}
+	}{a.arguments(), a.environment(), "chora.codex-exec.local.v4:capability-qualification:managed-policy-proof-required:empty-home:reject-project-config:no-native-resources:no-check-evidence", a.network.Digest()})
+	return execution.RuntimeFingerprint{Version: a.version, SourceIdentity: source, SecurityFingerprint: policy, Digest: hash(struct {
+		Source, Policy, Descriptor [32]byte
+		Version                    string
+	}{source, policy, a.Describe().Digest(), a.version})}
 }
 func (a *Adapter) Fingerprint(ctx context.Context) (execution.RuntimeFingerprint, error) {
 	if err := a.validatePolicy(); err != nil {
@@ -241,6 +263,9 @@ func (a *Adapter) Fingerprint(ctx context.Context) (execution.RuntimeFingerprint
 	}
 	identity, err := trustedhost.InspectExecutable(a.config.Executable)
 	if err != nil || identity != a.executable {
+		return execution.RuntimeFingerprint{}, ErrIdentity
+	}
+	if report, ok := a.qualification.Lookup(a.qualificationIdentity()); !ok || report.State != execution.QualificationVerified {
 		return execution.RuntimeFingerprint{}, ErrIdentity
 	}
 	return a.deriveFingerprint(identity), nil

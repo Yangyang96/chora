@@ -18,7 +18,7 @@ func TestCodexCompositionRejectsUnverifiableManagedPolicy(t *testing.T) {
 		}
 	}
 	executable := filepath.Join(root, "codex-fixture")
-	if err := os.WriteFile(executable, []byte("#!/bin/sh\ncase \"$1\" in --version) echo 'codex-cli 0.155.1';; login) echo 'Logged in using ChatGPT';; *) exit 1;; esac\n"), 0700); err != nil {
+	if err := os.WriteFile(executable, []byte("#!/bin/sh\ncase \"$1\" in --version) echo 'codex-cli 0.155.1';; exec) echo '--json --ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check --sandbox --color --config --model';; login) echo 'Logged in using ChatGPT';; *) exit 1;; esac\n"), 0700); err != nil {
 		t.Fatal(err)
 	}
 	registration, err := NewCodexRuntimeProvider(context.Background(), codexexec.Config{Executable: executable, AuthHome: filepath.Join(root, "auth"), Home: filepath.Join(root, "home")}, filepath.Join(root, "runtime"))

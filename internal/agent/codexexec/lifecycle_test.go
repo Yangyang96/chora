@@ -14,7 +14,11 @@ func TestToolLifecycleSettlement(t *testing.T) {
 	for _, tool := range []string{"command_execution", "file_change"} {
 		t.Run(tool, func(t *testing.T) {
 			item := func(phase, id, kind string) string {
-				return fmt.Sprintf(`{"type":"item.%s","item":{"id":%q,"type":%q}}`+"\n", phase, id, kind)
+				status, code := "in_progress", "null"
+				if phase == "completed" {
+					status, code = "completed", "0"
+				}
+				return fmt.Sprintf(`{"type":"item.%s","item":{"id":%q,"type":%q,"status":%q,"exit_code":%s}}`+"\n", phase, id, kind, status, code)
 			}
 			otherTool := "file_change"
 			if tool == otherTool {
@@ -58,7 +62,7 @@ func TestToolLifecycleSettlement(t *testing.T) {
 func TestToolFailurePrecedence(t *testing.T) {
 	// Even if settlement is invalid, explicit native failure, deadlines and
 	// nonzero process exits must not be relabelled as protocol failures.
-	pending := `{"type":"item.started","item":{"id":"cmd","type":"command_execution"}}` + "\n"
+	pending := `{"type":"item.started","item":{"id":"cmd","type":"command_execution","status":"in_progress"}}` + "\n"
 	stream := strings.Replace(successStream, `{"type":"item.completed"`, pending+`{"type":"item.completed"`, 1)
 	for _, tc := range []struct {
 		name, suffix, want string

@@ -364,11 +364,73 @@ This documentation-only phase checks source references, local CLI surface, links
 and publication scope. It does not run or claim real-agent, Docker, browser E2E,
 process-cancellation or migration acceptance. Those gates belong to the stages above.
 
+## Protocol compatibility and installation qualification (CHOR-44 / CHOR-62)
+
+`internal/execution/qualification.go` provides the shared evidence reducer and
+optional per-provider memory cache. Providers define their own required capability
+names and collect observations with a method and a public reference or diagnostic
+code. `EvaluateQualification` returns `pending` for missing evidence, `verified`
+only when all requirements are verified, and `rejected` if any requirement is
+explicitly rejected. Duplicate or malformed observations are errors. A report is
+evidence at its stated level; it does not grant execution or human acceptance.
+
+`QualificationIdentity` includes runtime ID, observed version, protocol generation,
+source identity, configuration identity and security identity. The provider must
+hash the actual executable closure, including canonical/resolved paths and bytes;
+launch arguments, selected configuration and adapter policy revisions must also
+participate. `QualificationCache.Store` evaluates and copies observations;
+`Lookup` requires the same identity. An identity miss evicts the single entry.
+There is no persisted proof import, production configuration override or model
+request in the shared module. Runtime-specific freshness checks, authentication,
+resource loading and process supervision remain the provider's responsibility.
+Providers must revalidate live policy and source identity before binding and at
+the supervisor's spawn gate. Cache hits never establish that mutable external
+policy has remained unchanged.
+
+Codex uses one `codex.exec.jsonl.v1` implementation, with source-reviewed release
+anchors and live bounded `--version` / `exec --help` probes. The help probe checks
+the actual required flags, then executable identity is rechecked to reject mixed
+binary observations. Version strings alone cannot grant qualification. Unknown
+versions remain pending even with matching help: they require protocol-semantic
+review and bounded authorized validation. No downgrade or global CLI change is
+required by the diagnostic. `codexexec.Inspect` exposes the report in
+`Readiness.Qualification`; refused construction/registration exposes the same
+report through `codexexec.QualificationError` (`errors.As`). Generic
+`execution.Inspect` remains a fingerprint-only readiness helper.
+
+| Codex observation | Protocol / argument evidence | Configuration-source qualification | Product launch |
+| --- | --- | --- | --- |
+| 0.155.1 | Same JSONL generation; reviewed upstream source and real no-model version/help probes | Rejected: `managed_policy_unverifiable` | Refused |
+| 0.167.2 | Same JSONL generation; reviewed upstream source and real no-model version/help probes | Rejected: `managed_policy_unverifiable` | Refused |
+| Unreviewed version, matching flags | Pending event/tool/terminal semantic evidence | Pending, not inferred from login or help | Refused |
+| Required flag absent | Rejected with `missing_flag:<flag>` | Not probed further | Refused |
+
+These are evidence anchors, not a claim that every intermediate or future SemVer
+release is supported. Source/fixture evidence covers framing, lifecycle and
+completion. Shell fixtures cover EOF, cancellation and descendant death for both
+release labels. Native no-model probes cover actual release binaries, argument
+availability and policy refusal; they do not cover authenticated model execution
+or authenticated cancellation. No current Codex version is production-qualified.
+The older release can be obtained in an isolated directory from its official
+[release](https://github.com/openai/codex/releases/tag/rust-v0.155.1), checking the
+asset digest before execution; never replace the user's global installation.
+
+Every new Codex binding/fingerprint freezes the observed concrete version,
+executable identity, descriptor and policy; a later CLI replacement, even with the
+same displayed version, cannot reuse that binding. The qualification-policy
+revision changed, so old candidate bindings must be prepared again rather than
+silently accepted under the new rules. Resume remains unsupported. Pi retains its
+existing source/model and frozen-resume contracts; no historical Pi records are
+rewritten. OpenCode and Hermes should use the shared types with their own required
+capabilities and evidence, without copying Codex's source or policy assumptions.
+Unverified resume, skills and MCP must stay unsupported. Claude's existing
+candidate is retained without expanding its scope.
+
 ## Codex implementation candidate (CHOR-12)
 
 **Qualification suspended (CHOR-44):** public construction and registration now
 fail closed with `configuration_unqualified: managed_policy_unverifiable`.
-CLI 0.155.1 loads cloud bundles and macOS managed preferences even with
+Reviewed CLI versions 0.155.1 and 0.167.2 load cloud bundles and macOS managed preferences even with
 `--ignore-user-config`. A separate configuration snapshot cannot prove that a
 later exec uses the same policy. No qualified native snapshot-to-launch interface
 is currently integrated, so Chora cannot issue a binding or launch Codex. There
@@ -383,6 +445,12 @@ native, side-effect-free effective-policy proof covering these sources (includin
 additional developer instructions), with consistency enforced at exec startup.
 See the pinned [exec bootstrap](https://github.com/openai/codex/blob/be2951ea34f0d295ed0becf97079f92fa5f6950e/codex-rs/exec/src/lib.rs)
 and [configuration loader](https://github.com/openai/codex/blob/be2951ea34f0d295ed0becf97079f92fa5f6950e/codex-rs/config/src/loader/mod.rs).
+The newer [exec bootstrap](https://github.com/openai/codex/blob/ce21072c90d32c40af7a55b60b2fb35c84a43a6a/codex-rs/exec/src/lib.rs)
+still loads the cloud bundle and starts an in-process app-server. Its
+[configuration loader](https://github.com/openai/codex/blob/ce21072c90d32c40af7a55b60b2fb35c84a43a6a/codex-rs/config/src/loader/mod.rs)
+applies managed/cloud sources independently of `ignore_user_config`. A
+`config/read` response or a cloud-binding field alone does not prove pre-effect
+consumption of the same effective Config by a later `thread/start` or exec.
 
 `internal/agent/codexexec` implements the separate `codex-exec` provider. An
 embedding caller explicitly supplies `codexexec.Config` and calls
@@ -393,10 +461,10 @@ from the inspected executable and effective launch policy; that binding can be
 referenced by `Registry.ResolveExecution`. This is not the CHOR-13 settings UI
 or persisted, independently selectable model configuration.
 
-This candidate pins CLI `codex-cli 0.155.1`, an explicit existing ChatGPT
-`CODEX_HOME`, a dedicated empty home, and an optional explicit model. Other CLI
-versions and authentication mechanisms fail closed pending qualification. Chora
-runs only bounded version/login-status probes, never reads credential contents,
+The candidate uses the protocol/capability qualification described below, an
+explicit existing ChatGPT `CODEX_HOME`, a dedicated empty home, and an optional
+explicit model. Other authentication mechanisms remain unsupported. Chora
+runs only bounded version, exec-help and login-status probes, never reads credential contents,
 never logs in/out and never copies credentials. Native default model selection
 is labelled `native_default`; an explicit configured model is bound into the
 configuration fingerprint, without inventing a model catalog. Independently
@@ -438,8 +506,15 @@ JSONL projection persists bounded final messages, opaque thread provenance and
 sanitized lifecycle/tool identifiers. It discards reasoning, raw tool output and
 native diagnostics. Completion requires an ordered session/turn/final/settlement
 sequence plus trusted successful exit. Usage accepts the required input/cache-read/
-output counters and optional cache-write/reasoning counters emitted by 0.155.1;
-unknown, negative, null or non-integer counters fail closed. Duplicate/reordered
+output counters and optional cache-write/reasoning counters emitted by the
+reviewed releases. Known counters must be nonnegative integers; unknown usage
+metadata and additive non-authoritative frame fields are discarded. Missing
+required fields and new terminal authority fields (`status`, `outcome`, `error`,
+`is_error`, `stop_reason` on `turn.completed`) fail closed. Command/file-change
+states must match their start/update/completion phase; completed commands require
+an exit code. Tool outcomes are persisted as statuses, not independent check
+evidence; a failed tool can be handled by the agent before successful turn completion.
+Unknown tool types or lifecycle/terminal states are rejected. Duplicate/reordered
 terminal or final
 items, unmatched/duplicate command or file-change results, pending tools at settlement, truncated/oversized frames, missing final output, model/auth errors and
 nonzero exits fail closed. Cancellation and timeout remain supervisor/application
