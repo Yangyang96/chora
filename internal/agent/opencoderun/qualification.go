@@ -37,7 +37,7 @@ func (a *Adapter) qualify(ctx context.Context) error {
 	observe := func(capability string, state execution.QualificationState, method, reference string) {
 		evidence = append(evidence, execution.CapabilityEvidence{Capability: capability, State: state, Method: method, Reference: reference})
 	}
-	launch, _ := a.protocolEvidence(ctx)
+	launch, launchErr := a.protocolEvidence(ctx)
 	evidence = append(evidence, launch)
 	source, method := "", "reviewed_source_and_adapter_fixture"
 	if a.version == "1.19.5" {
@@ -58,6 +58,9 @@ func (a *Adapter) qualify(ctx context.Context) error {
 	}
 	observe("process_supervision", execution.QualificationVerified, "implementation_and_fixture", "trustedhost_process_group:not_authenticated_cancellation")
 	var failures []error
+	if launchErr != nil {
+		failures = append(failures, launchErr)
+	}
 	if source == "" || launch.State != execution.QualificationVerified {
 		failures = append(failures, ErrVersion)
 	}
@@ -115,7 +118,7 @@ func (a *Adapter) protocolEvidence(ctx context.Context) (execution.CapabilityEvi
 		}
 	}
 	if launch.State != execution.QualificationVerified {
-		return launch, fmt.Errorf("%w: %s", ErrVersion, launch.Reference)
+		return launch, errors.Join(fmt.Errorf("%w: %s", ErrVersion, launch.Reference), err)
 	}
 	return launch, nil
 }

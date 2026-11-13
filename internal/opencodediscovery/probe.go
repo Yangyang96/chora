@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -19,17 +20,22 @@ import (
 var ErrProbe = errors.New("opencode_readiness_probe_failed")
 var ErrCleanup = errors.New("opencode_probe_group_cleanup_unconfirmed")
 
+// ErrMetadataCleanup invalidates output when the disposable tree remains.
+var ErrMetadataCleanup = errors.New("opencode_metadata_cleanup_unverifiable")
+
 const outputLimit = 32 * 1024
 
 // Probe admits metadata arguments only. Native bootstrap receives disposable
 // HOME/XDG/cwd/tmp directories. Selected scope is used only to exclude unsafe
-// temporary bases. Authentication needs a separately qualified read-only path.
-func Probe(ctx context.Context, executable, home string, environment map[string]string, args ...string) (string, error) {
+// temporary bases. Cleanup failure invalidates metadata without changing tree
+// permissions or following symlink targets. Authentication needs a separately
+// qualified read-only path.
+func Probe(ctx context.Context, executable, home string, environment map[string]string, args ...string) (result string, probeErr error) {
 	if !slices.Equal(args, []string{"--version"}) && !slices.Equal(args, []string{"run", "--help"}) {
 		return "", ErrProbe
 	}
 	if ctx.Err() != nil || !filepath.IsAbs(executable) {
-		return "", ErrProbe
+		return "", errors.Join(ErrProbe, ctx.Err())
 	}
 	base, err := filepath.EvalSymlinks(os.TempDir())
 	if err != nil {
@@ -55,7 +61,12 @@ func Probe(ctx context.Context, executable, home string, environment map[string]
 	if err != nil {
 		return "", ErrProbe
 	}
-	defer os.RemoveAll(root)
+	defer func(allocated string) {
+		if err := os.RemoveAll(allocated); err != nil {
+			result = ""
+			probeErr = errors.Join(probeErr, ErrProbe, ErrMetadataCleanup)
+		}
+	}(root)
 	root, err = filepath.EvalSymlinks(root)
 	if err != nil {
 		return "", ErrProbe
@@ -122,8 +133,11 @@ func run(ctx context.Context, executable, directory string, environment, args []
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Stdout, cmd.Stderr = outputWrite, outputWrite
 	cmd.ExtraFiles = []*os.File{statusWrite}
-	if ctx.Err() != nil || cmd.Start() != nil {
-		return "", ErrProbe
+	if ctx.Err() != nil {
+		return "", errors.Join(ErrProbe, ctx.Err())
+	}
+	if err := cmd.Start(); err != nil {
+		return "", errors.Join(ErrProbe, err)
 	}
 	outputWrite.Close()
 	statusWrite.Close()
@@ -174,11 +188,12 @@ func run(ctx context.Context, executable, directory string, environment, args []
 	if waitErr != nil && cmd.ProcessState == nil {
 		cleanupErr = ErrCleanup
 	}
-	if cleanupErr != nil {
-		return "", errors.Join(ErrProbe, cleanupErr)
-	}
-	if interrupted || ctx.Err() != nil || status.err != nil || status.code != 0 || output.err != nil || len(output.data) > outputLimit {
-		return "", ErrProbe
+	if cleanupErr != nil || interrupted || ctx.Err() != nil || status.err != nil || status.code != 0 || output.err != nil || len(output.data) > outputLimit {
+		var exitErr error
+		if statusReceived && status.err == nil && status.code != 0 {
+			exitErr = fmt.Errorf("opencode_metadata_exit_%d", status.code)
+		}
+		return "", errors.Join(ErrProbe, cleanupErr, ctx.Err(), exitErr)
 	}
 	return string(output.data), nil
 }
