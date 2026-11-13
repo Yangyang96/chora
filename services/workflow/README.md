@@ -62,12 +62,68 @@ from Pi, Codex, browser sessions, or generic `OPENAI_API_KEY`:
 | `CHORA_WORKFLOW_BASE_URL` | Explicitly authorized OpenAI-compatible SDK endpoint |
 | `CHORA_WORKFLOW_MODEL` | Explicit provider model identifier supporting tool calls |
 | `CHORA_WORKFLOW_API_KEY` | Authorized SDK credential, supplied by the operator |
+| `CHORA_WORKFLOW_BATCH_LEDGER` | Existing external acceptance ledger, required for the DeepSeek profile |
 
 The adapter uses OpenAI Chat Completions with tool calls and disables SDK retries.
 Endpoint compatibility and the chosen model must be tested; the adapter's presence
 does not prove access. Do not print or commit credential values. State freezes the
 model ID, an endpoint digest, prompt and tool schema digests, graph/schema versions,
 and a pinned public Chora corpus revision. Changing them prevents continuation.
+
+### DeepSeek acceptance profile
+
+The official HTTPS `api.deepseek.com` endpoint selects the `deepseek.nonthinking.v1`
+profile for `deepseek-v4-pro`. It sends `thinking.type=disabled`, `tool_choice=required`
+and `max_tokens` capped at 2048. SDK and graph retries are zero. The default
+OpenAI-compatible profile continues to use `max_completion_tokens` and the
+workflow's bounded rate-limit retry policy. These request semantics, the output
+cap and the acceptance batch identity are frozen in each new workflow. Existing
+SDK checkpoints with an older identity require their matching executable or an
+explicitly verified migration. Fixture identities retain their existing contract.
+The parameter mapping follows the [DeepSeek Chat Completions API](https://api-docs.deepseek.com/api/create-chat-completion/).
+
+Before any authorized batch, create its ledger once in an external directory.
+All participating processes and threads must use that same file. Provision the
+SDK key through the authorized secure launcher, then run the following commands
+with public questions and an independently supplied disposable workflow database.
+
+```sh
+export CHORA_WORKFLOW_BASE_URL=https://api.deepseek.com
+export CHORA_WORKFLOW_MODEL=deepseek-v4-pro
+export CHORA_WORKFLOW_BATCH_LEDGER="$WORKFLOW_ACCEPTANCE_ROOT/batch.sqlite"
+uv run --project services/workflow --frozen python -m chora_workflow init-batch \
+  --batch-file "$CHORA_WORKFLOW_BATCH_LEDGER"
+# Use the same environment and batch file for every submit/resume process.
+uv run --project services/workflow --frozen python -m chora_workflow inspect-batch \
+  --batch-file "$CHORA_WORKFLOW_BATCH_LEDGER"
+```
+
+The fixed batch policy allows 20 model requests, 100000 cumulative tokens, at most
+2048 output tokens per request and 1200 seconds from the first durable request
+reservation. Initialization leaves the clock unstarted and refuses an existing
+file. Each request commits its ID, payload digest, timestamp, input bound and
+remaining allowances before network dispatch, then records actual prompt,
+completion and total usage. The ledger uses local SQLite transactions and permits
+one outstanding request across participating processes. Keep it on a durable
+local filesystem with reliable SQLite locking.
+
+Preflight bounds this harness's text/function input by twice its ASCII-escaped
+JSON byte length plus 4096 tokens for each request/message/tool framing element.
+The bound includes the entire message history and tool definitions. It is based
+on the published V4 encoding at revision `0e1a0e5e52aea73055f50fef6f2423db370265b6`
+and restricts historical calls to the harness's four-call/three-argument surface.
+Unsupported inputs and input-bound-plus-output reservations exceeding remaining
+tokens are refused before sending. A provider response exceeding either bound
+is recorded with its actual usage and halts the batch for reconciliation.
+See the [fixed encoding source](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/0e1a0e5e52aea73055f50fef6f2423db370265b6/encoding/encoding_dsv4.py).
+
+Failed requests consume a request slot. Missing or inconsistent usage remains
+null and halts the batch. A request left pending after a crash blocks further
+requests, including on another thread or process. Retain the ledger for operator
+reconciliation using provider evidence. Restarting with a fresh file requires a
+new authorized batch. The local ledger and frozen identity enforce continuity
+among trusted invocations using that file. Preserve the authorized batch across
+all participants, including independent validation processes.
 
 Initialize the dedicated database once while workers are stopped:
 
@@ -139,7 +195,8 @@ no-answer report). This is not full RAG or proof of semantic citation support.
 Step count, absolute deadline, known token subtotal, unknown-usage flag and retry
 count survive recovery. The initial deadline/trace are stored in the submission
 before the first graph checkpoint. Only rate-limit rejections have bounded retries
-(default two, no SDK retries). Authentication, malformed parameters/results,
+(default two, with zero SDK retries and zero graph retries for the DeepSeek profile).
+Authentication, malformed parameters/results,
 timeout, uncertain outcome and unavailable tools terminate with distinct reasons.
 Missing usage stops progression and is not reported as zero consumption. The token
 limit stops future calls once reported usage reaches it; a call can exceed the

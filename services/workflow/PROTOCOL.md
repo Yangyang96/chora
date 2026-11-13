@@ -57,11 +57,45 @@ stopped/failed. These are local delivery semantics; Go retains authority over
 future business decisions and authorization.
 
 When upgrading an existing M0 database, stop workers and run `init-db` to add the
-decision table and nullable collection columns. Existing waiting checkpoints with no pending resume can continue.
+decision table and nullable collection columns. Existing waiting checkpoints with
+matching frozen configuration and no pending resume can continue.
 Unjournaled pending resumes from an older executable are explicitly refused for
 operator reconciliation, including same-value requests: their command provenance
 cannot be proved. Do not delete pending writes or manufacture a journal row to
 retry them. Completed legacy checkpoints retain their terminal decision check.
+
+## SDK request identity and acceptance budget
+
+New SDK identities freeze the provider profile, thinking mode, output parameter
+and cap, tool choice, streaming mode, SDK/graph retry policies and optional batch
+ID/policy alongside model and endpoint digest. Resume validates these fields
+before binding a decision or writing pending resumes. Old SDK identities with
+missing fields fail this comparison. Inspect and Stop remain available for
+reconciliation. Recovery of fixture checkpoints continues under their matching
+fixture identity.
+
+The DeepSeek profile uses the official HTTPS endpoint, `deepseek-v4-pro`, disabled
+thinking, required tool choice and `max_tokens<=2048`. Both retry layers are zero.
+Its acceptance ledger is required and shared across every participating process
+and workflow. The immutable batch ID/policy is frozen, while mutable usage and
+clock state remain in that external ledger. The ledger path and credentials are
+excluded from the identity.
+
+The ledger reserves a request in a local SQLite transaction before SDK dispatch.
+Its 20-request/100000-token/2048-output/1200-second limits span restarts and
+threads. The first reservation starts the persisted wall-clock window. Preflight
+compares known cumulative usage plus a conservative bound on the complete input
+and maximum output against the remaining allocation. Only the documented bounded
+text/function surface is accepted. The profile setup defines the input bound and
+safe initialization/inspection commands. [Profile setup](README.md#deepseek-acceptance-profile).
+
+Successful responses persist actual prompt/completion/total usage before graph
+receipt serialization. Errors count as requests. Null or inconsistent usage halts
+the batch, and a pending reservation blocks new requests after process death.
+The ledger stores request digests, counters, timestamps and measured usage. A database
+failure before reservation prevents dispatch. A failure after dispatch preserves
+a pending request for reconciliation. The ledger, PG operation receipt and graph
+checkpoint commit separately. Each must be reconciled at its own boundary.
 
 ## Logical attempts and execution instances
 

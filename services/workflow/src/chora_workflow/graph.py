@@ -152,7 +152,15 @@ class Research:
                     )
                     return {"reply": Reply.model_validate(reply).model_dump()}
                 except ModelFailure as exc:
-                    return {"error": exc.category}
+                    return {
+                        "error": exc.category,
+                        **({"usage_unknown": True} if exc.usage_unknown else {}),
+                        **(
+                            {"total_tokens": exc.total_tokens}
+                            if exc.total_tokens is not None
+                            else {}
+                        ),
+                    }
                 except ValidationError:
                     return {"error": "invalid_result"}
 
@@ -180,9 +188,12 @@ class Research:
         ]
         if "error" in receipt:
             error = receipt["error"]
-            if error == "rate_limit" and state["retries"] < state["limits"]["max_retries"]:
+            spent = state["spent_tokens"] + receipt.get("total_tokens", 0)
+            retry_limit = min(state["limits"]["max_retries"], getattr(self.model, "retry_limit", 5))
+            if error == "rate_limit" and state["retries"] < retry_limit:
                 return {
                     "steps": step,
+                    "spent_tokens": spent,
                     "retries": state["retries"] + 1,
                     "events": events,
                     "status": "retry",
@@ -192,8 +203,11 @@ class Research:
                 state,
                 error,
                 steps=step,
+                spent_tokens=spent,
                 events=events,
-                usage_unknown=error in {"timeout_unknown", "outcome_unknown", "invalid_result"},
+                usage_unknown=receipt.get("usage_unknown", False)
+                or error
+                in {"timeout_unknown", "outcome_unknown", "invalid_result", "usage_unknown"},
             )
         reply = Reply.model_validate(receipt["reply"])
         usage = reply.total_tokens
