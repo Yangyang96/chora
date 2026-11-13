@@ -46,6 +46,12 @@ func protocolCorpus() []replay {
 		{Name: "unknown_event", Stream: "{\"type\":\"permission_request\"}\n", Invalid: true},
 		{Name: "missing_exit", Stream: strings.Replace(resultFrame, `"exit_code":0,`, "", 1), Invalid: true},
 		{Name: "duplicate_envelope", Stream: strings.Replace(resultFrame, `"exit_code":0`, `"exit_code":1,"exit_code":0`, 1), Invalid: true},
+		{Name: "error_alias", Stream: strings.Replace(resultFrame, `"exit_code":0`, `"error":"private-error","Error":"","exit_code":0`, 1), Invalid: true},
+		{Name: "exit_alias", Stream: strings.Replace(resultFrame, `"exit_code":0`, `"exit_code":1,"EXIT_CODE":0`, 1), Invalid: true},
+		{Name: "type_alias", Stream: strings.Replace(resultFrame, `"type":"result"`, `"type":"permission_request","Type":"result"`, 1), Invalid: true},
+		{Name: "session_alias", Stream: strings.Replace(resultFrame, `"session_id":"session-1"`, `"session_id":"other","SESSION_ID":"session-1"`, 1), Invalid: true},
+		{Name: "escaped_alias", Stream: strings.Replace(resultFrame, `"exit_code":0`, `"exit_code":1,"\u0045XIT_CODE":0`, 1), Invalid: true},
+		{Name: "unicode_alias", Stream: strings.Replace(resultFrame, `"session_id":"session-1"`, `"session_id":"other","ſeſſion_id":"session-1"`, 1), Invalid: true},
 		{Name: "missing_tool_status", Stream: strings.Replace(toolResultFrame, `,"is_error":false`, "", 1), Invalid: true},
 		{Name: "replay_gap", Stream: strings.Replace(resultFrame, `"exit_code":0`, `"exit_code":0,"replay_gap":true`, 1), Invalid: true},
 	}

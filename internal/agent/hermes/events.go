@@ -61,7 +61,9 @@ func project(raw []byte) (execution.NormalizedEvent, error) {
 	bad := func() (execution.NormalizedEvent, error) {
 		return execution.NormalizedEvent{}, execution.ErrEventStreamInvalid
 	}
-	// Duplicate envelope keys cannot hide a second type, status or session.
+	// Use the same case folding as encoding/json's struct-field matching.
+	// Token decodes escaped keys before comparison. Opaque metadata retains its
+	// own namespace and never contributes fields to this envelope.
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	if token, err := decoder.Token(); err != nil || token != json.Delim('{') {
 		return bad()
@@ -70,7 +72,16 @@ func project(raw []byte) (execution.NormalizedEvent, error) {
 	for decoder.More() {
 		token, err := decoder.Token()
 		key, ok := token.(string)
-		if err != nil || !ok || keys[key] {
+		if err != nil || !ok {
+			return bad()
+		}
+		for _, field := range []string{"type", "subtype", "text", "name", "error", "session_id", "tool_call_id", "exit_code", "is_error", "replay_gap"} {
+			if strings.EqualFold(key, field) {
+				key = field
+				break
+			}
+		}
+		if keys[key] {
 			return bad()
 		}
 		keys[key] = true
