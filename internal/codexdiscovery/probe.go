@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -27,7 +28,23 @@ func Probe(ctx context.Context, executable, home, authHome string, args ...strin
 		return "", ErrProbe
 	}
 	if help || reflect.DeepEqual(args, []string{"--version"}) {
-		root, err := os.MkdirTemp("", "chora-codex-metadata-")
+		// os.TempDir may be redirected by ambient TMPDIR. Reject a base inside
+		// either selected scope before creating anything there.
+		base, err := filepath.EvalSymlinks(os.TempDir())
+		if err != nil {
+			return "", ErrProbe
+		}
+		for _, selected := range []string{home, authHome} {
+			scope, err := filepath.EvalSymlinks(selected)
+			if err != nil {
+				return "", ErrProbe
+			}
+			rel, err := filepath.Rel(scope, base)
+			if err != nil || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))) {
+				return "", ErrProbe
+			}
+		}
+		root, err := os.MkdirTemp(base, "chora-codex-metadata-")
 		if err != nil {
 			return "", ErrProbe
 		}

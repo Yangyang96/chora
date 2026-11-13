@@ -92,3 +92,31 @@ func TestMetadataBootstrapIsolationAndCleanup(t *testing.T) {
 		})
 	}
 }
+
+func TestMetadataRejectsTempRootInsideSelectedScopeBeforeWriting(t *testing.T) {
+	for _, scope := range []string{"home", "auth"} {
+		t.Run(scope, func(t *testing.T) {
+			root := t.TempDir()
+			home, auth := filepath.Join(root, "home"), filepath.Join(root, "auth")
+			for _, p := range []string{home, auth} {
+				if err := os.Mkdir(p, 0700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			selected := home
+			if scope == "auth" {
+				selected = auth
+			}
+			t.Setenv("TMPDIR", selected)
+			if _, err := Probe(context.Background(), "/bin/echo", home, auth, "--version"); err != ErrProbe {
+				t.Fatal("selected scope used as temp root", err)
+			}
+			for _, p := range []string{home, auth} {
+				entries, err := os.ReadDir(p)
+				if err != nil || len(entries) != 0 {
+					t.Fatal("rejected probe wrote selected scope", p, entries, err)
+				}
+			}
+		})
+	}
+}

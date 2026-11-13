@@ -552,8 +552,9 @@ explicit model. Other authentication mechanisms remain unsupported. Chora
 runs bounded version and exec-help probes in disposable HOME/CODEX_HOME/cwd
 directories with a controlled environment. Native bootstrap writes in those
 directories are permitted and cleaned up on success, failure, cancellation and
-timeout. It rejects prohibited selected-scope configuration sources before
-starting metadata. Selected-scope login-status probes can perform native bootstrap
+timeout. A temporary-directory base within either selected scope is rejected
+before allocation. It rejects prohibited selected-scope configuration sources
+before starting metadata. Selected-scope login-status probes can perform native bootstrap
 writes and require configuration-policy acceptance first; public construction
 currently never reaches them. It never reads credential contents,
 never logs in/out and never copies credentials. Native default model selection
