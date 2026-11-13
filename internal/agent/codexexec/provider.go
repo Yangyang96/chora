@@ -45,12 +45,14 @@ type Config struct {
 	NetworkEnvironment map[string]string
 }
 type Adapter struct {
-	config        Config
-	executable    trustedhost.ExecutableIdentity
-	fingerprint   execution.RuntimeFingerprint
-	version       string
-	qualification execution.QualificationCache
-	network       runtimeenv.Network
+	config           Config
+	executable       trustedhost.ExecutableIdentity
+	fingerprint      execution.RuntimeFingerprint
+	version          string
+	qualification    execution.QualificationCache
+	protocolReviews  *ProtocolReviews
+	protocolApproval [32]byte
+	network          runtimeenv.Network
 	// Only package tests supply a synthetic policy proof. Public construction
 	// has no override until native policy-to-exec consistency is qualified.
 	managedPolicyCheck func() error
@@ -69,32 +71,20 @@ func New(ctx context.Context, config Config) (*Adapter, error) {
 }
 
 func newAdapter(ctx context.Context, config Config, managedPolicyCheck func() error) (*Adapter, error) {
-	if !canonicalDirectory(config.AuthHome) || !canonicalDirectory(config.Home) || config.AuthHome == config.Home || strings.TrimSpace(config.Model) != config.Model || strings.HasPrefix(config.Model, "-") || strings.ContainsAny(config.Model, "\x00\r\n") {
-		return nil, ErrPolicy
-	}
-	entries, err := os.ReadDir(config.Home)
-	if err != nil || len(entries) != 0 {
-		return nil, ErrPolicy
-	}
-	identity, err := trustedhost.InspectExecutable(config.Executable)
+	return newReviewedAdapter(ctx, config, managedPolicyCheck, nil)
+}
+
+// NewReviewed consumes only approvals from a host-provisioned trust service.
+// It cannot grant configuration-source safety or bypass the managed policy gate.
+func NewReviewed(ctx context.Context, config Config, reviews *ProtocolReviews) (*Adapter, error) {
+	return newReviewedAdapter(ctx, config, nil, reviews)
+}
+func newReviewedAdapter(ctx context.Context, config Config, managedPolicyCheck func() error, reviews *ProtocolReviews) (*Adapter, error) {
+	a, err := metadataAdapter(ctx, config)
 	if err != nil {
-		return nil, ErrInstallation
-	}
-	network, err := runtimeenv.New(config.NetworkEnvironment)
-	if err != nil {
-		return nil, ErrPolicy
-	}
-	config.NetworkEnvironment = nil
-	a := &Adapter{config: config, executable: identity, network: network, managedPolicyCheck: managedPolicyCheck}
-	// Reject prohibited sources before any native subprocess can bootstrap.
-	if err := a.validateSources(); err != nil {
 		return nil, err
 	}
-	version, err := a.probe(ctx, "--version")
-	if err != nil || len(strings.TrimSpace(version)) > 128 || !nativeVersion.MatchString(strings.TrimSpace(version)) {
-		return nil, ErrVersion
-	}
-	a.version = strings.TrimSpace(version)
+	a.managedPolicyCheck, a.protocolReviews = managedPolicyCheck, reviews
 	if err := a.qualifyProtocol(ctx); err != nil {
 		return nil, err
 	}
@@ -118,8 +108,12 @@ func newAdapter(ctx context.Context, config Config, managedPolicyCheck func() er
 // Inspect separates native installation/auth readiness from model permission.
 // Ready never means a real task or a particular model has been qualified.
 func Inspect(ctx context.Context, config Config) execution.Readiness {
+	return InspectReviewed(ctx, config, nil)
+}
+
+func InspectReviewed(ctx context.Context, config Config, reviews *ProtocolReviews) execution.Readiness {
 	result := execution.Readiness{RuntimeID: AdapterID}
-	adapter, err := New(ctx, config)
+	adapter, err := NewReviewed(ctx, config, reviews)
 	if err != nil {
 		result.Failure = err.Error()
 		var qualification *QualificationError
@@ -266,11 +260,12 @@ func (a *Adapter) deriveFingerprint(identity trustedhost.ExecutableIdentity) exe
 		Env     map[string]string
 		Policy  string
 		Network [32]byte
-	}{a.arguments(), a.environment(), "chora.codex-exec.local.v4:capability-qualification:managed-policy-proof-required:empty-home:reject-project-config:no-native-resources:no-check-evidence", a.network.Digest()})
+	}{a.arguments(), a.environment(), "chora.codex-exec.local.v5:reviewed-protocol-qualification:managed-policy-proof-required:empty-home:reject-project-config:no-native-resources:no-check-evidence", a.network.Digest()})
 	return execution.RuntimeFingerprint{Version: a.version, SourceIdentity: source, SecurityFingerprint: policy, Digest: hash(struct {
 		Source, Policy, Descriptor [32]byte
 		Version                    string
-	}{source, policy, a.Describe().Digest(), a.version})}
+		Approval                   [32]byte
+	}{source, policy, a.Describe().Digest(), a.version, a.protocolApproval})}
 }
 func (a *Adapter) Fingerprint(ctx context.Context) (execution.RuntimeFingerprint, error) {
 	if err := a.validatePolicy(); err != nil {
@@ -279,6 +274,12 @@ func (a *Adapter) Fingerprint(ctx context.Context) (execution.RuntimeFingerprint
 	identity, err := trustedhost.InspectExecutable(a.config.Executable)
 	if err != nil || identity != a.executable {
 		return execution.RuntimeFingerprint{}, ErrIdentity
+	}
+	if a.protocolApproval != ([32]byte{}) {
+		approval, ok := a.protocolReviews.lookup(a.qualificationIdentity())
+		if !ok || approval.digest != a.protocolApproval || approval.request.Fixture {
+			return execution.RuntimeFingerprint{}, ErrIdentity
+		}
 	}
 	if report, ok := a.qualification.Lookup(a.qualificationIdentity()); !ok || report.State != execution.QualificationVerified {
 		return execution.RuntimeFingerprint{}, ErrIdentity

@@ -58,30 +58,23 @@ func (a *Adapter) qualifyProtocol(ctx context.Context) error {
 	evidence := []execution.CapabilityEvidence{}
 	source := reviewedProtocol(a.version)
 	// Unknown versions receive only the bounded, no-model CLI help probe.
-	help, err := a.probe(ctx, "exec", "--help")
-	launch := execution.CapabilityEvidence{Capability: "launch_arguments", State: execution.QualificationVerified, Method: "native_help", Reference: "exec_help_flags_present"}
-	if err != nil {
-		launch.State, launch.Reference = execution.QualificationPending, "exec_help_probe_unavailable"
-	} else {
-		flags := strings.Fields(help)
-		for _, required := range []string{"--json", "--ephemeral", "--ignore-user-config", "--ignore-rules", "--skip-git-repo-check", "--sandbox", "--color", "--config", "--model"} {
-			found := false
-			for _, flag := range flags {
-				if flag == required {
-					found = true
-					break
-				}
-			}
-			if !found {
-				launch.State, launch.Reference = execution.QualificationRejected, "missing_flag:"+required
-				break
-			}
-		}
+	launch, _ := a.protocolEvidence(ctx)
+	approval, approved := a.protocolReviews.lookup(identity)
+	if approved {
+		a.protocolApproval = approval.digest
+		source = approval.reference
 	}
 	evidence = append(evidence, launch)
 	if source != "" {
+		method := "reviewed_source"
+		if approved {
+			method = "signed_source_review_and_adapter_conformance"
+			if approval.request.Fixture {
+				method = "signed_fixture_conformance:not_native"
+			}
+		}
 		for _, capability := range []string{"event_frames", "tool_lifecycle", "terminal_result"} {
-			evidence = append(evidence, execution.CapabilityEvidence{Capability: capability, State: execution.QualificationVerified, Method: "reviewed_source", Reference: source})
+			evidence = append(evidence, execution.CapabilityEvidence{Capability: capability, State: execution.QualificationVerified, Method: method, Reference: source})
 		}
 	}
 	evidence = append(evidence, execution.CapabilityEvidence{Capability: "process_supervision", State: execution.QualificationVerified, Method: "implementation_and_fixture", Reference: "trustedhost_bound_process_group:not_authenticated_cancellation"})
@@ -123,6 +116,9 @@ func (a *Adapter) qualificationFailure(cause error) error {
 }
 
 func (a *Adapter) recordPolicyQualification() error {
+	if approval, ok := a.protocolReviews.lookup(a.qualificationIdentity()); ok && approval.request.Fixture {
+		return ErrProtocolReview
+	}
 	report, ok := a.qualification.Lookup(a.qualificationIdentity())
 	if !ok {
 		return ErrIdentity
@@ -136,4 +132,33 @@ func (a *Adapter) recordPolicyQualification() error {
 	}
 	_, err := a.qualification.Store(a.qualificationIdentity(), requiredCapabilities, report.Evidence)
 	return err
+}
+
+// protocolEvidence checks arguments only; matching help never certifies semantics.
+func (a *Adapter) protocolEvidence(ctx context.Context) (execution.CapabilityEvidence, error) {
+	help, err := a.probe(ctx, "exec", "--help")
+	launch := execution.CapabilityEvidence{Capability: "launch_arguments", State: execution.QualificationVerified, Method: "native_help", Reference: "exec_help_flags_present"}
+	if err != nil {
+		launch.State, launch.Reference = execution.QualificationPending, "exec_help_probe_unavailable"
+	} else {
+		flags := strings.Fields(help)
+		for _, required := range []string{"--json", "--ephemeral", "--ignore-user-config", "--ignore-rules", "--skip-git-repo-check", "--sandbox", "--color", "--config", "--model"} {
+			found := false
+			for _, flag := range flags {
+				if flag == required {
+					found = true
+					break
+				}
+			}
+			if !found {
+				launch.State, launch.Reference = execution.QualificationRejected, "missing_flag:"+required
+				break
+			}
+		}
+	}
+
+	if launch.State != execution.QualificationVerified {
+		return launch, fmt.Errorf("%s", launch.Reference)
+	}
+	return launch, nil
 }
