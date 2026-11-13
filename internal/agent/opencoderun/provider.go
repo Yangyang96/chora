@@ -54,7 +54,9 @@ type Adapter struct {
 	version       string
 	qualification execution.QualificationCache
 	// Package fixtures alone supply this checker. Public New has no override.
-	nativeCheck func(context.Context) error
+	nativeCheck      func(context.Context) error
+	protocolReviews  *ProtocolReviews
+	protocolApproval [32]byte
 }
 
 var _ execution.Provider = (*Adapter)(nil)
@@ -66,10 +68,39 @@ func canonicalDirectory(path string) bool {
 	return !strings.ContainsAny(path, "\x00\r\n") && err == nil && statErr == nil && info.IsDir() && filepath.IsAbs(path) && filepath.Clean(path) == path && resolved == path
 }
 func New(ctx context.Context, config Config) (*Adapter, error) {
-	return newAdapter(ctx, config, nil)
+	return newReviewedAdapter(ctx, config, nil, nil)
+}
+
+// NewReviewed consumes a host-owned protocol trust service. It retains the
+// independent native configuration, retry and authentication gates.
+func NewReviewed(ctx context.Context, config Config, reviews *ProtocolReviews) (*Adapter, error) {
+	return newReviewedAdapter(ctx, config, nil, reviews)
 }
 
 func newAdapter(ctx context.Context, config Config, nativeCheck func(context.Context) error) (*Adapter, error) {
+	return newReviewedAdapter(ctx, config, nativeCheck, nil)
+}
+
+func newReviewedAdapter(ctx context.Context, config Config, nativeCheck func(context.Context) error, reviews *ProtocolReviews) (*Adapter, error) {
+	a, err := metadataAdapter(ctx, config)
+	if err != nil {
+		return nil, err
+	}
+	a.nativeCheck, a.protocolReviews = nativeCheck, reviews
+	if err := a.qualify(ctx); err != nil {
+		return nil, err
+	}
+	if approval, ok := reviews.lookup(a.qualificationIdentity()); ok && approval.request.Fixture {
+		return nil, ErrProtocolReview
+	}
+	a.fingerprint, err = a.Fingerprint(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return a, nil
+}
+
+func metadataAdapter(ctx context.Context, config Config) (*Adapter, error) {
 	if !canonicalDirectory(config.Home) || !validModel(config.Model) {
 		return nil, ErrPolicy
 	}
@@ -87,19 +118,15 @@ func newAdapter(ctx context.Context, config Config, nativeCheck func(context.Con
 		return nil, ErrPolicy
 	}
 	config.NetworkEnvironment = nil
-	a := &Adapter{config: config, executable: identity, network: network, nativeCheck: nativeCheck}
+	a := &Adapter{config: config, executable: identity, network: network}
 	version, err := a.probe(ctx, "--version")
-	if err != nil || !nativeVersion.MatchString(strings.TrimSpace(version)) {
+	if err != nil {
+		return nil, errors.Join(ErrVersion, err)
+	}
+	if !nativeVersion.MatchString(strings.TrimSpace(version)) {
 		return nil, ErrVersion
 	}
 	a.version = strings.TrimSpace(version)
-	if err := a.qualify(ctx); err != nil {
-		return nil, err
-	}
-	a.fingerprint, err = a.Fingerprint(ctx)
-	if err != nil {
-		return nil, err
-	}
 	return a, nil
 }
 
@@ -111,8 +138,12 @@ func validModel(model string) bool {
 
 // Inspect runs bounded metadata probes only. It never attempts inference.
 func Inspect(ctx context.Context, config Config) execution.Readiness {
+	return InspectReviewed(ctx, config, nil)
+}
+
+func InspectReviewed(ctx context.Context, config Config, reviews *ProtocolReviews) execution.Readiness {
 	result := execution.Readiness{RuntimeID: AdapterID}
-	a, err := New(ctx, config)
+	a, err := NewReviewed(ctx, config, reviews)
 	if err != nil {
 		result.Failure = err.Error()
 		var qualification *QualificationError
@@ -171,18 +202,6 @@ func (a *Adapter) probe(ctx context.Context, args ...string) (string, error) {
 	return opencodediscovery.Probe(ctx, a.config.Executable, a.config.Home, a.environment(), args...)
 }
 
-// Native auth list exposes presence/type metadata, not proof that a later run
-// uses only the selected provider. Never parse or copy auth.json credentials.
-func (a *Adapter) authenticationDiagnostic(ctx context.Context) error {
-	out, err := a.probe(ctx, "auth", "list")
-	if err != nil {
-		return ErrAuthentication
-	}
-	if zeroCredentials.MatchString(out) {
-		return ErrAuthentication
-	}
-	return ErrAuthScope
-}
 func absent(path string) bool { _, err := os.Lstat(path); return errors.Is(err, os.ErrNotExist) }
 func (a *Adapter) validatePolicy(ctx context.Context) error {
 	if a.network.Validate() != nil || !canonicalDirectory(a.config.Home) {
@@ -205,7 +224,7 @@ func validateWorkspace(root string) error {
 	// Reject project/ancestor config and native resource directories, including
 	// symlinks. This slice never promises to load or project native resources.
 	for dir := root; ; dir = filepath.Dir(dir) {
-		for _, name := range []string{".opencode", ".agents", ".claude", "opencode.json", "opencode.jsonc", "AGENTS.md", "CLAUDE.md", "CONTEXT.md", ".env"} {
+		for _, name := range []string{".opencode", ".agents", ".claude", "opencode.json", "opencode.jsonc", "AGENTS.md", "CLAUDE.md", "CONTEXT.md"} {
 			if !absent(filepath.Join(dir, name)) {
 				return ErrPolicy
 			}
@@ -217,7 +236,7 @@ func validateWorkspace(root string) error {
 	return nil
 }
 func hash(v any) [32]byte { b, _ := json.Marshal(v); return sha256.Sum256(b) }
-func (a *Adapter) deriveFingerprint(identity trustedhost.ExecutableIdentity) execution.RuntimeFingerprint {
+func (a *Adapter) baseFingerprint(identity trustedhost.ExecutableIdentity) execution.RuntimeFingerprint {
 	source := hash(identity)
 	policy := hash(struct {
 		Config     Config
@@ -227,8 +246,13 @@ func (a *Adapter) deriveFingerprint(identity trustedhost.ExecutableIdentity) exe
 		Descriptor [32]byte
 		Network    [32]byte
 		MaxRuntime time.Duration
-	}{a.config, a.arguments(), a.environment(), "chora.opencode-run.local.v1:qualified-native-sources-and-retry-required:no-check-evidence", a.Describe().Digest(), a.network.Digest(), maxRuntime})
+	}{a.config, a.arguments(), a.environment(), "chora.opencode-run.local.v2:isolated-metadata:host-protocol-review:qualified-native-sources-and-retry-required:no-check-evidence", a.Describe().Digest(), a.network.Digest(), maxRuntime})
 	return execution.RuntimeFingerprint{Version: a.version, SourceIdentity: source, SecurityFingerprint: policy, Digest: hash([][32]byte{source, policy})}
+}
+func (a *Adapter) deriveFingerprint(identity trustedhost.ExecutableIdentity) execution.RuntimeFingerprint {
+	fp := a.baseFingerprint(identity)
+	fp.Digest = hash(struct{ Base, ProtocolApproval [32]byte }{fp.Digest, a.protocolApproval})
+	return fp
 }
 func (a *Adapter) Fingerprint(ctx context.Context) (execution.RuntimeFingerprint, error) {
 	if err := a.validatePolicy(ctx); err != nil {
@@ -237,6 +261,12 @@ func (a *Adapter) Fingerprint(ctx context.Context) (execution.RuntimeFingerprint
 	identity, err := trustedhost.InspectExecutable(a.config.Executable)
 	if err != nil || identity != a.executable {
 		return execution.RuntimeFingerprint{}, ErrIdentity
+	}
+	if a.protocolApproval != ([32]byte{}) {
+		approval, ok := a.protocolReviews.lookup(a.qualificationIdentity())
+		if !ok || approval.digest != a.protocolApproval || approval.request.Fixture {
+			return execution.RuntimeFingerprint{}, ErrIdentity
+		}
 	}
 	report, ok := a.qualification.Lookup(a.qualificationIdentity())
 	if !ok || report.State != execution.QualificationVerified {
