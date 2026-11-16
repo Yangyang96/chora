@@ -31,6 +31,7 @@ var (
 	ErrAuthentication = errors.New("authentication_unavailable")
 	ErrPolicy         = errors.New("configuration_unqualified")
 	ErrIdentity       = errors.New("runtime_identity_drift")
+	ErrManagedPolicy  = fmt.Errorf("%w: managed_policy_unverifiable", ErrPolicy)
 )
 
 // Config selects existing native authentication, without reading/copying secrets.
@@ -48,6 +49,9 @@ type Adapter struct {
 	executable  trustedhost.ExecutableIdentity
 	fingerprint execution.RuntimeFingerprint
 	network     runtimeenv.Network
+	// Only package tests supply a synthetic policy proof. Public construction
+	// has no override until native policy-to-exec consistency is qualified.
+	managedPolicyCheck func() error
 }
 
 var _ execution.Provider = (*Adapter)(nil)
@@ -59,6 +63,10 @@ func canonicalDirectory(path string) bool {
 	return !strings.ContainsAny(path, "\x00\r\n") && err == nil && statErr == nil && info.IsDir() && filepath.IsAbs(path) && filepath.Clean(path) == path && resolved == path
 }
 func New(ctx context.Context, config Config) (*Adapter, error) {
+	return newAdapter(ctx, config, nil)
+}
+
+func newAdapter(ctx context.Context, config Config, managedPolicyCheck func() error) (*Adapter, error) {
 	if !canonicalDirectory(config.AuthHome) || !canonicalDirectory(config.Home) || config.AuthHome == config.Home || strings.TrimSpace(config.Model) != config.Model || strings.HasPrefix(config.Model, "-") || strings.ContainsAny(config.Model, "\x00\r\n") {
 		return nil, ErrPolicy
 	}
@@ -75,7 +83,7 @@ func New(ctx context.Context, config Config) (*Adapter, error) {
 		return nil, ErrPolicy
 	}
 	config.NetworkEnvironment = nil
-	a := &Adapter{config: config, executable: identity, network: network}
+	a := &Adapter{config: config, executable: identity, network: network, managedPolicyCheck: managedPolicyCheck}
 	version, err := a.probe(ctx, "--version")
 	if err != nil || strings.TrimSpace(version) != QualifiedVersion {
 		return nil, ErrVersion
@@ -172,7 +180,7 @@ func (a *Adapter) validatePolicy() error {
 	}
 	// Fail closed on system requirements/config and extra user config layers.
 	// Never parse these potentially secret-bearing files or execute their hooks.
-	for _, path := range []string{filepath.Join(a.config.AuthHome, ".env"), filepath.Join(a.config.Home, ".env"), filepath.Join(a.config.Home, ".codex"), filepath.Join(a.config.Home, ".agents"), "/etc/codex/config.toml", "/etc/codex/requirements.toml", filepath.Join(a.config.AuthHome, "managed_config.toml")} {
+	for _, path := range []string{filepath.Join(a.config.AuthHome, ".env"), filepath.Join(a.config.Home, ".env"), filepath.Join(a.config.Home, ".codex"), filepath.Join(a.config.Home, ".agents"), "/etc/codex/config.toml", "/etc/codex/requirements.toml", "/etc/codex/managed_config.toml", filepath.Join(a.config.AuthHome, "managed_config.toml")} {
 		if !absent(path) {
 			return ErrPolicy
 		}
@@ -185,6 +193,16 @@ func (a *Adapter) validatePolicy() error {
 		if strings.HasSuffix(e.Name(), ".config.toml") {
 			return ErrPolicy
 		}
+	}
+	// 0.155.1 still reads cloud bundles and macOS managed preferences under
+	// --ignore-user-config. Neither a filesystem absence check nor a separate
+	// config/read snapshot proves what a later exec will load. Do not bypass
+	// organization policy, expose policy contents, or offer an opt-out flag.
+	if a.managedPolicyCheck == nil {
+		return ErrManagedPolicy
+	}
+	if a.managedPolicyCheck() != nil {
+		return ErrManagedPolicy
 	}
 	return nil
 }
@@ -214,7 +232,7 @@ func (a *Adapter) deriveFingerprint(identity trustedhost.ExecutableIdentity) exe
 		Env     map[string]string
 		Policy  string
 		Network [32]byte
-	}{a.arguments(), a.environment(), "chora.codex-exec.local.v2:empty-home:reject-project-config:no-native-resources:no-check-evidence", a.network.Digest()})
+	}{a.arguments(), a.environment(), "chora.codex-exec.local.v3:managed-policy-proof-required:empty-home:reject-project-config:no-native-resources:no-check-evidence", a.network.Digest()})
 	return execution.RuntimeFingerprint{Version: QualifiedVersion, SourceIdentity: source, SecurityFingerprint: policy, Digest: hash([][32]byte{source, policy})}
 }
 func (a *Adapter) Fingerprint(ctx context.Context) (execution.RuntimeFingerprint, error) {

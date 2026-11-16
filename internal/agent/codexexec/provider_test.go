@@ -40,7 +40,7 @@ func fixture(t *testing.T, body string) *Adapter {
 	if err := os.WriteFile(executable, []byte(script), 0700); err != nil {
 		t.Fatal(err)
 	}
-	a, err := New(context.Background(), Config{Executable: executable, AuthHome: auth, Home: home, Model: "fixture-model"})
+	a, err := newAdapter(context.Background(), Config{Executable: executable, AuthHome: auth, Home: home, Model: "fixture-model"}, func() error { return nil })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -310,6 +310,9 @@ func TestSupervisorCancelsDescendantAndRejectsEnvironmentDrift(t *testing.T) {
 	if childPID <= 0 {
 		t.Fatal("no descendant created")
 	}
+	if alive, err := s.Reconcile(context.Background(), outcome.Identity); err != nil || alive.Kind != execution.ReconcileAlive {
+		t.Fatal("process tree not alive before stop", err)
+	}
 	stopped, err := s.Stop(context.Background(), outcome.Handle, execution.StopIntent{Kind: execution.StopForCancel})
 	if err != nil || stopped.Kind != execution.StopConfirmed {
 		t.Fatal(stopped, err)
@@ -389,7 +392,7 @@ func TestSelectedNetworkPolicyAndDotenvRejection(t *testing.T) {
 	a := fixture(t, "exit 0\n")
 	config := a.config
 	config.NetworkEnvironment = map[string]string{"HTTPS_PROXY": "http://127.0.0.1:1234"}
-	b, err := New(context.Background(), config)
+	b, err := newAdapter(context.Background(), config, func() error { return nil })
 	if err != nil {
 		t.Fatal(err)
 	}

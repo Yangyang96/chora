@@ -179,6 +179,8 @@ func (a *Adapter) Complete(r execution.CompletionRequest) (execution.TerminalRes
 	started, thread, turn, settled := false, false, false, false
 	final := ""
 	seen := map[string]bool{}
+	pending := map[string]string{}
+	protocolInvalid := false
 	failure := ""
 	for _, e := range r.Events {
 		if e.Type() == "attempt.started" {
@@ -189,6 +191,8 @@ func (a *Adapter) Complete(r execution.CompletionRequest) (execution.TerminalRes
 			final = ""
 			failure = ""
 			seen = map[string]bool{}
+			pending = map[string]string{}
+			protocolInvalid = false
 			continue
 		}
 		if !started || e.Source() != "adapter" {
@@ -196,13 +200,16 @@ func (a *Adapter) Complete(r execution.CompletionRequest) (execution.TerminalRes
 		}
 		var p struct {
 			Text     string `json:"text"`
+			CallID   string `json:"call_id"`
+			Tool     string `json:"tool"`
 			ID       string `json:"item_id"`
 			Failure  string `json:"failure"`
 			Outcome  string `json:"outcome"`
 			Complete bool   `json:"terminal_complete"`
 		}
 		if json.Unmarshal(e.NormalizedJSON(), &p) != nil {
-			return failed("protocol_invalid"), nil
+			protocolInvalid = true
+			continue
 		}
 		if e.Type() == "runtime_failure" {
 			failure = p.Failure
@@ -211,28 +218,47 @@ func (a *Adapter) Complete(r execution.CompletionRequest) (execution.TerminalRes
 		switch e.Type() {
 		case "runtime_session":
 			if thread || turn {
-				return failed("protocol_invalid"), nil
+				protocolInvalid = true
+				continue
 			}
 			thread = true
 		case "turn_start":
 			if !thread || turn || settled {
-				return failed("protocol_invalid"), nil
+				protocolInvalid = true
+				continue
 			}
 			turn = true
 		case "assistant_message":
-			if !turn || settled || !p.Complete || p.Text == "" || len(p.Text) > maxMessage || seen[p.ID] {
-				return failed("protocol_invalid"), nil
+			if !turn || settled || !p.Complete || p.Text == "" || len(p.Text) > maxMessage || seen[p.ID] || !identifier(p.ID) {
+				protocolInvalid = true
+				continue
 			}
 			seen[p.ID] = true
 			final = p.Text
 		case "agent_settled":
-			if !turn || settled || p.Outcome != "completed" {
-				return failed("protocol_invalid"), nil
+			if !turn || settled || p.Outcome != "completed" || len(pending) != 0 {
+				protocolInvalid = true
+				continue
 			}
 			settled = true
 		case "tool_start", "tool_result":
-			if !turn || settled {
-				return failed("protocol_invalid"), nil
+			if !turn || settled || !identifier(p.CallID) || (p.Tool != "command_execution" && p.Tool != "file_change") {
+				protocolInvalid = true
+				continue
+			}
+			if e.Type() == "tool_start" {
+				if seen[p.CallID] {
+					protocolInvalid = true
+					continue
+				}
+				seen[p.CallID] = true
+				pending[p.CallID] = p.Tool
+			} else {
+				if pending[p.CallID] != p.Tool {
+					protocolInvalid = true
+					continue
+				}
+				delete(pending, p.CallID)
 			}
 		}
 	}
@@ -241,6 +267,9 @@ func (a *Adapter) Complete(r execution.CompletionRequest) (execution.TerminalRes
 	}
 	if r.Files.ExitCode != 0 {
 		return failed("process_failure"), nil
+	}
+	if protocolInvalid || len(pending) != 0 {
+		return failed("protocol_invalid"), nil
 	}
 	if !started || !settled || final == "" {
 		return failed("protocol_incomplete"), nil

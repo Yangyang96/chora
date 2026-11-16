@@ -2,15 +2,15 @@ package localweb
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/Yangyang96/chora/internal/agent/codexexec"
-	"github.com/Yangyang96/chora/internal/domain"
 )
 
-func TestCodexCompositionRegistersOnlySelectedLocalRoute(t *testing.T) {
+func TestCodexCompositionRejectsUnverifiableManagedPolicy(t *testing.T) {
 	root, _ := filepath.EvalSymlinks(t.TempDir())
 	for _, name := range []string{"home", "auth"} {
 		if err := os.Mkdir(filepath.Join(root, name), 0700); err != nil {
@@ -22,21 +22,7 @@ func TestCodexCompositionRegistersOnlySelectedLocalRoute(t *testing.T) {
 		t.Fatal(err)
 	}
 	registration, err := NewCodexRuntimeProvider(context.Background(), codexexec.Config{Executable: executable, AuthHome: filepath.Join(root, "auth"), Home: filepath.Join(root, "home")}, filepath.Join(root, "runtime"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(registration.Supervisors) != 1 || registration.Supervisors[domain.TrustedHostExecutionProvider] == nil {
-		t.Fatal("unexpected execution route")
-	}
-	registry := newAdapterRegistry()
-	router := newRoutingSupervisor(nil)
-	if err := registerRuntimeProviders(registry, router, []RuntimeProviderRegistration{registration}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := registry.Get(codexexec.AdapterID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := registry.Get("codex"); err == nil {
-		t.Fatal("legacy runtime enabled")
+	if !errors.Is(err, codexexec.ErrManagedPolicy) || registration.Provider != nil || len(registration.Supervisors) != 0 {
+		t.Fatalf("unqualified registration: %+v, %v", registration, err)
 	}
 }
