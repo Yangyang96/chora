@@ -4,8 +4,10 @@
 
 An opt-in [research-before-coding development slice](docs/research-workflow.md)
 now connects public-document research, durable human confirmation and an
-idempotent Pi Run handoff. Deterministic/PG/browser verification is separate
-from pending live-model/Pi and independent acceptance. This does not complete
+idempotent Pi Run handoff. Native Pi launch is held closed pending a restricted
+provider transport composition; the dispatch ledger and deadline components are
+not a connected native Pi budget guarantee. Deterministic/PG/browser verification
+is separate from pending live-model/Pi and independent acceptance. This does not complete
 the broader LangGraph, RAG or multi-worker roadmap.
 
 Status, 2026-09-21: Developer Alpha with public source. Real multi-repository delivery

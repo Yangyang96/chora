@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -48,6 +49,11 @@ func TestPathModelSelectionRevalidatesAndReachesInvocation(t *testing.T) {
 	args := invocation.Arguments()
 	if !reflect.DeepEqual(args[len(args)-4:], []string{"--provider", "p", "--model", "chosen"}) || calls != 1 {
 		t.Fatalf("model not applied: %v", args)
+	}
+	researchRequest := request
+	researchRequest.ResearchContext = []byte(`{"workflow_id":"synthetic","pi_authorization":null}`)
+	if _, err := adapter.PrepareStart(context.Background(), researchRequest); err == nil || !strings.Contains(err.Error(), "restricted provider transport") {
+		t.Fatalf("unrestricted research Pi launch admitted: %v", err)
 	}
 	predecessor := attempt.ID()
 	resumedAttempt, err := domain.NewAttempt(domain.AttemptParams{ID: domain.NewAttemptID(), RunID: run.ID(), Sequence: 2, Predecessor: &predecessor, ContextSnapshotID: attempt.ContextSnapshotID(), ContextDigest: attempt.ContextDigest(), AdapterID: AdapterID, AgentExecutionProfileBinding: attempt.AgentExecutionProfileBinding(), ModelBinding: binding, ExternalSession: "123e4567-e89b-12d3-a456-426614174000", ContextDelta: "retry", CreatedAt: time.Now()})

@@ -182,6 +182,16 @@ func TestStartRejectsMinimalCapabilityEscalationBeforeAnySideEffect(t *testing.T
 	}
 }
 
+func TestWorkflowDeadlineUnsupportedRouteRefusesBeforeDocker(t *testing.T) {
+	runner := &fakeRunner{}
+	supervisor := newTestSupervisor(t, runner)
+	invocation := testInvocation(t, testSource(t), "workflow-deadline").WithDeadline(time.Now().Add(time.Minute))
+	outcome := supervisor.Start(context.Background(), invocation, &testSink{binding: invocation.LaunchToken()})
+	if outcome.Kind != execution.StartProvenNoChild || len(runner.commands()) != 0 {
+		t.Fatalf("unsupported deadline escaped: %+v %v", outcome, runner.commands())
+	}
+}
+
 func TestStartRejectsInvalidInvocationBeforeSideEffects(t *testing.T) {
 	tests := map[string]func(map[string]string){
 		"policy digest": func(environment map[string]string) {

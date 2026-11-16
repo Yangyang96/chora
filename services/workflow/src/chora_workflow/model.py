@@ -67,7 +67,9 @@ class SDKModel:
             "profile": "deepseek.nonthinking.v1" if self.deepseek else "openai.compatible.v1",
             "thinking": "disabled" if self.deepseek else "provider_default",
             "output_parameter": "max_tokens" if self.deepseek else "max_completion_tokens",
-            "max_output_tokens": 2048,
+            "max_output_tokens": self.batch.identity["policy"]["max_output_tokens"]
+            if self.batch
+            else 2048,
             "tool_choice": "required",
             "stream": False,
             "sdk_retries": 0,
@@ -93,7 +95,9 @@ class SDKModel:
         reservation = None
         if self.deepseek:
             options.update(
-                max_tokens=min(2048, max_tokens), thinking={"type": "disabled"}, stream=False
+                max_tokens=min(self.batch.identity["policy"]["max_output_tokens"], max_tokens),
+                thinking={"type": "disabled"},
+                stream=False,
             )
             try:
                 reservation = self.batch.reserve(options, **self.batch_context)

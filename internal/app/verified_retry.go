@@ -95,6 +95,10 @@ func (s *Service) PrepareVerifiedAgentRetry(ctx context.Context, request Prepare
 		if err != nil {
 			return err
 		}
+		workflowRevision, err := authorizeWorkflowRevision(ctx, tx, run, request.CommandMeta, request.ModelBinding, false, reviewID != "")
+		if err != nil {
+			return err
+		}
 		snapshot, err := tx.GetSnapshot(ctx, oldAttempt.ContextSnapshotID())
 		if err != nil || snapshot.Digest() != oldAttempt.ContextDigest() || snapshot.Digest() != change.ContextSnapshotDigest() {
 			return reviewEvidenceError("frozen Context Snapshot is unavailable or drifted")
@@ -138,13 +142,16 @@ func (s *Service) PrepareVerifiedAgentRetry(ctx context.Context, request Prepare
 		if err := tx.InsertAttempt(ctx, nextAttempt); err != nil {
 			return err
 		}
+		if err = recordWorkflowRevision(ctx, tx, workflowRevision, nextAttempt); err != nil {
+			return err
+		}
 		if _, err := tx.AppendRunEvent(ctx, run.ID(), storecontract.EventDraft{
 			ID: s.deps.IDs.EventID(), Type: "agent_retry.prepared", Source: "app", OccurredAt: now, RecordedAt: now,
 			NormalizedJSON: responseBody(map[string]any{"type": "agent_retry.prepared", "predecessor_agent_attempt_id": oldAttempt.ID().String(), "successor_agent_attempt_id": nextAttempt.ID().String(), "predecessor_result_id": change.Binding.ResultID.String()}),
 		}); err != nil {
 			return err
 		}
-		if nextAttempt.AdapterID() == "pi" {
+		if nextAttempt.AdapterID() == "pi" && workflowRevision == nil {
 			if err := s.appendAutomaticRetryReset(ctx, tx, run.ID(), nextAttempt.ID(), now); err != nil {
 				return err
 			}

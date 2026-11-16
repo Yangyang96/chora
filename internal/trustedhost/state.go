@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/Yangyang96/chora/internal/execution"
 )
@@ -41,6 +42,7 @@ const (
 )
 
 type processManifest struct {
+	AbsoluteDeadline         *time.Time    `json:"absolute_deadline,omitempty"`
 	Schema                   string        `json:"schema"`
 	Owner                    string        `json:"owner"`
 	State                    manifestState `json:"state"`
@@ -261,8 +263,12 @@ func (supervisor *Supervisor) prepare(ctx context.Context, invocation execution.
 	if supervisor.config.DirectWorkingRoot {
 		launchContractDigest = digestDirectLaunchContract(launchContractDigest, workspace)
 	}
+	if !invocation.Deadline().IsZero() {
+		launchContractDigest = digestDeadlineLaunchContract(launchContractDigest, invocation.Deadline())
+	}
 	record := &processRecord{
-		root: root, workspace: workspace, outputDir: outputDir, stdoutPath: stdoutPath, stderrPath: stderrPath,
+		absoluteDeadline: invocation.Deadline(),
+		root:             root, workspace: workspace, outputDir: outputDir, stdoutPath: stdoutPath, stderrPath: stderrPath,
 		gateReceiptPath: gateReceiptPath, gateNonce: gateNonce, launchContractDigest: launchContractDigest,
 		ambientEnvironmentDigest: supervisor.config.ambientEnvironmentDigest,
 		runtimeClosureDigest:     runtimeClosureDigest,
@@ -454,6 +460,10 @@ func digestDirectLaunchContract(baseDigest, workspace string) string {
 	return digestStrings([]string{"chora.trusted-host.direct-launch-contract.v1", baseDigest, workspace})
 }
 
+func digestDeadlineLaunchContract(base string, deadline time.Time) string {
+	return digestStrings([]string{"chora.trusted-host.absolute-deadline.v1", base, deadline.UTC().Format(time.RFC3339Nano)})
+}
+
 func processIdentity(record *processRecord) execution.ProcessIdentity {
 	canonical := fmt.Sprintf("chora.trusted-host.process.v1\x00%d\x00%d\x00%s\x00%s", record.pid, record.pgid, record.birth, launchDigest(record.launch))
 	digest := sha256.Sum256([]byte(canonical))
@@ -461,6 +471,11 @@ func processIdentity(record *processRecord) execution.ProcessIdentity {
 }
 
 func manifestFor(record *processRecord) processManifest {
+	var deadline *time.Time
+	if !record.absoluteDeadline.IsZero() {
+		v := record.absoluteDeadline
+		deadline = &v
+	}
 	record.mu.Lock()
 	defer record.mu.Unlock()
 	schema, workspaceMode := manifestSchema, ""
@@ -468,7 +483,8 @@ func manifestFor(record *processRecord) processManifest {
 		schema, workspaceMode = directManifestSchema, directWorkspaceMode
 	}
 	return processManifest{
-		Schema: schema, Owner: manifestOwner, State: record.state,
+		AbsoluteDeadline: deadline,
+		Schema:           schema, Owner: manifestOwner, State: record.state,
 		Handle: record.handle.Value, Identity: record.identity.Value, LaunchToken: record.launch.Value,
 		PID: record.pid, PGID: record.pgid, Birth: record.birth, Workspace: record.workspace, WorkspaceMode: workspaceMode,
 		OutputDirectory: record.outputDir, StdoutPath: record.stdoutPath, StderrPath: record.stderrPath,
@@ -640,6 +656,24 @@ func (supervisor *Supervisor) loadRecords() error {
 			supervisor.byIdentity[record.identity.Value] = record
 		}
 	}
+	// Check persisted clocks before any caller can recover or resume a handle.
+	// Future deadlines retain their original instant, rather than restarting a
+	// per-Attempt duration when this process restarts.
+	for _, record := range supervisor.byHandle {
+		if record.isTerminal() || record.absoluteDeadline.IsZero() {
+			continue
+		}
+		if !time.Now().Before(record.absoluteDeadline) {
+			if outcome, err := supervisor.Stop(context.Background(), record.handle, execution.StopIntent{Kind: execution.StopForCancel, Reason: "absolute Run deadline expired during restart"}); err != nil || outcome.Kind != execution.StopConfirmed {
+				return fmt.Errorf("%w: expired process termination unresolved", ErrRecoveryUncertain)
+			}
+		}
+	}
+	for _, record := range supervisor.byHandle {
+		if !record.isTerminal() && !record.absoluteDeadline.IsZero() {
+			go supervisor.expire(record)
+		}
+	}
 	return nil
 }
 
@@ -713,6 +747,9 @@ func recordFromManifest(root string, manifest processManifest, directWorkingRoot
 	if directWorkingRoot {
 		expectedLaunchDigest = digestDirectLaunchContract(expectedLaunchDigest, workspace)
 	}
+	if manifest.AbsoluteDeadline != nil {
+		expectedLaunchDigest = digestDeadlineLaunchContract(expectedLaunchDigest, *manifest.AbsoluteDeadline)
+	}
 	if err != nil || !validSHA256Digest(manifest.RuntimeClosureDigest) || expectedLaunchDigest != manifest.LaunchContractDigest {
 		return nil, errors.New("manifest launch contract digest mismatch")
 	}
@@ -741,6 +778,12 @@ func recordFromManifest(root string, manifest processManifest, directWorkingRoot
 		validatedArguments:      append([]string(nil), manifest.ValidatedArguments...),
 		validatedArgumentDigest: manifest.ValidatedArgumentDigest,
 		drained:                 map[execution.StreamKind]bool{}, notified: map[execution.StreamKind]int64{},
+	}
+	if manifest.AbsoluteDeadline != nil {
+		if manifest.AbsoluteDeadline.IsZero() {
+			return nil, errors.New("invalid absolute deadline")
+		}
+		record.absoluteDeadline = *manifest.AbsoluteDeadline
 	}
 	if identity.Valid() && identity != processIdentity(record) {
 		return nil, errors.New("process identity digest mismatch")

@@ -173,21 +173,25 @@ func ManagedCapabilityBundleForProfile(profile domain.AgentExecutionProfile) (Ma
 func NativeRPCArguments() []string { return append([]string(nil), nativeRPCArguments...) }
 
 type Config struct {
-	IsolatedSource      IsolatedSource
-	RuntimeConfig       []byte
-	Policy              []byte
-	AttemptImageID      string
-	BoundaryImageID     string
-	ManagedImageSource  ManagedImageSource
-	LocalPiSource       LocalPiSource
-	PathPiSource        PathPiSource
-	SessionRoot         string
-	ResourceObserver    *ResourceObserverBinding
-	NativeCapabilities  func(domain.AgentRun, domain.Attempt, string, domain.AttemptID) ([]string, map[string]string, error)
-	ReadFile            func(string) ([]byte, error)
-	ReadSourceFile      func(string) ([]byte, error)
-	ValidateLocalSource func(context.Context, LocalPiSource) error
-	ModelCatalog        func(context.Context, domain.AgentExecutionProfile) (domain.ModelCatalog, error)
+	// WorkflowDispatchGuard must bind a restricted physical provider transport.
+	// Production composition currently supplies none and rejects workflow Pi.
+	// Synthetic supervisors can inject this port without contacting a provider.
+	WorkflowDispatchGuard func(context.Context, execution.StartRequest) error
+	IsolatedSource        IsolatedSource
+	RuntimeConfig         []byte
+	Policy                []byte
+	AttemptImageID        string
+	BoundaryImageID       string
+	ManagedImageSource    ManagedImageSource
+	LocalPiSource         LocalPiSource
+	PathPiSource          PathPiSource
+	SessionRoot           string
+	ResourceObserver      *ResourceObserverBinding
+	NativeCapabilities    func(domain.AgentRun, domain.Attempt, string, domain.AttemptID) ([]string, map[string]string, error)
+	ReadFile              func(string) ([]byte, error)
+	ReadSourceFile        func(string) ([]byte, error)
+	ValidateLocalSource   func(context.Context, LocalPiSource) error
+	ModelCatalog          func(context.Context, domain.AgentExecutionProfile) (domain.ModelCatalog, error)
 }
 
 type Adapter struct {
@@ -267,6 +271,12 @@ func New(config Config) (*Adapter, error) {
 
 func (adapter *Adapter) ID() string { return AdapterID }
 
+func (adapter *Adapter) WithWorkflowDispatchGuard(guard func(context.Context, execution.StartRequest) error) (*Adapter, error) {
+	config := adapter.config
+	config.WorkflowDispatchGuard = guard
+	return New(config)
+}
+
 func (adapter *Adapter) Capabilities() execution.AdapterCapabilities {
 	mode := execution.ResumeUnsupported
 	if adapter != nil && adapter.pathPiSource.Configured() {
@@ -286,6 +296,18 @@ func (adapter *Adapter) PrepareStart(ctx context.Context, request execution.Star
 func (adapter *Adapter) PrepareBoundStart(ctx context.Context, request execution.StartRequest) (execution.StartPreparation, error) {
 	if adapter == nil {
 		return execution.StartPreparation{}, errors.New("Pi adapter is nil")
+	}
+	if len(request.ResearchContext) > 0 && adapter.config.WorkflowDispatchGuard == nil {
+		// Native Pi may use configured extensions, alternate providers and SDK
+		// retries. A logical-turn observer is not a physical dispatch boundary.
+		// Until a reviewed restricted transport is composed, never silently run
+		// the research workflow through that unrestricted native path.
+		return execution.StartPreparation{}, errors.New("research Pi requires an explicit frozen model/source identity and a restricted provider transport with durable dispatch reservations")
+	}
+	if len(request.ResearchContext) > 0 {
+		if err := adapter.config.WorkflowDispatchGuard(ctx, request); err != nil {
+			return execution.StartPreparation{}, err
+		}
 	}
 	source, err := adapter.sourceForBinding(request.Attempt.AgentExecutionProfileBinding())
 	if err != nil {

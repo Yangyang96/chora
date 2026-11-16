@@ -349,6 +349,9 @@ func installedColimaVersion(ctx context.Context) (string, error) {
 
 func (supervisor *Supervisor) Start(ctx context.Context, invocation execution.Invocation, sink execution.RuntimeSink) execution.StartOutcome {
 	launch := invocation.LaunchToken()
+	if !invocation.Deadline().IsZero() {
+		return noChild(launch, "absolute workflow deadline is not supported by this Docker execution route")
+	}
 	metadata, err := supervisor.validateInvocation(invocation, sink)
 	if err != nil {
 		return noChild(launch, err.Error())

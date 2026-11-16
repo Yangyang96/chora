@@ -110,6 +110,22 @@ completion and total usage. The ledger uses local SQLite transactions and permit
 one outstanding request across participating processes. Keep it on a durable
 local filesystem with reliable SQLite locking.
 
+New, separately authorized batches can use a smaller immutable v3 policy:
+`init-batch --batch-file <new-file> --authorization-file <policy.json>`.
+The JSON contains all keys of `batch.POLICY`, with `version: 3`, unchanged
+encoder/tokenizer/schema/framing identities, and only smaller or equal
+`max_requests`, `max_tokens`, `max_output_tokens` and `duration_seconds` ceilings.
+It additionally requires `authorization_ref`, numeric Unix `authorized_at` and
+`absolute_deadline`, and `max_total_output_tokens`. The deadline must be after
+authorization and no later than its duration ceiling; total output cannot exceed
+total tokens. Unlike v2, that absolute clock starts at authorization, even if no
+request has been sent. Requests before authorization or at/after expiry refuse.
+The model identity includes the exact policy and authorization digest. The v3
+policy has immutable SQLite records/triggers and cannot be resized or continued
+through the historical continuation operation. Existing ledger creation and
+continuation semantics remain unchanged. This option does not grant permission
+to create a real batch, reuse an expired balance or access credentials.
+
 Preflight policy `text-json-utf8-framing.v2` bounds the complete text/function
 payload by `2B + 4096 + 128M + 128C + 128A`, where B is its ASCII-escaped compact
 JSON byte length, M is the message count, C the historical call count and A their

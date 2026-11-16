@@ -9,6 +9,12 @@ checks, result review and explicit delivery continue through the workbench.
 Accepting a research proposal does not accept its code or authorize publication.
 The default Pi workflow remains available when research is not selected.
 
+**Coding route is currently held closed.** Research-managed native Pi starts
+are refused until a restricted provider transport is composed and independently
+validated. A confirmed proposal may create its Run without launching Pi. The
+offline lifecycle fixtures do not certify a bounded native Pi session. The
+ordinary Pi path is unaffected.
+
 ## Setup and use
 
 Install the locked Python package following
@@ -82,6 +88,68 @@ submission leaves a persistent PG tombstone. A Run with no runtime session can
 be cancelled without launch; a process with an uncertain identity remains
 unresolved. A launch already accepted before Stop may still start and must be
 cancelled and reconciled through the original supervisor.
+Research and local cancellation are attempted independently, with separate
+durable outcomes. A failed PG connection or an invalid research receipt cannot
+skip local cancellation. The workflow is stopped only when both sides are
+confirmed; uncertain outcomes remain unresolved.
+
+A human result rejection can authorize a successor Attempt in the same Run.
+Its preparation, workflow transition and authorization receipt commit together.
+The original research gate, scope, model and budget remain frozen; automation
+cannot use this route. A prepared, unstarted revision can be recovered only with
+the same instructions, predecessor and fresh human rejection, with no runtime
+session. Stop and expired or unknown provider authority forbid revision starts.
+
+## Authorization and dispatch budgets
+
+A new research ledger can carry an immutable v3 authorization smaller than the
+legacy policy. It binds the authorization reference, request and total-token
+ceilings, per-request and total-output ceilings, pinned input-envelope identity,
+and an absolute deadline starting at authorization. Restart does not renew it.
+Legacy ledgers and their continuation records are unchanged. See
+[worker setup](../services/workflow/README.md) for the explicit creation input;
+neither this feature nor an unused balance grants spending permission.
+
+The workflow's optional `piAuthorization` binds a non-secret explicit model
+catalog/selection, runtime version and source identity, profile contract,
+transport source digest, request/token/output ceilings and absolute deadline.
+Task and Charter bindings must match. Each prepared launch records its actual
+runtime fingerprint and final argument digest; managed constants are not used
+as observations of a PATH runtime. Missing identity or transport is refused.
+
+The Go dispatch boundary commits a reservation before a physical HTTP POST.
+Reservations are shared by all Attempts of the Run and are never refunded.
+Replay, pending or unknown outcomes cannot send another request. Only a known,
+in-bound response permits the next reservation; malformed usage, excess output,
+transport failure or deadline expiry holds the workflow unresolved. The narrow
+transport currently supports only explicit text-only, nonthinking DeepSeek
+chat-completions requests, with no SDK retries, redirects or model fallback.
+Its conservative renderer envelope still needs independent validation. It is a
+transport component, **not a connected native Pi budget guarantee**.
+
+Native Pi preserves user configuration, extensions and tool permission policy.
+Its current observation hooks cannot establish that every SDK retry or provider
+switch passes through this boundary. Installing a provider override alone would
+not establish that property. Composing a restricted coding route requires an
+explicit runtime/profile contract which preserves the tool authorization
+boundary; the default composition supplies no such guard. No native credentials
+are copied into the dispatch ledger or sent to Pi by this component.
+
+Trusted-host supervision persists an absolute deadline in its launch contract,
+checks it before spawn and gate release, terminates the owned process group at
+expiry, and checks expiry before exposing recovered handles. A changed deadline
+fails manifest validation. SQLite expiry and local cancellation do not require
+PG. Docker currently refuses this absolute-deadline route. While the supervisor
+is down, there is no claim of an independently running watchdog. A provider may
+still bill an already accepted request after cancellation; its reservation
+remains consumed. Unproven process termination stays unresolved.
+
+Spending authorization, confirmation of a specific proposed edit, and acceptance
+or delivery of its result are three separate decisions. A live authorization
+package needs the actual research and coding identities, admission results,
+hard ceilings/deadlines, a price basis or monetary ceiling, existing credential
+scope, and exact source/configuration bindings. Synthetic decisions prove none
+of those human approvals.
 
 Transport failures and uncertain Pi outcomes show **Needs reconciliation** and
 hold automatic dispatch. After inspecting the existing operation/Run, choose

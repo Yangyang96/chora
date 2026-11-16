@@ -221,6 +221,7 @@ type InvocationParams struct {
 }
 
 type Invocation struct {
+	deadline                           time.Time
 	adapterID, executable, workingRoot string
 	arguments                          []string
 	environment                        map[string]string
@@ -228,6 +229,16 @@ type Invocation struct {
 	launchToken                        LaunchToken
 	target                             ExecutionTarget
 }
+
+// WithDeadline only adds a stricter absolute ceiling. It survives retries and
+// recovery through the supervisor manifest, never a fresh duration on restart.
+func (invocation Invocation) WithDeadline(deadline time.Time) Invocation {
+	if invocation.deadline.IsZero() || (!deadline.IsZero() && deadline.Before(invocation.deadline)) {
+		invocation.deadline = deadline.UTC()
+	}
+	return invocation
+}
+func (invocation Invocation) Deadline() time.Time { return invocation.deadline }
 
 func NewInvocation(params InvocationParams) (Invocation, error) {
 	target := params.Target

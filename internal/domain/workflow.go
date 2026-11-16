@@ -12,25 +12,26 @@ const ResearchWorkflowVersion = "research-to-pi.v1"
 // WorkflowExecution is Go's business authority. Graph checkpoints remain in PG.
 // Operation identities never include worker, epoch or delivery attempt.
 type WorkflowExecution struct {
-	ID              string                  `json:"id"`
-	TaskID          TaskID                  `json:"taskId"`
-	ProjectID       ProjectID               `json:"projectId"`
-	ActorID         string                  `json:"actorId"`
-	SessionID       string                  `json:"-"`
-	Version         uint64                  `json:"version"`
-	GraphVersion    string                  `json:"graphVersion"`
-	InputDigest     string                  `json:"inputDigest"`
-	AuthorityDigest string                  `json:"authorityDigest"`
-	RevisionID      TechnicalPlanRevisionID `json:"revisionId"`
-	Question        string                  `json:"question"`
-	Configuration   json.RawMessage         `json:"configuration"`
-	Status          string                  `json:"status"`
-	Reason          string                  `json:"reason,omitempty"`
-	StopRequested   bool                    `json:"stopRequested"`
-	RunID           RunID                   `json:"runId,omitempty"`
-	Gate            *WorkflowGate           `json:"gate,omitempty"`
-	Projection      json.RawMessage         `json:"projection,omitempty"`
-	CreatedAt       time.Time               `json:"createdAt"`
+	ID              string                   `json:"id"`
+	TaskID          TaskID                   `json:"taskId"`
+	ProjectID       ProjectID                `json:"projectId"`
+	ActorID         string                   `json:"actorId"`
+	SessionID       string                   `json:"-"`
+	Version         uint64                   `json:"version"`
+	GraphVersion    string                   `json:"graphVersion"`
+	InputDigest     string                   `json:"inputDigest"`
+	AuthorityDigest string                   `json:"authorityDigest"`
+	RevisionID      TechnicalPlanRevisionID  `json:"revisionId"`
+	Question        string                   `json:"question"`
+	Configuration   json.RawMessage          `json:"configuration"`
+	PiAuthorization *WorkflowPiAuthorization `json:"piAuthorization,omitempty"`
+	Status          string                   `json:"status"`
+	Reason          string                   `json:"reason,omitempty"`
+	StopRequested   bool                     `json:"stopRequested"`
+	RunID           RunID                    `json:"runId,omitempty"`
+	Gate            *WorkflowGate            `json:"gate,omitempty"`
+	Projection      json.RawMessage          `json:"projection,omitempty"`
+	CreatedAt       time.Time                `json:"createdAt"`
 }
 
 type WorkflowGate struct {

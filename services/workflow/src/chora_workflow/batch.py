@@ -43,6 +43,43 @@ LEGACY_POLICY = {
 }
 
 
+def validate_small_policy(policy):
+    """A new, immutable authorization; never a resize of an existing batch.
+
+    The absolute clock starts at authorization, not first dispatch or recovery.
+    Renderer and framing identities stay pinned to v2; only ceilings shrink.
+    """
+    extra = {"authorization_ref", "authorized_at", "absolute_deadline", "max_total_output_tokens"}
+    if (
+        not isinstance(policy, dict)
+        or set(policy) != set(POLICY) | extra
+        or policy.get("version") != 3
+    ):
+        raise ValueError("unsupported small authorization policy")
+    variable = {"version", "max_requests", "max_tokens", "max_output_tokens", "duration_seconds"}
+    if any(policy[k] != v for k, v in POLICY.items() if k not in variable):
+        raise ValueError("input envelope identity changed")
+    for key in variable - {"version"}:
+        if type(policy[key]) is not int or not 1 <= policy[key] <= POLICY[key]:
+            raise ValueError("authorization may only shrink ceilings")
+    if (
+        type(policy["max_total_output_tokens"]) is not int
+        or not 1 <= policy["max_total_output_tokens"] <= policy["max_tokens"]
+    ):
+        raise ValueError("invalid total output ceiling")
+    if (
+        not isinstance(policy["authorization_ref"], str)
+        or not 1 <= len(policy["authorization_ref"]) <= 256
+    ):
+        raise ValueError("authorization reference required")
+    for key in ("authorized_at", "absolute_deadline"):
+        if type(policy[key]) not in (int, float) or not 0 < policy[key] < float("inf"):
+            raise ValueError("invalid absolute authorization clock")
+    if not 0 < policy["absolute_deadline"] - policy["authorized_at"] <= policy["duration_seconds"]:
+        raise ValueError("absolute deadline exceeds authorization")
+    return dict(policy)
+
+
 class AdmissionStop(StrictModel):
     reason: Literal["input_admission"]
     occurred_at: float = Field(gt=0, allow_inf_nan=False)
@@ -203,7 +240,13 @@ class BatchLedger:
                 "previous_workflow_id": authorization.previous_workflow_id,
             }
         elif policy != POLICY:
-            raise ValueError("acceptance batch policy changed")
+            if policy.get("version") != 3:
+                raise ValueError("acceptance batch policy changed")
+            validate_small_policy(policy)
+            if snapshot.get("authorization") != {"policy": row["policy"]}:
+                raise ValueError("small authorization identity changed")
+            identity["policy"] = policy
+            identity["authorization_digest"] = digest(policy)
         return identity
 
     @staticmethod
@@ -218,6 +261,13 @@ class BatchLedger:
                 for item in conn.execute("SELECT * FROM requests ORDER BY requested_at, rowid")
             ],
         }
+        if conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='small_authorization'"
+        ).fetchone():
+            authorization = conn.execute("SELECT * FROM small_authorization").fetchall()
+            if len(authorization) != 1:
+                raise ValueError("small authorization missing or ambiguous")
+            snapshot["authorization"] = dict(authorization[0])
         if conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='continuation'"
         ).fetchone():
@@ -310,8 +360,9 @@ class BatchLedger:
         return cls.inspect(path)
 
     @staticmethod
-    def create(path):
+    def create(path, *, authorization=None):
         # Exclusive creation deliberately refuses reinitialization of a batch.
+        policy = POLICY if authorization is None else validate_small_policy(authorization)
         path = Path(path).resolve()
         descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
         os.close(descriptor)
@@ -331,8 +382,24 @@ class BatchLedger:
             """)
             conn.execute(
                 "INSERT INTO batch(batch_id, policy) VALUES (?,?)",
-                (str(uuid4()), json.dumps(POLICY, sort_keys=True)),
+                (str(uuid4()), json.dumps(policy, sort_keys=True)),
             )
+            if policy["version"] == 3:
+                conn.execute("CREATE TABLE small_authorization (policy TEXT NOT NULL)")
+                conn.execute(
+                    "INSERT INTO small_authorization VALUES (?)",
+                    (json.dumps(policy, sort_keys=True),),
+                )
+                conn.executescript("""
+                    CREATE TRIGGER small_policy_immutable BEFORE UPDATE OF policy ON batch
+                    BEGIN SELECT RAISE(ABORT, 'small authorization is immutable'); END;
+                    CREATE TRIGGER small_authorization_no_update BEFORE UPDATE ON small_authorization
+                    BEGIN SELECT RAISE(ABORT, 'small authorization is immutable'); END;
+                    CREATE TRIGGER small_authorization_no_delete BEFORE DELETE ON small_authorization
+                    BEGIN SELECT RAISE(ABORT, 'small authorization is durable'); END;
+                    CREATE TRIGGER small_authorization_no_insert BEFORE INSERT ON small_authorization
+                    BEGIN SELECT RAISE(ABORT, 'small authorization already exists'); END;
+                """)
         return BatchLedger(path)
 
     @contextmanager
@@ -361,13 +428,16 @@ class BatchLedger:
             UUID(thread)
 
     def reserve(self, payload, *, workflow_id=None, code_revision=None):
+        policy = self.identity["policy"] if self.identity["policy"]["version"] == 3 else POLICY
         bound = input_bound(payload)
         output = payload["max_tokens"]
-        if type(output) is not int or not 1 <= output <= POLICY["max_output_tokens"]:
+        if type(output) is not int or not 1 <= output <= policy["max_output_tokens"]:
             raise BatchRefused("output_budget")
         with self.connection() as conn:
             conn.execute("BEGIN IMMEDIATE")
             now = time.time()
+            if policy["version"] == 3 and now < policy["authorized_at"]:
+                raise BatchRefused("batch_clock_regressed")
             snapshot = self.read_snapshot(conn)
             expected_policy = (
                 LEGACY_POLICY if self.identity.get("continuation") else self.identity["policy"]
@@ -376,7 +446,9 @@ class BatchLedger:
                 bool(snapshot.get("continuation")) != bool(self.identity.get("continuation"))
             ):
                 raise ValueError("acceptance batch identity changed")
-            if snapshot.get("continuation") and self.effective_identity(snapshot) != self.identity:
+            if (
+                snapshot.get("continuation") or snapshot.get("authorization")
+            ) and self.effective_identity(snapshot) != self.identity:
                 raise ValueError("acceptance continuation identity changed")
             self.validate_workflow(workflow_id, code_revision)
             batch, rows = snapshot["batch"], snapshot["requests"]
@@ -395,17 +467,23 @@ class BatchLedger:
             if batch["last_observed_at"] is not None and now < batch["last_observed_at"]:
                 raise BatchRefused("batch_clock_regressed")
             first = batch["first_request_at"] if batch["first_request_at"] is not None else now
-            deadline = first + POLICY["duration_seconds"]
+            deadline = policy.get("absolute_deadline", first + policy["duration_seconds"])
             if continuation:
                 if now < continuation["registered_at"]:
                     raise BatchRefused("batch_clock_regressed")
                 deadline = continuation["deadline"] or now + POLICY["duration_seconds"]
             if now >= deadline:
                 raise BatchRefused("deadline")
-            if len(rows) >= POLICY["max_requests"]:
+            if len(rows) >= policy["max_requests"]:
                 raise BatchRefused("request_budget")
-            if spent + bound + output > POLICY["max_tokens"]:
+            if spent + bound + output > policy["max_tokens"]:
                 raise BatchRefused("token_budget")
+            if (
+                policy["version"] == 3
+                and sum(known_usage(row)["completion_tokens"] for row in rows) + output
+                > policy["max_total_output_tokens"]
+            ):
+                raise BatchRefused("output_budget")
             reservation = {
                 "request_id": str(uuid4()),
                 "deadline": deadline,
@@ -421,8 +499,8 @@ class BatchLedger:
                     now,
                     bound,
                     output,
-                    POLICY["max_requests"] - len(rows) - 1,
-                    POLICY["max_tokens"] - spent - bound - output,
+                    policy["max_requests"] - len(rows) - 1,
+                    policy["max_tokens"] - spent - bound - output,
                     deadline,
                 ),
             )
@@ -475,7 +553,10 @@ class BatchLedger:
                 "SELECT usage FROM requests WHERE completed_at IS NOT NULL AND usage IS NOT NULL"
             ).fetchall()
             spent = sum(json.loads(item["usage"])["total_tokens"] for item in previous)
-            remaining = POLICY["max_tokens"] - spent - usage["total_tokens"] if valid else None
+            effective = (
+                self.identity["policy"] if self.identity["policy"]["version"] == 3 else POLICY
+            )
+            remaining = effective["max_tokens"] - spent - usage["total_tokens"] if valid else None
             conn.execute(
                 "UPDATE requests SET completed_at=?, usage=?, outcome=?, tokens_remaining=? "
                 "WHERE request_id=?",

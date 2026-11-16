@@ -16,8 +16,10 @@ import (
 	"testing"
 	"time"
 
+	agentpi "github.com/Yangyang96/chora/internal/agent/pi"
 	"github.com/Yangyang96/chora/internal/app"
 	"github.com/Yangyang96/chora/internal/domain"
+	"github.com/Yangyang96/chora/internal/execution"
 	storecontract "github.com/Yangyang96/chora/internal/store"
 	"github.com/Yangyang96/chora/internal/store/sqlite"
 )
@@ -62,8 +64,11 @@ func (b *fixtureResearchBridge) Execute(_ context.Context, c domain.WorkflowComm
 	return json.Marshal(v)
 }
 func workflowFixture(t *testing.T) (*Server, *taskResourceLifecycleSupervisor, taskRefView, string) {
+	return workflowFixtureWithModel(t, false)
+}
+func workflowFixtureWithModel(t *testing.T, explicitModel bool) (*Server, *taskResourceLifecycleSupervisor, taskRefView, string) {
 	t.Helper()
-	server, runtime, task, root := delegationFixture(t)
+	server, runtime, task, root := delegationFixtureWithModel(t, "Research compatibility and migration risk.", explicitModel)
 	id, _ := domain.ParseTaskID(task.ID)
 	ctx := context.Background()
 	draft, err := server.store.Reader().GetOpenTechnicalPlanDraft(ctx, id)
@@ -80,6 +85,17 @@ func workflowFixture(t *testing.T) (*Server, *taskResourceLifecycleSupervisor, t
 		t.Fatal(err)
 	}
 	server.workflowBridge = &fixtureResearchBridge{}
+	// This fixture owns a synthetic supervisor. It verifies business lifecycle,
+	// never attests that native Pi has a provider dispatch guard.
+	a, err := server.registry.Get("pi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	guarded, err := a.(*agentpi.Adapter).WithWorkflowDispatchGuard(func(context.Context, execution.StartRequest) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	server.registry.Set(guarded)
 	return server, runtime, task, root
 }
 func submitWorkflowFixture(t *testing.T, s *Server, task taskRefView) domain.WorkflowExecution {

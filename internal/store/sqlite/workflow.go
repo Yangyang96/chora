@@ -16,7 +16,8 @@ func workflowFrozen(w domain.WorkflowExecution) []byte {
 		Graph, Question, Revision string
 		Configuration             json.RawMessage
 		Created                   any
-	}{w.GraphVersion, w.Question, w.RevisionID.String(), w.Configuration, w.CreatedAt})
+		PiAuthorization *domain.WorkflowPiAuthorization `json:",omitempty"`
+	}{w.GraphVersion, w.Question, w.RevisionID.String(), w.Configuration, w.CreatedAt, w.PiAuthorization})
 	return b
 }
 func (tx *writeTx) InsertWorkflow(ctx context.Context, w domain.WorkflowExecution) error {

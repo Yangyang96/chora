@@ -54,8 +54,9 @@ func (server *Server) taskWorkflow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var input struct {
-		Question  string `json:"question"`
-		ProjectID string `json:"projectId"`
+		Question        string                          `json:"question"`
+		ProjectID       string                          `json:"projectId"`
+		PiAuthorization *domain.WorkflowPiAuthorization `json:"piAuthorization"`
 	}
 	if err = decodeJSON(r, &input); err != nil {
 		writeError(w, 400, err)
@@ -74,7 +75,7 @@ func (server *Server) taskWorkflow(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 503, err)
 		return
 	}
-	v, err := server.service.SubmitWorkflow(r.Context(), app.SubmitWorkflowRequest{CommandMeta: meta, TaskID: id, ProjectID: room.ProjectID(), Question: input.Question, Configuration: config})
+	v, err := server.service.SubmitWorkflow(r.Context(), app.SubmitWorkflowRequest{CommandMeta: meta, TaskID: id, ProjectID: room.ProjectID(), Question: input.Question, Configuration: config, PiAuthorization: input.PiAuthorization})
 	if err != nil {
 		writeWorkflowError(w, err)
 		return
@@ -97,7 +98,7 @@ func (server *Server) workflowCommand(w http.ResponseWriter, r *http.Request) {
 	if r.PathValue("action") == "stop" {
 		if err = decodeOptionalJSON(r, &struct{}{}); err == nil {
 			v, err = server.service.StopWorkflow(r.Context(), meta, id, p)
-			if err == nil && server.workflowBridge != nil {
+			if err == nil {
 				// Go stop intent is already committed. Deliver independently of the
 				// research dispatch mutex so an in-flight model call cannot hide it.
 				stopErr := server.deliverWorkflowStop(r.Context(), v)
@@ -134,12 +135,44 @@ func (server *Server) workflowCommand(w http.ResponseWriter, r *http.Request) {
 }
 
 func (server *Server) deliverWorkflowStop(ctx context.Context, w domain.WorkflowExecution) error {
+	// Each side gets its own bounded context after the durable intent. A slow or
+	// broken research bridge must not delay cancellation of an owned local Pi.
+	results := make(chan error, 2)
+	for _, side := range []string{"research", "pi"} {
+		go func(side string) {
+			stopCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 140*time.Second)
+			defer cancel()
+			var err error
+			if side == "research" {
+				err = server.stopWorkflowResearch(stopCtx, w)
+			} else {
+				err = server.stopWorkflowRun(stopCtx, w)
+			}
+			result := "confirmed"
+			if err != nil {
+				result = "unresolved"
+			}
+			err = errors.Join(err, server.service.RecordWorkflowStopResult(stopCtx, w.ID, side, result))
+			results <- err
+		}(side)
+	}
+	err := errors.Join(<-results, <-results)
+	if err != nil {
+		return err
+	}
+	return server.service.MarkWorkflow(ctx, w.ID, "stopped", "")
+}
+
+func (server *Server) stopWorkflowResearch(ctx context.Context, w domain.WorkflowExecution) error {
 	commands, err := server.store.Reader().ListWorkflowCommands(ctx, w.ID)
 	if err != nil {
 		return err
 	}
 	for _, c := range commands {
 		if c.Kind == "stop" && len(c.Receipt) == 0 {
+			if server.workflowBridge == nil {
+				return errors.New("research bridge unavailable")
+			}
 			b, e := server.workflowBridge.Execute(ctx, c)
 			if e != nil {
 				return e
@@ -147,13 +180,23 @@ func (server *Server) deliverWorkflowStop(ctx context.Context, w domain.Workflow
 			if e = server.service.ApplyWorkflowReceipt(ctx, c, b); e != nil {
 				return e
 			}
+			c.Receipt = b
+		}
+		if c.Kind == "stop" {
+			var receipt struct {
+				Status string `json:"status"`
+			}
+			if json.Unmarshal(c.Receipt, &receipt) != nil || receipt.Status != "stopped" {
+				return errors.New("research termination not proven")
+			}
 		}
 	}
-	w, err = server.store.Reader().GetWorkflow(ctx, w.ID)
-	if err != nil {
-		return err
+	for _, c := range commands {
+		if c.Kind == "stop" {
+			return nil
+		}
 	}
-	return server.stopWorkflowRun(ctx, w)
+	return errors.New("durable research stop missing")
 }
 
 func writeWorkflowError(w http.ResponseWriter, err error) {
@@ -240,9 +283,6 @@ func (server *Server) runWorkflowDispatcher(ctx context.Context) {
 	}
 }
 func (server *Server) dispatchWorkflows(ctx context.Context) {
-	if server.workflowBridge == nil {
-		return
-	}
 	server.workflowMu.Lock()
 	defer server.workflowMu.Unlock()
 	items, err := server.store.Reader().ListActiveWorkflows(ctx)
@@ -259,6 +299,19 @@ func (server *Server) dispatchWorkflows(ctx context.Context) {
 	}
 }
 func (server *Server) advanceWorkflow(ctx context.Context, item domain.WorkflowExecution) error {
+	if item.PiAuthorization != nil && !time.Now().Before(item.PiAuthorization.Deadline) && !item.StopRequested {
+		var err error
+		item, err = server.service.StopWorkflow(ctx, app.CommandMeta{ActorID: item.ActorID, SessionID: "workflow.deadline", IdempotencyKey: item.ID + ":deadline"}, item.ID, item.ProjectID)
+		if err != nil {
+			return err
+		}
+	}
+	if item.StopRequested && item.Status != "unresolved" {
+		return server.deliverWorkflowStop(ctx, item)
+	}
+	if server.workflowBridge == nil {
+		return nil
+	}
 	// unresolved is a visible hold, never an automatic new launch/retry loop.
 	if item.Status == "unresolved" {
 		return nil
@@ -350,9 +403,6 @@ func (server *Server) launchWorkflowRun(ctx context.Context, item domain.Workflo
 	} else {
 		prepared.Run = run
 		prepared.Attempt, err = server.store.Reader().GetCurrentAttempt(ctx, run.ID())
-		if err == nil && prepared.Attempt.Sequence() != 1 {
-			return errors.New("prepared retry requires explicit recovery")
-		}
 		if err == nil {
 			err = server.bindAndPublishManagedAttempt(ctx, prepared.Attempt)
 		}
@@ -360,6 +410,7 @@ func (server *Server) launchWorkflowRun(ctx context.Context, item domain.Workflo
 	if err != nil {
 		return err
 	}
+	meta.IdempotencyKey = item.ID + ":pi:" + prepared.Attempt.ID().String()
 	started, err := server.startManagedAttempt(ctx, prepared.Attempt, app.StartAttemptRequest{CommandMeta: childCommandMeta(meta, "start"), RunID: run.ID(), ExpectedVersion: prepared.Run.Version(), Mode: app.StartFresh})
 	if err != nil {
 		return err
@@ -371,7 +422,13 @@ func (server *Server) launchWorkflowRun(ctx context.Context, item domain.Workflo
 	return nil
 }
 func (server *Server) stopWorkflowRun(ctx context.Context, item domain.WorkflowExecution) error {
-	if item.RunID.Valid() {
+	if !item.RunID.Valid() {
+		return nil
+	}
+	// The already-accepted launch or another Stop can advance the Run while
+	// cancellation waits for its lock. Re-read that same Run after a CAS race;
+	// never skip the local stop or start/rebuild a process as recovery.
+	for tries := 0; tries < 3; tries++ {
 		run, err := server.store.Reader().GetRun(ctx, item.RunID)
 		if err != nil {
 			return err
@@ -379,20 +436,27 @@ func (server *Server) stopWorkflowRun(ctx context.Context, item domain.WorkflowE
 		switch run.State() {
 		case domain.RunStateDraft, domain.RunStateReady:
 			if err = server.service.CancelUnstartedWorkflowRun(ctx, item.ID); err != nil {
+				if errors.Is(err, storecontract.ErrVersionConflict) {
+					continue
+				}
 				return err
 			}
 		case domain.RunStateAwaitingReview, domain.RunStateAccepted, domain.RunStateCompleted, domain.RunStateCancelled, domain.RunStateRevisionRequired:
 		case domain.RunStateAwaitingVerification, domain.RunStateVerifying:
-			return nil
+			return errors.New("local verification termination not yet proven")
 		default:
 			stopped, e := server.service.RequestCancel(ctx, app.StopRequest{CommandMeta: app.CommandMeta{ActorID: item.ActorID, SessionID: "workflow.pi", IdempotencyKey: fmt.Sprintf("%s:stop:%d", item.ID, run.Version())}, RunID: run.ID(), ExpectedVersion: run.Version(), Reason: "Research workflow stopped", AllowRetry: false})
 			if e != nil {
+				if errors.Is(e, storecontract.ErrVersionConflict) {
+					continue
+				}
 				return e
 			}
 			if stopped.Run.State() != domain.RunStateCancelled {
 				return errors.New("Pi stop outcome unresolved")
 			}
 		}
+		return nil
 	}
-	return server.service.MarkWorkflow(ctx, item.ID, "stopped", "")
+	return errors.New("local cancellation state still needs reconciliation")
 }

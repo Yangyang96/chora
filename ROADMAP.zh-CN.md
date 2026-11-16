@@ -3,7 +3,8 @@
 [English](ROADMAP.md) · [README](README.zh-CN.md)
 
 可选的[先研究再编码开发切片](docs/research-workflow.zh-CN.md)已接通公开文档研究、
-持久人工确认和幂等 Pi Run 交接。确定性、PG 和浏览器验证与尚待进行的真实模型/Pi
+持久人工确认和幂等 Pi Run 交接。原生 Pi 启动保持关闭，等待受限提供商 transport 的组合；
+调用账本和截止部件不等于已接通的原生 Pi 预算保证。确定性、PG 和浏览器验证与尚待进行的真实模型/Pi
 及独立验收分开记录；这不表示整个 LangGraph、RAG 或多 Worker 路线已完成。
 
 状态（2026-09-21）：源码已公开的 Developer Alpha。真实多仓库交付技术验收、

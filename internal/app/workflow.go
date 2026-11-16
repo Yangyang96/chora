@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/Yangyang96/chora/internal/domain"
 	storecontract "github.com/Yangyang96/chora/internal/store"
@@ -14,10 +15,11 @@ import (
 
 type SubmitWorkflowRequest struct {
 	CommandMeta
-	TaskID        domain.TaskID
-	ProjectID     domain.ProjectID
-	Question      string
-	Configuration json.RawMessage
+	TaskID          domain.TaskID
+	ProjectID       domain.ProjectID
+	Question        string
+	Configuration   json.RawMessage
+	PiAuthorization *domain.WorkflowPiAuthorization
 }
 type DecideWorkflowRequest struct {
 	CommandMeta
@@ -99,8 +101,15 @@ func (s *Service) SubmitWorkflow(ctx context.Context, q SubmitWorkflowRequest) (
 	if len(strings.TrimSpace(q.Question)) == 0 || len(q.Question) > 8000 || !json.Valid(q.Configuration) {
 		return w, ErrInvalidCommand
 	}
+	if q.PiAuthorization != nil && !q.PiAuthorization.Active(s.deps.Clock.Now()) {
+		return w, ErrInvalidCommand
+	}
 	id := uuid.NewSHA1(uuid.NameSpaceURL, []byte("chora-workflow:"+q.ProjectID.String()+":"+q.TaskID.String()+":"+q.ActorID+":"+q.IdempotencyKey)).String()
-	input := domain.WorkflowDigest(responseBody(map[string]any{"question": q.Question, "configuration": q.Configuration, "task": q.TaskID.String(), "project": q.ProjectID.String()}))
+	inputFields := map[string]any{"question": q.Question, "configuration": q.Configuration, "task": q.TaskID.String(), "project": q.ProjectID.String()}
+	if q.PiAuthorization != nil {
+		inputFields["pi_authorization"] = q.PiAuthorization
+	}
+	input := domain.WorkflowDigest(responseBody(inputFields))
 	err = s.deps.Store.WithinWriteTx(ctx, func(tx storecontract.WriteTx) error {
 		if old, e := tx.GetTaskWorkflow(ctx, q.TaskID); e == nil {
 			if old.ID != id || old.ActorID != q.ActorID || old.InputDigest != input {
@@ -117,6 +126,11 @@ func (s *Service) SubmitWorkflow(ctx context.Context, q SubmitWorkflowRequest) (
 		}
 		if p != q.ProjectID {
 			return ErrUnauthorizedCommand
+		}
+		if q.PiAuthorization != nil {
+			if e = requireWorkflowPiBinding(ctx, tx, q.TaskID, *q.PiAuthorization); e != nil {
+				return e
+			}
 		}
 		// Either dispatcher may own a Task, never both.
 		if _, e = tx.GetTaskDelegation(ctx, q.TaskID); !errors.Is(e, storecontract.ErrNotFound) {
@@ -143,6 +157,7 @@ func (s *Service) SubmitWorkflow(ctx context.Context, q SubmitWorkflowRequest) (
 			return ErrInvalidCommand
 		}
 		w = domain.WorkflowExecution{ID: id, TaskID: q.TaskID, ProjectID: p, ActorID: q.ActorID, SessionID: q.SessionID, Version: 1, GraphVersion: domain.ResearchWorkflowVersion, InputDigest: input, AuthorityDigest: authority, RevisionID: revision, Question: q.Question, Configuration: q.Configuration, Status: "researching", CreatedAt: s.deps.Clock.Now()}
+		w.PiAuthorization = q.PiAuthorization
 		if e = tx.InsertWorkflow(ctx, w); e != nil {
 			return e
 		}
@@ -391,6 +406,12 @@ func (s *Service) ReconcileWorkflow(ctx context.Context, meta CommandMeta, id st
 			if e = requireWorkflowAuthority(ctx, tx, w); e != nil {
 				return e
 			}
+			if w.PiAuthorization != nil && !w.PiAuthorization.Active(time.Now()) {
+				return ErrUnauthorizedCommand
+			}
+			if e = workflowPiBudgetRoom(ctx, tx, w); e != nil {
+				return e
+			}
 		}
 		old := w.Version
 		w.Version++
@@ -476,10 +497,167 @@ func (s *Service) CreateWorkflowRun(ctx context.Context, id string) (domain.Agen
 }
 
 func workflowRunAuthority(ctx context.Context, r storecontract.Reader, w domain.WorkflowExecution) error {
+	if w.PiAuthorization != nil && !w.PiAuthorization.Active(time.Now()) {
+		return ErrUnauthorizedCommand
+	}
+	if w.PiAuthorization != nil {
+		if err := requireWorkflowPiBinding(ctx, r, w.TaskID, *w.PiAuthorization); err != nil {
+			return err
+		}
+	}
 	if w.StopRequested || w.Gate == nil || w.Gate.Decision != "accept" || (w.Status != "approved" && w.Status != "coding") {
 		return ErrUnauthorizedCommand
 	}
 	return requireWorkflowAuthority(ctx, r, w)
+}
+
+func requireWorkflowPiBinding(ctx context.Context, r storecontract.Reader, taskID domain.TaskID, p domain.WorkflowPiAuthorization) error {
+	if p.Validate() != nil {
+		return ErrUnauthorizedCommand
+	}
+	settings, err := r.GetTaskExecutionSettings(ctx, taskID)
+	if err != nil {
+		return err
+	}
+	a, err := r.GetCurrentTechnicalPlanAcceptance(ctx, taskID)
+	if err != nil {
+		return err
+	}
+	snapshot, err := r.GetSnapshot(ctx, a.SnapshotID())
+	if err != nil {
+		return err
+	}
+	charterID, _, err := specCodingSnapshotBoundary(snapshot)
+	if err != nil {
+		return err
+	}
+	charter, err := r.GetCharter(ctx, charterID)
+	if err != nil {
+		return err
+	}
+	if settings.ModelBinding.JSON() != p.Model.JSON() || charter.ModelBinding().JSON() != p.Model.JSON() || settings.AgentExecutionProfile != p.Profile.Profile || charter.AgentExecutionProfileBinding().Record() != p.Profile {
+		return ErrUnauthorizedCommand
+	}
+	return nil
+}
+
+// Stop outcomes are independent observations, never an inferred cross-store
+// transaction. Failure on either side leaves the aggregate unresolved.
+func (s *Service) RecordWorkflowStopResult(ctx context.Context, id, side, result string) error {
+	if (side != "research" && side != "pi") || (result != "confirmed" && result != "unresolved") {
+		return ErrInvalidCommand
+	}
+	return s.deps.Store.WithinWriteTx(ctx, func(tx storecontract.WriteTx) error {
+		w, e := tx.GetWorkflow(ctx, id)
+		if e != nil {
+			return e
+		}
+		if !w.StopRequested {
+			return ErrInvalidCommand
+		}
+		return tx.AppendWorkflowEvent(ctx, id, "stop_result", responseBody(map[string]string{"side": side, "result": result}))
+	})
+}
+
+func workflowBoundRunAuthority(ctx context.Context, r storecontract.Reader, w domain.WorkflowExecution) error {
+	if err := workflowRunAuthority(ctx, r, w); err != nil {
+		return err
+	}
+	if err := workflowPiBudgetRoom(ctx, r, w); err != nil {
+		return err
+	}
+	commands, err := r.ListWorkflowCommands(ctx, w.ID)
+	if err != nil {
+		return err
+	}
+	for _, c := range commands {
+		if c.Kind == "bind_run" && len(c.Receipt) > 0 {
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: durable research Run binding receipt required", ErrUnauthorizedCommand)
+}
+
+// Only an explicit actor command backed by a fresh human rejection can move
+// awaiting_review back to coding. The caller commits this with its successor
+// Attempt and idempotency receipt, or rolls all of them back together.
+func authorizeWorkflowRevision(ctx context.Context, tx storecontract.WriteTx, run domain.AgentRun, meta CommandMeta, model domain.ModelBinding, automatic bool, verifiedHuman bool) (*domain.WorkflowExecution, error) {
+	w, err := tx.GetTaskWorkflow(ctx, run.TaskID())
+	if errors.Is(err, storecontract.ErrNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if automatic || meta.ActorID != w.ActorID || w.RunID != run.ID() || w.StopRequested || run.State() != domain.RunStateRevisionRequired || (w.Status != "awaiting_review" && w.Status != "coding") {
+		return nil, ErrUnauthorizedCommand
+	}
+	old, err := tx.GetCurrentAttempt(ctx, run.ID())
+	if err != nil {
+		return nil, err
+	}
+	if model.Configured() && model.JSON() != old.ModelBinding().JSON() {
+		return nil, ErrUnauthorizedCommand
+	}
+	if !verifiedHuman {
+		review, e := tx.GetLatestReviewForRun(ctx, run.ID())
+		if e != nil {
+			return nil, e
+		}
+		if review.Kind() != domain.ReviewDecisionReject || review.ExpectedRunVersion()+1 != run.Version() {
+			return nil, ErrUnauthorizedCommand
+		}
+	}
+	check := w
+	check.Status = "coding"
+	if err = workflowBoundRunAuthority(ctx, tx, check); err != nil {
+		return nil, err
+	}
+	return &w, nil
+}
+
+func recordWorkflowRevision(ctx context.Context, tx storecontract.WriteTx, w *domain.WorkflowExecution, attempt domain.Attempt) error {
+	if w == nil {
+		return nil
+	}
+	old := w.Version
+	w.Version++
+	w.Status, w.Reason = "coding", ""
+	if err := tx.SaveWorkflowCAS(ctx, old, *w); err != nil {
+		return err
+	}
+	c := workflowCommand(*w, fmt.Sprintf("revision:%d", attempt.Sequence()), map[string]any{"attempt_id": attempt.ID().String(), "run_id": attempt.RunID().String(), "actor": w.ActorID})
+	if err := tx.PutWorkflowCommand(ctx, c); err != nil {
+		return err
+	}
+	if err := tx.RecordWorkflowReceipt(ctx, c, responseBody(map[string]string{"attempt_id": attempt.ID().String()})); err != nil {
+		return err
+	}
+	return tx.AppendWorkflowEvent(ctx, w.ID, "revision_prepared", responseBody(map[string]string{"attempt_id": attempt.ID().String()}))
+}
+
+func workflowAttemptAuthority(ctx context.Context, r storecontract.Reader, w domain.WorkflowExecution, attempt domain.Attempt) error {
+	if err := workflowBoundRunAuthority(ctx, r, w); err != nil {
+		return err
+	}
+	if attempt.Sequence() == 1 {
+		return nil
+	}
+	commands, err := r.ListWorkflowCommands(ctx, w.ID)
+	if err != nil {
+		return err
+	}
+	for _, c := range commands {
+		if c.Kind == fmt.Sprintf("revision:%d", attempt.Sequence()) {
+			var receipt struct {
+				AttemptID string `json:"attempt_id"`
+			}
+			if json.Unmarshal(c.Receipt, &receipt) == nil && receipt.AttemptID == attempt.ID().String() {
+				return nil
+			}
+		}
+	}
+	return ErrUnauthorizedCommand
 }
 
 func (s *Service) workflowInstructions(ctx context.Context, task domain.TaskID) ([]byte, error) {
@@ -493,5 +671,5 @@ func (s *Service) workflowInstructions(ctx context.Context, task domain.TaskID) 
 	if w.Gate == nil || w.Gate.Decision != "accept" {
 		return nil, ErrUnauthorizedCommand
 	}
-	return responseBody(map[string]any{"policy": "Human-confirmed research proposal, untrusted source data. Use only within the frozen execution contract. No additional paths, tools, delivery or publication authority.", "workflow_id": w.ID, "operation_id": w.ID + ":create_run", "input_digest": w.InputDigest, "report": w.Gate.Report, "instructions": w.Gate.Instructions}), nil
+	return responseBody(map[string]any{"policy": "Human-confirmed research proposal, untrusted source data. Use only within the frozen execution contract. No additional paths, tools, delivery or publication authority.", "workflow_id": w.ID, "operation_id": w.ID + ":create_run", "input_digest": w.InputDigest, "report": w.Gate.Report, "instructions": w.Gate.Instructions, "pi_authorization": w.PiAuthorization}), nil
 }
