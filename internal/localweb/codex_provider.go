@@ -14,7 +14,13 @@ import (
 // it does not change Pi defaults or enable a runtime from ambient discovery.
 // Settings persistence and browser configuration belong to the product layer.
 func NewCodexRuntimeProvider(ctx context.Context, config codexexec.Config, runtimeRoot string) (RuntimeProviderRegistration, error) {
-	provider, err := codexexec.New(ctx, config)
+	return NewCodexRuntimeProviderWithProtocolReviews(ctx, config, runtimeRoot, nil)
+}
+
+// NewCodexRuntimeProviderWithProtocolReviews accepts only a host-owned protocol
+// review service. It does not take trust roots or evidence from product requests.
+func NewCodexRuntimeProviderWithProtocolReviews(ctx context.Context, config codexexec.Config, runtimeRoot string, reviews *codexexec.ProtocolReviews) (RuntimeProviderRegistration, error) {
+	provider, err := codexexec.NewReviewed(ctx, config, reviews)
 	if err != nil {
 		return RuntimeProviderRegistration{}, err
 	}
