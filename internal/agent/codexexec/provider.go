@@ -86,6 +86,10 @@ func newAdapter(ctx context.Context, config Config, managedPolicyCheck func() er
 	}
 	config.NetworkEnvironment = nil
 	a := &Adapter{config: config, executable: identity, network: network, managedPolicyCheck: managedPolicyCheck}
+	// Reject prohibited sources before any native subprocess can bootstrap.
+	if err := a.validateSources(); err != nil {
+		return nil, err
+	}
 	version, err := a.probe(ctx, "--version")
 	if err != nil || len(strings.TrimSpace(version)) > 128 || !nativeVersion.MatchString(strings.TrimSpace(version)) {
 		return nil, ErrVersion
@@ -178,6 +182,11 @@ func (a *Adapter) probe(ctx context.Context, args ...string) (string, error) {
 	return codexdiscovery.Probe(ctx, a.config.Executable, a.config.Home, a.config.AuthHome, args...)
 }
 func (a *Adapter) Authentication(ctx context.Context) error {
+	// Login status is a selected-scope native operation (including bootstrap
+	// writes), unlike disposable metadata. Never reach it before policy acceptance.
+	if err := a.validatePolicy(); err != nil {
+		return err
+	}
 	// The CLI, not Chora, owns credential inspection. Do not invoke login/logout.
 	out, err := a.probe(ctx, "login", "status")
 	if err != nil || strings.TrimSpace(out) != "Logged in using ChatGPT" {
@@ -186,7 +195,7 @@ func (a *Adapter) Authentication(ctx context.Context) error {
 	return nil
 }
 func absent(path string) bool { _, err := os.Lstat(path); return errors.Is(err, os.ErrNotExist) }
-func (a *Adapter) validatePolicy() error {
+func (a *Adapter) validateSources() error {
 	if a.network.Validate() != nil {
 		return ErrPolicy
 	}
@@ -212,6 +221,12 @@ func (a *Adapter) validatePolicy() error {
 		if strings.HasSuffix(e.Name(), ".config.toml") {
 			return ErrPolicy
 		}
+	}
+	return nil
+}
+func (a *Adapter) validatePolicy() error {
+	if err := a.validateSources(); err != nil {
+		return err
 	}
 	// Reviewed protocol generations still read cloud bundles and macOS managed preferences under
 	// --ignore-user-config. Neither a filesystem absence check nor a separate
