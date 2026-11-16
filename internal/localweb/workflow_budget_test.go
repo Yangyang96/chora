@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -60,12 +61,13 @@ type workflowFixtureConnection func(*http.Request) (*http.Response, error)
 func (f workflowFixtureConnection) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 func TestWorkflowPiPhysicalDispatchReservesBeforeHTTPAndRetainsUnknown(t *testing.T) {
-	for _, mode := range []string{"response", "server-error", "output-violation", "missing-usage"} {
+	for _, mode := range []string{"response", "local-functions", "server-error", "output-violation", "missing-usage"} {
 		t.Run(mode, func(t *testing.T) {
 			s, _, w, a, _ := workflowBudgetFixture(t, nil)
 			var calls atomic.Int32
 			upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 				calls.Add(1)
+				actual, _ := io.ReadAll(request.Body)
 				commands, err := s.store.Reader().ListWorkflowCommands(request.Context(), w.ID)
 				if err != nil {
 					t.Error(err)
@@ -75,7 +77,10 @@ func TestWorkflowPiPhysicalDispatchReservesBeforeHTTPAndRetainsUnknown(t *testin
 				reserved := false
 				for _, c := range commands {
 					if c.Kind == "pi_dispatch" && len(c.Receipt) > 0 {
-						reserved = true
+						var reservation app.WorkflowDispatchReservation
+						if json.Unmarshal(c.Receipt, &reservation) == nil && reservation.PayloadDigest == domain.WorkflowDigest(actual) && reservation.InputTokens > 0 && reservation.OutputTokens == 8 {
+							reserved = true
+						}
 					}
 				}
 				if !reserved {
@@ -122,8 +127,32 @@ func TestWorkflowPiPhysicalDispatchReservesBeforeHTTPAndRetainsUnknown(t *testin
 				t.Fatal(err)
 			}
 			body := []byte(`{"model":"deepseek-v4-pro","messages":[{"role":"user","content":"Chora?"}],"tools":[],"max_tokens":8,"thinking":{"type":"disabled"},"stream":false}`)
+			for _, unsupported := range []map[string]any{
+				{"tools": []any{map[string]string{"type": "web_search"}}},
+				{"tools": []any{map[string]any{"type": "function", "function": map[string]any{"name": "read", "parameters": map[string]string{"$ref": "https://example.invalid/schema"}}}}},
+				{"messages": []any{map[string]any{"role": "user", "content": []any{map[string]string{"type": "image_url", "image_url": "https://example.invalid/image"}}}}},
+				{"messages": []any{map[string]any{"role": "assistant", "content": nil, "tool_calls": []any{map[string]any{"id": "call", "type": "web_search", "function": map[string]string{"name": "read", "arguments": "{}"}}}}}},
+				{"thinking": map[string]string{"type": "disabled", "unproved_mode": "enabled"}},
+			} {
+				var changed map[string]any
+				_ = json.Unmarshal(body, &changed)
+				for key, value := range unsupported {
+					changed[key] = value
+				}
+				bad, _ := json.Marshal(changed)
+				if _, err = transport.Dispatch(context.Background(), w.ID, w.RunID, a.ID(), "unsupported", bad); err == nil {
+					t.Fatal("unsupported provider renderer admitted")
+				}
+				if calls.Load() != 0 {
+					t.Fatal("unsupported renderer contacted provider")
+				}
+			}
+			if mode == "local-functions" {
+				body = []byte(`{"model":"deepseek-v4-pro","messages":[{"role":"user","content":"Chora 中文?"},{"role":"assistant","content":null,"tool_calls":[{"id":"call","type":"function","function":{"name":"read","arguments":"{\"path\":\"README.md\"}"}}]},{"role":"tool","tool_call_id":"call","content":"Supplied synthetic source."}],"tools":[{"type":"function","function":{"name":"read","description":"Read a scoped local file","parameters":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"],"additionalProperties":false}}}],"max_tokens":8,"thinking":{"type":"disabled"},"stream":false}`)
+			}
 			_, err = transport.Dispatch(context.Background(), w.ID, w.RunID, a.ID(), "physical-one", body)
-			if (err == nil) != (mode == "response") {
+			knownResponse := mode == "response" || mode == "local-functions"
+			if (err == nil) != knownResponse {
 				t.Fatalf("mode=%s err=%v", mode, err)
 			}
 			if calls.Load() != 1 {
@@ -132,7 +161,7 @@ func TestWorkflowPiPhysicalDispatchReservesBeforeHTTPAndRetainsUnknown(t *testin
 			if _, err = transport.Dispatch(context.Background(), w.ID, w.RunID, a.ID(), "physical-one", body); err == nil {
 				t.Fatal("replay sent another HTTP request")
 			}
-			if mode != "response" {
+			if !knownResponse {
 				if _, err = transport.Dispatch(context.Background(), w.ID, w.RunID, a.ID(), "physical-two", body); err == nil {
 					t.Fatal("unknown refunded budget")
 				}
