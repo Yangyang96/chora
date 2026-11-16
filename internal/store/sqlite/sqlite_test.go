@@ -69,7 +69,7 @@ func TestOpenMigratesToCurrentVersionAndReopens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, err := db.SchemaVersion(context.Background()); err != nil || got != 49 {
+	if got, err := db.SchemaVersion(context.Background()); err != nil || got != 50 {
 		t.Fatalf("version=%d err=%v", got, err)
 	}
 	if err := db.Close(); err != nil {
@@ -80,7 +80,7 @@ func TestOpenMigratesToCurrentVersionAndReopens(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if got, err := db.SchemaVersion(context.Background()); err != nil || got != 49 {
+	if got, err := db.SchemaVersion(context.Background()); err != nil || got != 50 {
 		t.Fatalf("reopen version=%d err=%v", got, err)
 	}
 	if mode := os.FileMode(0o777) & fileMode(t, filepath.Dir(path)); mode != 0o700 {
