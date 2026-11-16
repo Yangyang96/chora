@@ -175,7 +175,7 @@ func TestProtocolReviewRejectsTamperingAndUntrustedEvidence(t *testing.T) {
 }
 
 func TestProtocolReviewConsumptionDriftAndConcurrentReplay(t *testing.T) {
-	for _, mode := range []string{"bytes", "symlink", "configuration", "protocol", "security", "expired", "revoked", "concurrent"} {
+	for _, mode := range []string{"bytes", "symlink", "configuration", "protocol", "security", "corpus", "expired", "revoked", "concurrent"} {
 		t.Run(mode, func(t *testing.T) {
 			c := unknownConfig(t)
 			r, key := reviewService(t)
@@ -243,6 +243,10 @@ func TestProtocolReviewConsumptionDriftAndConcurrentReplay(t *testing.T) {
 				identity.ProtocolVersion = "opencode.run.future"
 			case "security":
 				identity.SecurityIdentity[0] ^= 1
+			case "corpus":
+				approval := r.approved[identity.Digest()]
+				approval.request.Corpus[0] ^= 1
+				r.approved[identity.Digest()] = approval
 			case "expired":
 				r.now = func() time.Time { return request.ExpiresAt }
 			case "revoked":
@@ -258,7 +262,7 @@ func TestProtocolReviewConsumptionDriftAndConcurrentReplay(t *testing.T) {
 // This test injects a synthetic native attestation into package-private state to
 // exercise binding freshness. It supplies no real native qualification evidence.
 func TestSyntheticReviewBindingAndSpawnFreshness(t *testing.T) {
-	for _, mode := range []string{"expired", "revoked"} {
+	for _, mode := range []string{"expired", "revoked", "corpus"} {
 		t.Run(mode, func(t *testing.T) {
 			a := fixture(t, "exit 0\n")
 			r, key := reviewService(t)
@@ -291,6 +295,10 @@ func TestSyntheticReviewBindingAndSpawnFreshness(t *testing.T) {
 			}
 			if mode == "expired" {
 				r.now = func() time.Time { return challenge.ExpiresAt }
+			} else if mode == "corpus" {
+				approval := r.approved[challenge.Identity.Digest()]
+				approval.request.Corpus[0] ^= 1
+				r.approved[challenge.Identity.Digest()] = approval
 			} else {
 				r.RevokeReviewer("reviewer")
 			}

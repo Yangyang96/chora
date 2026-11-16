@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/Yangyang96/chora/internal/agent/opencoderun"
@@ -26,7 +27,7 @@ func (p *openCodeProtocolFixture) Complete(r execution.CompletionRequest) (execu
 }
 
 func TestOpenCodeProtocolPersistentLifecycleFixture(t *testing.T) {
-	for _, mode := range []string{"complete", "cancel", "protocol_invalid", "model_failure"} {
+	for _, mode := range []string{"complete", "cancel", "protocol_invalid", "model_failure", "case_alias"} {
 		t.Run(mode, func(t *testing.T) {
 			ctx := context.Background()
 			p := &syntheticProvider{fakeAdapter: &fakeAdapter{id: opencoderun.AdapterID, resumeMode: execution.ResumeUnsupported}}
@@ -59,6 +60,9 @@ func TestOpenCodeProtocolPersistentLifecycleFixture(t *testing.T) {
 			text := `{"type":"text","timestamp":2,"sessionID":"fixture-session","part":{"id":"part-2","sessionID":"fixture-session","messageID":"message-1","type":"text","text":"Synthetic bounded result","time":{"start":1,"end":2}}}` + "\n"
 			finish := `{"type":"step_finish","timestamp":3,"sessionID":"fixture-session","part":{"id":"part-3","sessionID":"fixture-session","messageID":"message-1","type":"step-finish","reason":"stop","cost":0,"tokens":{"input":1,"output":1,"reasoning":0,"cache":{"read":0,"write":0}}}}` + "\n"
 			stream := initial + text + finish
+			if mode == "case_alias" {
+				stream = initial + text + strings.Replace(finish, `"reason":"stop"`, `"reason":"error","Reason":"stop"`, 1)
+			}
 			if mode == "model_failure" {
 				stream = initial + `{"type":"error","timestamp":2,"sessionID":"fixture-session","error":{"name":"APIError"}}` + "\n"
 			}

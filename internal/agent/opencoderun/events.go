@@ -58,6 +58,63 @@ func allowedTool(tool string) bool {
 	return false
 }
 
+// Match encoding/json's decoded, case-insensitive field names before typed
+// decoding. Only projected fields share this namespace; opaque extensions do
+// not gain authority. Nil children are scalar or deliberately opaque values.
+type eventFields map[string]eventFields
+
+var partFields = eventFields{
+	"id": nil, "sessionID": nil, "messageID": nil, "type": nil,
+	"text": nil, "reason": nil, "callID": nil, "tool": nil, "cost": nil,
+	"state": {"status": nil}, "time": {"start": nil, "end": nil},
+	"tokens": {"input": nil, "output": nil, "reasoning": nil,
+		"cache": {"read": nil, "write": nil}},
+	"status": nil, "outcome": nil, "error": nil, "is_error": nil,
+	"finish": nil, "stop_reason": nil,
+}
+
+var frameFields = eventFields{
+	"type": nil, "sessionID": nil, "timestamp": nil, "part": partFields,
+	"error": {"name": nil}, "status": nil, "outcome": nil,
+	"is_error": nil, "finish": nil, "stop_reason": nil,
+}
+
+func validateEventFields(raw []byte, fields eventFields) error {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	if token, err := decoder.Token(); err != nil || token != json.Delim('{') {
+		return execution.ErrEventStreamInvalid
+	}
+	seen := map[string]bool{}
+	for decoder.More() {
+		token, err := decoder.Token()
+		key, ok := token.(string)
+		if err != nil || !ok {
+			return execution.ErrEventStreamInvalid
+		}
+		var value json.RawMessage
+		if decoder.Decode(&value) != nil {
+			return execution.ErrEventStreamInvalid
+		}
+		for field, child := range fields {
+			if !strings.EqualFold(key, field) {
+				continue
+			}
+			if seen[field] {
+				return execution.ErrEventStreamInvalid
+			}
+			seen[field] = true
+			if child != nil && validateEventFields(value, child) != nil {
+				return execution.ErrEventStreamInvalid
+			}
+			break
+		}
+	}
+	if token, err := decoder.Token(); err != nil || token != json.Delim('}') {
+		return execution.ErrEventStreamInvalid
+	}
+	return nil // The typed decoder also rejects trailing JSON and scalar types.
+}
+
 func project(line []byte) (execution.NormalizedEvent, error) {
 	var f struct {
 		Type      string          `json:"type"`
@@ -95,7 +152,7 @@ func project(line []byte) (execution.NormalizedEvent, error) {
 	bad := func() (execution.NormalizedEvent, error) {
 		return execution.NormalizedEvent{}, execution.ErrEventStreamInvalid
 	}
-	if json.Unmarshal(line, &f) != nil || !identifier(f.Session) || f.Timestamp == nil || *f.Timestamp < 0 {
+	if validateEventFields(line, frameFields) != nil || json.Unmarshal(line, &f) != nil || !identifier(f.Session) || f.Timestamp == nil || *f.Timestamp < 0 {
 		return bad()
 	}
 	p := map[string]any{"session_id": f.Session}
@@ -151,13 +208,19 @@ func project(line []byte) (execution.NormalizedEvent, error) {
 		var raw map[string]json.RawMessage
 		var part map[string]json.RawMessage
 		_ = json.Unmarshal(line, &raw)
-		_ = json.Unmarshal(raw["part"], &part)
-		for _, key := range []string{"status", "outcome", "error", "is_error", "finish", "stop_reason"} {
-			if _, exists := part[key]; exists {
-				return bad()
+		// The typed decoder accepts aliases for part as well as its fields.
+		for key, value := range raw {
+			if strings.EqualFold(key, "part") {
+				_ = json.Unmarshal(value, &part)
 			}
-			if _, exists := raw[key]; exists {
-				return bad()
+		}
+		for _, object := range []map[string]json.RawMessage{raw, part} {
+			for key := range object {
+				for _, authority := range []string{"status", "outcome", "error", "is_error", "finish", "stop_reason"} {
+					if strings.EqualFold(key, authority) {
+						return bad()
+					}
+				}
 			}
 		}
 		switch f.Part.Reason {

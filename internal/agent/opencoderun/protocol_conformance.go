@@ -45,6 +45,16 @@ func protocolCases() []protocolCase {
 		{Stream: strings.Replace(protocolSuccess, `"input":1`, `"input":-1`, 1), Reason: "protocol_invalid"},
 		{Stream: strings.TrimSuffix(protocolSuccess, "\n"), Reason: "protocol_invalid"},
 		{Stream: strings.Replace(protocolSuccess, `"tokens":{`, `"metadata":{"future":"discarded"},"tokens":{`, 1)},
+		{Stream: strings.Replace(protocolSuccess, `"reason":"stop"`, `"reason":"error","Reason":"stop"`, 1), Reason: "protocol_invalid"},
+		{Stream: strings.Replace(protocolSuccess, `"reason":"stop"`, `"reason":"error","reason":"stop"`, 1), Reason: "protocol_invalid"},
+		{Stream: strings.Replace(protocolSuccess, `"reason":"stop"`, `"reason":"error","rea\u0073on":"stop"`, 1), Reason: "protocol_invalid"},
+		{Stream: strings.Replace(protocolSuccess, `"type":"step_finish"`, `"type":"permission_request","Type":"step_finish"`, 1), Reason: "protocol_invalid"},
+		{Stream: strings.Replace(protocolSuccess, `"sessionID":"session-1"`, `"sessionID":"foreign-session","SessionID":"session-1"`, 1), Reason: "protocol_invalid"},
+		{Stream: strings.Replace(protocolSuccess, `"messageID":"message-1"`, `"messageID":"foreign-message","MessageID":"message-1"`, 1), Reason: "protocol_invalid"},
+		{Stream: strings.Replace(protocolSuccess, `"tokens":{`, `"Status":"failed","tokens":{`, 1), Reason: "protocol_invalid"},
+		{Stream: strings.Replace(protocolSuccess, `"part":{"id":"part-3"`, `"Part":{"id":"part-3","Status":"failed"`, 1), Reason: "protocol_invalid"},
+		{Stream: strings.Replace(tools, `"status":"completed"`, `"status":"error","Status":"completed"`, 1), Reason: "protocol_invalid"},
+		{Stream: strings.Replace(tools, `"callID":"call-1"`, `"callID":"foreign-call","CallID":"call-1"`, 1), Reason: "protocol_invalid"},
 		{Stream: strings.Replace(tools, `"tool":"read"`, `"tool":"mcp_unknown"`, 1), Reason: "protocol_invalid"},
 	}
 }
