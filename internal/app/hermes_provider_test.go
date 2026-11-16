@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/Yangyang96/chora/internal/agent/hermes"
@@ -14,7 +15,7 @@ import (
 // Run/Attempt stream, terminal and cancel paths. Production Hermes refuses all
 // launch/fingerprint requests. This is not native execution or custody evidence.
 func TestHermesProtocolPersistentLifecycle(t *testing.T) {
-	for _, mode := range []string{"complete", "cancel", "protocol_invalid", "model_failure"} {
+	for _, mode := range []string{"complete", "cancel", "protocol_invalid", "model_failure", "case_alias"} {
 		t.Run(mode, func(t *testing.T) {
 			ctx := context.Background()
 			p := &syntheticProvider{fakeAdapter: &fakeAdapter{id: hermes.AdapterID, resumeMode: execution.ResumeUnsupported}}
@@ -46,6 +47,9 @@ func TestHermesProtocolPersistentLifecycle(t *testing.T) {
 			stream := "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"\"}\n{\"type\":\"text\",\"text\":\"Synthetic bounded result\"}\n{\"type\":\"result\",\"session_id\":\"fixture-session\",\"exit_code\":0,\"text\":\"Synthetic bounded result\"}\n"
 			if mode == "model_failure" {
 				stream = "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"\"}\n{\"type\":\"result\",\"session_id\":\"fixture-session\",\"exit_code\":1,\"error\":\"private failure\"}\n"
+			}
+			if mode == "case_alias" {
+				stream = strings.Replace(stream, `"exit_code":0`, `"exit_code":0,"error":"synthetic native failure","Error":""`, 1)
 			}
 			if mode == "protocol_invalid" {
 				stream = "{\"type\":\"result\",\"session_id\":\"fixture-session\",\"exit_code\":0,\"text\":\"Synthetic bounded result\"}\n"
