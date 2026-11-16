@@ -195,22 +195,37 @@ it cannot treat an agent message as human authorization.
 
 “Planned” below is a first implementation limit, not verified availability.
 
-| Capability | Current PATH/local Pi | Current isolated Pi | Planned Codex exec | Future Claude Code |
-| --- | --- | --- | --- | --- |
-| Local Connected | Supported | Not this route | Initial scope | Unqualified |
-| Docker / managed isolation | Not this route | Existing Pi qualification required | Unsupported | Unqualified |
-| Stream transport | Pi RPC | Pi RPC in supervisor | JSONL CLI events | Must verify official protocol |
-| Cancellation | Supervisor-owned | Supervisor/container-owned | Supervisor-owned; real tree-stop gate | Same contract required |
-| Explicit conversation resume | PATH Pi only, fingerprint-bound | Unsupported; fresh Attempt | Unsupported initially, despite upstream CLI support | Unqualified |
-| Model selection | Pi native discovery/binding | Qualified catalog | Explicit/native default with honest provenance; no invented catalog | Unqualified |
-| Project Skills/MCP projection | Pi-specific management | Host resources not loaded | Unsupported | Separate native integration needed |
-| Check evidence | Pi observations / agent claims with existing distinction | Existing isolated pipeline | Missing evidence remains unknown until qualified | Unqualified |
-| Interactive permission requests in Chora | No generic broker | No generic broker | Unsupported | Requires separate design |
-| Human acceptance / SCM authority | Chora only | Chora only | Chora only | Chora only |
+| Capability | Current PATH/local Pi | Current isolated Pi | Planned Codex exec |
+| --- | --- | --- | --- |
+| Local Connected | Supported | Not this route | Initial scope |
+| Docker / managed isolation | Not this route | Existing Pi qualification required | Unsupported |
+| Stream transport | Pi RPC | Pi RPC in supervisor | JSONL CLI events |
+| Cancellation | Supervisor-owned | Supervisor/container-owned | Supervisor-owned; real tree-stop gate |
+| Explicit conversation resume | PATH Pi only, fingerprint-bound | Unsupported; fresh Attempt | Unsupported initially, despite upstream CLI support |
+| Model selection | Pi native discovery/binding | Qualified catalog | Explicit/native default with honest provenance; no invented catalog |
+| Project Skills/MCP projection | Pi-specific management | Host resources not loaded | Unsupported |
+| Check evidence | Pi observations / agent claims with existing distinction | Existing isolated pipeline | Missing evidence remains unknown until qualified |
+| Interactive permission requests in Chora | No generic broker | No generic broker | Unsupported |
+| Human acceptance / SCM authority | Chora only | Chora only | Chora only |
 
-Claude Code is only an extension point: registration, decoder, launch policy and
-capability tests. This phase specifies no command, SDK, minimum version or support
-claim for it.
+### Integrated provider readiness
+
+Pi remains the default. Embedding hosts select additional providers explicitly
+through `Options.RuntimeProviders`; this does not add persisted settings or the
+configure-once UI. The composition factories below share the registry and frozen
+execution identity contracts. Protocol review never grants native safety authority.
+
+| Provider | Explicit composition entry | Current public construction | Unverified capabilities |
+| --- | --- | --- | --- |
+| Pi | Existing local/installed Pi composition | Existing Pi requirements apply | Existing environment-specific limits apply |
+| Codex | `localweb.NewCodexRuntimeProvider` (or `WithProtocolReviews`) | Refused: `managed_policy_unverifiable` | Same-configuration launch proof; resume, skills, MCP and Docker |
+| OpenCode | `localweb.NewOpenCodeRuntimeProvider` (or `WithProtocolReviews`) | Refused: native configuration, authentication scope and retry control remain unqualified | Resume, skills, MCP, Docker and automatic check evidence |
+| Hermes | `localweb.NewHermesRuntimeProvider` | Refused: safe start, configuration, retry control and native worker custody remain unqualified; no supervisor or route is created | Native execution, authenticated cancellation, resume, skills, MCP, Docker and automatic check evidence |
+
+The Codex metadata cleanup-error handling and both other providers' protocol
+repairs coexist in this candidate. A protocol fixture or reviewed source anchor
+does not establish real model success, failure or authenticated cancellation.
+No provider may silently fall back to Pi or another runtime after refusal.
 
 ## Provider infrastructure (CHOR-11)
 
