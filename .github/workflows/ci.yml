@@ -41,6 +41,8 @@ jobs:
       - name: Download locked Go dependencies
         run: go mod download all
       - name: Run public-source checks
+        env:
+          VITEST_MAX_WORKERS: 1
         run: make public-test
 
   public-journey:
