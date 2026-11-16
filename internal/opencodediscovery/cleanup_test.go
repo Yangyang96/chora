@@ -28,13 +28,27 @@ func TestScratchCleanupInvalidatesMetadataAndPreservesCauses(t *testing.T) {
 			}
 			before, _ := os.Stat(canary)
 			observed, binary := filepath.Join(root, "observed"), filepath.Join(root, "fixture")
+			stages := filepath.Join(root, "stages")
 			tail := "echo 1.19.5\n"
 			if mode == "exit" {
 				tail += "exit 23\n"
 			} else if mode == "cancel" {
 				tail += "exec /bin/sleep 30\n"
 			}
-			body := fmt.Sprintf("#!/bin/sh\nmkdir \"$HOME/locked\"\necho retained > \"$HOME/locked/file\"\nln -s %q \"$HOME/link\"\nchmod 000 \"$HOME/locked\"\nprintf '%%s' \"$HOME\" > %q\n", canary, observed) + tail
+			body := fmt.Sprintf(`#!/bin/sh
+set -e
+printf 'started\n' >> %[1]q
+mkdir "$HOME/locked"
+printf 'directory_created\n' >> %[1]q
+echo retained > "$HOME/locked/file"
+printf 'file_written\n' >> %[1]q
+ln -s %[2]q "$HOME/link"
+printf 'symlink_created\n' >> %[1]q
+chmod 000 "$HOME/locked"
+printf 'barrier_ready\n' >> %[1]q
+printf '%%s' "$HOME" > %[3]q
+printf 'terminal_pending\n' >> %[1]q
+`, stages, canary, observed) + tail
 			if err := os.WriteFile(binary, []byte(body), 0700); err != nil {
 				t.Fatal(err)
 			}
@@ -52,16 +66,19 @@ func TestScratchCleanupInvalidatesMetadataAndPreservesCauses(t *testing.T) {
 					t.Error(err)
 				}
 			})
+			started := time.Now()
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()
 			type result struct {
-				output string
-				err    error
+				output       string
+				err          error
+				elapsed      time.Duration
+				contextError error
 			}
 			done := make(chan result, 1)
 			go func() {
 				output, err := Probe(ctx, binary, selected, nil, "--version")
-				done <- result{output, err}
+				done <- result{output, err, time.Since(started), ctx.Err()}
 			}()
 			if mode == "cancel" {
 				for {
@@ -76,8 +93,15 @@ func TestScratchCleanupInvalidatesMetadataAndPreservesCauses(t *testing.T) {
 				cancel()
 			}
 			got := <-done
+			// A deadline before chmod is different from cleanup failure after it.
+			// Keep the stage evidence and error chain when either assertion fails.
+			phases, phaseErr := os.ReadFile(stages)
+			t.Logf("elapsed=%s phases=%q phase_read_error=%v output=%q error_chain=%v ErrProbe=%t ErrMetadataCleanup=%t ErrCleanup=%t canceled=%t deadline=%t context=%v",
+				got.elapsed, phases, phaseErr, got.output, got.err,
+				errors.Is(got.err, ErrProbe), errors.Is(got.err, ErrMetadataCleanup), errors.Is(got.err, ErrCleanup),
+				errors.Is(got.err, context.Canceled), errors.Is(got.err, context.DeadlineExceeded), got.contextError)
 			if got.output != "" || !errors.Is(got.err, ErrProbe) || !errors.Is(got.err, ErrMetadataCleanup) {
-				t.Fatal("cleanup accepted metadata", got)
+				t.Fatalf("cleanup contract failed: output=%q error_chain=%v", got.output, got.err)
 			}
 			if mode == "exit" && !strings.Contains(got.err.Error(), "opencode_metadata_exit_23") {
 				t.Fatal("execution cause lost", got.err)
