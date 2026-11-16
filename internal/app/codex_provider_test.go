@@ -56,8 +56,8 @@ func TestCodexProviderPersistentLifecycle(t *testing.T) {
 				return
 			}
 			stream := "{\"type\":\"thread.started\",\"thread_id\":\"fixture-thread\"}\n{\"type\":\"turn.started\"}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"agent_message\",\"text\":\"Synthetic bounded result\"}}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":1}}\n"
-			toolStart := "{\"type\":\"item.started\",\"item\":{\"id\":\"cmd\",\"type\":\"command_execution\"}}\n"
-			toolResult := "{\"type\":\"item.completed\",\"item\":{\"id\":\"cmd\",\"type\":\"command_execution\"}}\n"
+			toolStart := "{\"type\":\"item.started\",\"item\":{\"id\":\"cmd\",\"type\":\"command_execution\",\"status\":\"in_progress\"}}\n"
+			toolResult := "{\"type\":\"item.completed\",\"item\":{\"id\":\"cmd\",\"type\":\"command_execution\",\"status\":\"completed\",\"exit_code\":0}}\n"
 			toolEvents := map[string]string{"pending_tool": toolStart, "orphan_tool": toolResult, "duplicate_tool": toolStart + toolResult + toolResult}[mode]
 			if toolEvents != "" {
 				stream = strings.Replace(stream, "{\"type\":\"item.completed\"", toolEvents+"{\"type\":\"item.completed\"", 1)

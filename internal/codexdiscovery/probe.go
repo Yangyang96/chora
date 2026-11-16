@@ -12,10 +12,11 @@ import (
 
 var ErrProbe = errors.New("codex_readiness_probe_failed")
 
-// Probe permits only executable version and existing login status. It never
+// Probe permits only executable version, exec help and existing login status. It never
 // installs, logs in/out, starts a model request or returns unbounded diagnostics.
 func Probe(ctx context.Context, executable, home, authHome string, args ...string) (string, error) {
-	if !reflect.DeepEqual(args, []string{"--version"}) && !reflect.DeepEqual(args, []string{"login", "status"}) {
+	help := reflect.DeepEqual(args, []string{"exec", "--help"})
+	if !reflect.DeepEqual(args, []string{"--version"}) && !reflect.DeepEqual(args, []string{"login", "status"}) && !help {
 		return "", ErrProbe
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -24,6 +25,9 @@ func Probe(ctx context.Context, executable, home, authHome string, args ...strin
 	cmd.Dir = home
 	cmd.Env = []string{"HOME=" + home, "CODEX_HOME=" + authHome, "PATH=/usr/bin:/bin"}
 	output := &boundedOutput{}
+	if help {
+		output.limit = 32 * 1024
+	}
 	cmd.Stdout = output
 	cmd.Stderr = output
 	cmd.WaitDelay = time.Second
@@ -36,10 +40,15 @@ func Probe(ctx context.Context, executable, home, authHome string, args ...strin
 type boundedOutput struct {
 	data     []byte
 	exceeded bool
+	limit    int
 }
 
 func (b *boundedOutput) Write(p []byte) (int, error) {
-	if len(b.data)+len(p) > 4096 {
+	limit := b.limit
+	if limit == 0 {
+		limit = 4096
+	}
+	if len(b.data)+len(p) > limit {
 		b.exceeded = true
 		return len(p), nil
 	}

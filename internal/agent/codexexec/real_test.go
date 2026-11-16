@@ -187,5 +187,12 @@ func TestNativeCodexManagedPolicyGate(t *testing.T) {
 	if a != nil || !errors.Is(err, ErrManagedPolicy) {
 		t.Fatalf("native refusal not proven: %v", err)
 	}
-	t.Log("native version probe accepted; managed policy unverifiable; no exec or authentication scope used")
+	var qualification *QualificationError
+	if !errors.As(err, &qualification) || qualification.Report.State != execution.QualificationRejected {
+		t.Fatal("native capability report missing")
+	}
+	if evidenceFor(t, &qualification.Report, "launch_arguments").State != execution.QualificationVerified || evidenceFor(t, &qualification.Report, "configuration_sources").State != execution.QualificationRejected {
+		t.Fatal("native probe and policy refusal not distinguished")
+	}
+	t.Logf("native %s: version/help accepted; managed policy unverifiable; no exec or authentication scope used", qualification.Report.Identity.Version)
 }
