@@ -38,5 +38,5 @@ regexes = ['''^\s*"tokenizer_sha256": "8f9f37ca37fdc4f5fd36d5cf4d3b0e8392edb4e89
 description = "Historical provider-design prose retained in assigned task history"
 condition = "AND"
 paths = ['''(^|/)docs/runtime-providers\.md$''']
-regexTarget = "line"
-regexes = ['''^   failed turn, auth failure, duplicate/reordered/unknown items, truncated streams,$''']
+regexTarget = "match"
+regexes = ['''^auth failure, duplicate/reordered/unknown $''']
