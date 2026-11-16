@@ -2,6 +2,7 @@ package codexexec
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -58,7 +59,7 @@ func (a *Adapter) qualifyProtocol(ctx context.Context) error {
 	evidence := []execution.CapabilityEvidence{}
 	source := reviewedProtocol(a.version)
 	// Unknown versions receive only the bounded, no-model CLI help probe.
-	launch, _ := a.protocolEvidence(ctx)
+	launch, launchErr := a.protocolEvidence(ctx)
 	approval, approved := a.protocolReviews.lookup(identity)
 	if approved {
 		a.protocolApproval = approval.digest
@@ -95,7 +96,8 @@ func (a *Adapter) qualifyProtocol(ctx context.Context) error {
 				missing = append(missing, e.Capability+"="+e.Reference)
 			}
 		}
-		return &QualificationError{Report: report, cause: fmt.Errorf("%w: qualification_%s: %s; validate this executable/protocol before starting a new task", ErrVersion, report.State, strings.Join(missing, ","))}
+		cause := fmt.Errorf("%w: qualification_%s: %s; validate this executable/protocol before starting a new task", ErrVersion, report.State, strings.Join(missing, ","))
+		return &QualificationError{Report: report, cause: errors.Join(cause, launchErr)}
 	}
 	return nil
 }
@@ -158,7 +160,7 @@ func (a *Adapter) protocolEvidence(ctx context.Context) (execution.CapabilityEvi
 	}
 
 	if launch.State != execution.QualificationVerified {
-		return launch, fmt.Errorf("%s", launch.Reference)
+		return launch, errors.Join(errors.New(launch.Reference), err)
 	}
 	return launch, nil
 }

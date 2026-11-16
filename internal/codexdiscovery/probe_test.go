@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -118,5 +119,143 @@ func TestMetadataRejectsTempRootInsideSelectedScopeBeforeWriting(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestMetadataCleanupFailurePreservesExecutionCause(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("permission failure requires an unprivileged process")
+	}
+	for _, mode := range []string{"success", "exit", "overflow", "cancel", "timeout"} {
+		t.Run(mode, func(t *testing.T) {
+			root := t.TempDir()
+			home, auth := filepath.Join(root, "home"), filepath.Join(root, "auth")
+			for _, scope := range []string{home, auth} {
+				if err := os.Mkdir(scope, 0700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			observed := filepath.Join(root, "observed")
+			binary := filepath.Join(root, "metadata")
+			body := "#!/bin/sh\nmkdir \"$HOME/locked\"\necho fixture > \"$HOME/locked/retained\"\nchmod 000 \"$HOME/locked\"\nprintf '%s' \"$HOME\" > '" + observed + "'\n"
+			switch mode {
+			case "exit":
+				body += "exit 23\n"
+			case "overflow":
+				body += "head -c 40000 /dev/zero\n"
+			case "cancel", "timeout":
+				body += "sleep 30\n"
+			default:
+				body += "echo codex-cli 0.168.0\n"
+			}
+			if err := os.WriteFile(binary, []byte(body), 0700); err != nil {
+				t.Fatal(err)
+			}
+			// Only the fixture owner restores its deliberately locked directory.
+			// Production cleanup must report uncertainty without changing modes.
+			t.Cleanup(func() {
+				raw, err := os.ReadFile(observed)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				metadata := string(raw)
+				if err := os.Chmod(filepath.Join(metadata, "locked"), 0700); err != nil {
+					t.Error(err)
+				}
+				if err := os.RemoveAll(metadata); err != nil {
+					t.Error(err)
+				}
+			})
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			if mode == "timeout" {
+				var deadlineCancel context.CancelFunc
+				ctx, deadlineCancel = context.WithTimeout(ctx, 2*time.Second)
+				defer deadlineCancel()
+			}
+			if mode == "cancel" {
+				go func() {
+					for ctx.Err() == nil {
+						if _, err := os.Stat(observed); err == nil {
+							cancel()
+							return
+						}
+						time.Sleep(time.Millisecond)
+					}
+				}()
+			}
+			began := time.Now()
+			out, err := Probe(ctx, binary, home, auth, "--version")
+			if out != "" || !errors.Is(err, ErrProbe) || !errors.Is(err, ErrCleanup) {
+				t.Fatalf("metadata escaped cleanup failure: %q %v", out, err)
+			}
+			if elapsed := time.Since(began); elapsed > 7*time.Second {
+				t.Fatal("cleanup failure did not return promptly", elapsed)
+			}
+			switch mode {
+			case "exit":
+				var exit *exec.ExitError
+				if !errors.As(err, &exit) || exit.ExitCode() != 23 {
+					t.Fatal("execution failure lost", err)
+				}
+			case "cancel":
+				if !errors.Is(err, context.Canceled) {
+					t.Fatal("cancellation lost", err)
+				}
+			case "timeout":
+				if !errors.Is(err, context.DeadlineExceeded) {
+					t.Fatal("deadline failure lost", err)
+				}
+			}
+			raw, err := os.ReadFile(observed)
+			if err != nil {
+				t.Fatal("fixture did not reach its permission failure", err)
+			}
+			info, err := os.Lstat(filepath.Join(string(raw), "locked"))
+			if err != nil || info.Mode().Perm() != 0 {
+				t.Fatal("cleanup changed locked directory permissions", info, err)
+			}
+			for _, scope := range []string{home, auth} {
+				entries, err := os.ReadDir(scope)
+				if err != nil || len(entries) != 0 {
+					t.Fatal("selected scope changed", entries, err)
+				}
+			}
+		})
+	}
+}
+
+func TestMetadataCleanupDoesNotFollowSymlinks(t *testing.T) {
+	root := t.TempDir()
+	home, auth := filepath.Join(root, "home"), filepath.Join(root, "auth")
+	for _, scope := range []string{home, auth} {
+		if err := os.Mkdir(scope, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(scope, "retained"), []byte("selected scope"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	observed, binary := filepath.Join(root, "observed"), filepath.Join(root, "metadata")
+	body := "#!/bin/sh\nprintf '%s' \"$HOME\" > '" + observed + "'\nln -s '" + home + "' \"$HOME/home-link\"\nln -s '" + auth + "' \"$HOME/auth-link\"\necho codex-cli 0.168.0\n"
+	if err := os.WriteFile(binary, []byte(body), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := Probe(context.Background(), binary, home, auth, "--version"); err != nil || strings.TrimSpace(out) != "codex-cli 0.168.0" {
+		t.Fatal(out, err)
+	}
+	metadata, err := os.ReadFile(observed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(string(metadata)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("temporary symlinks retained", err)
+	}
+	for _, scope := range []string{home, auth} {
+		raw, err := os.ReadFile(filepath.Join(scope, "retained"))
+		if err != nil || string(raw) != "selected scope" {
+			t.Fatal("cleanup followed a symlink", err)
+		}
 	}
 }

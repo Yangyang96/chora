@@ -6,11 +6,13 @@ import (
 	"crypto/rand"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/Yangyang96/chora/internal/codexdiscovery"
 	"github.com/Yangyang96/chora/internal/execution"
 )
 
@@ -34,6 +36,68 @@ func reviewService(t *testing.T) (*ProtocolReviews, ed25519.PrivateKey) {
 func signReview(request ProtocolReviewRequest, key ed25519.PrivateKey) ProtocolReviewSignature {
 	message := ProtocolReviewMessage(request, "reviewer", fixtureSource)
 	return ProtocolReviewSignature{Reviewer: "reviewer", SourceReference: fixtureSource, Signature: ed25519.Sign(key, message[:])}
+}
+
+func TestMetadataCleanupFailureBlocksPublicQualification(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("permission failure requires an unprivileged process")
+	}
+	for _, command := range []string{"--version", "exec --help"} {
+		t.Run(command, func(t *testing.T) {
+			c := versionFixture(t, "codex-cli 0.167.2", "exit 88\n").config
+			observed := filepath.Join(filepath.Dir(c.Home), "observed")
+			raw, err := os.ReadFile(c.Executable)
+			if err != nil {
+				t.Fatal(err)
+			}
+			bootstrap := "if [ \"$*\" = '" + command + "' ]; then\nmkdir \"$HOME/locked\"\necho fixture > \"$HOME/locked/retained\"\nchmod 000 \"$HOME/locked\"\nprintf '%s\\n' \"$HOME\" >> '" + observed + "'\nfi\n"
+			if err := os.WriteFile(c.Executable, []byte(strings.Replace(string(raw), "#!/bin/sh\n", "#!/bin/sh\n"+bootstrap, 1)), 0700); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				raw, err := os.ReadFile(observed)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				for _, metadata := range strings.Fields(string(raw)) {
+					if err := os.Chmod(filepath.Join(metadata, "locked"), 0700); err != nil {
+						t.Error(err)
+					}
+					if err := os.RemoveAll(metadata); err != nil {
+						t.Error(err)
+					}
+				}
+			})
+			reviews, _ := reviewService(t)
+			for _, construct := range []func(context.Context, Config) (*Adapter, error){New, func(ctx context.Context, c Config) (*Adapter, error) {
+				return NewReviewed(ctx, c, reviews)
+			}} {
+				a, err := construct(context.Background(), c)
+				if a != nil || !errors.Is(err, ErrVersion) || !errors.Is(err, codexdiscovery.ErrCleanup) || errors.Is(err, ErrManagedPolicy) {
+					t.Fatal("cleanup uncertainty was consumed", a, err)
+				}
+			}
+			for _, readiness := range []execution.Readiness{Inspect(context.Background(), c), InspectReviewed(context.Background(), c, reviews)} {
+				if readiness.Ready || !strings.Contains(readiness.Failure, codexdiscovery.ErrCleanup.Error()) {
+					t.Fatal("cleanup uncertainty lost from readiness", readiness)
+				}
+				if command == "exec --help" && (readiness.Qualification == nil || evidenceFor(t, readiness.Qualification, "launch_arguments").State != execution.QualificationPending) {
+					t.Fatal("unclean help qualified launch arguments", readiness)
+				}
+			}
+			request, err := reviews.Validate(context.Background(), c, true, time.Hour)
+			if !errors.Is(err, codexdiscovery.ErrCleanup) || request != (ProtocolReviewRequest{}) {
+				t.Fatal("unclean metadata created a review challenge", request, err)
+			}
+			for _, scope := range []string{c.Home, c.AuthHome} {
+				entries, err := os.ReadDir(scope)
+				if err != nil || len(entries) != 0 {
+					t.Fatal("selected scope changed", entries, err)
+				}
+			}
+		})
+	}
 }
 
 func TestUnknownVersionTrustedProtocolTransition(t *testing.T) {

@@ -210,7 +210,10 @@ func metadataAdapter(ctx context.Context, config Config) (*Adapter, error) {
 		return nil, err
 	}
 	version, err := a.probe(ctx, "--version")
-	if err != nil || len(strings.TrimSpace(version)) > 128 || !nativeVersion.MatchString(strings.TrimSpace(version)) {
+	if err != nil {
+		return nil, errors.Join(ErrVersion, err)
+	}
+	if len(strings.TrimSpace(version)) > 128 || !nativeVersion.MatchString(strings.TrimSpace(version)) {
 		return nil, ErrVersion
 	}
 	a.version = strings.TrimSpace(version)
