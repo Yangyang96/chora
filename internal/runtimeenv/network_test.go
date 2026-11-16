@@ -38,7 +38,8 @@ func TestNetworkSelectionIsExplicitImmutableAndCredentialFree(t *testing.T) {
 func TestCertificateDriftFailsClosed(t *testing.T) {
 	dir, _ := filepath.EvalSymlinks(t.TempDir())
 	path := filepath.Join(dir, "ca.pem")
-	if err := os.WriteFile(path, []byte("-----BEGIN CERTIFICATE-----\nfixture\n-----END CERTIFICATE-----\n"), 0600); err != nil {
+	cert, _ := syntheticCertificate(t, 1)
+	if err := os.WriteFile(path, cert, 0600); err != nil {
 		t.Fatal(err)
 	}
 	n, err := New(map[string]string{"SSL_CERT_FILE": path})

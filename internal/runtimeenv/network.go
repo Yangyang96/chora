@@ -4,7 +4,9 @@ package runtimeenv
 
 import (
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"net/url"
 	"os"
@@ -69,10 +71,53 @@ func certificate(path string) ([32]byte, error) {
 		return [32]byte{}, ErrConfiguration
 	}
 	data, err := os.ReadFile(path)
-	if err != nil || !strings.Contains(string(data), "-----BEGIN CERTIFICATE-----") || strings.Contains(string(data), "PRIVATE KEY") {
+	if err != nil || len(data) > 4<<20 || strings.Contains(string(data), "PRIVATE KEY") || !validCertificatePEM(data) {
 		return [32]byte{}, ErrConfiguration
 	}
 	return sha256.Sum256(data), nil
+}
+
+// validCertificatePEM checks syntax, not trust, usage or validity dates. Files
+// must contain one or more PEM CERTIFICATE blocks with no PEM headers, each
+// holding exactly one X.509 DER certificate. Raw DER files remain unsupported.
+// Between blocks, allow ASCII space/tab/CR blank lines and whole-line # comments
+// (optionally space/tab indented). Boundaries start at column zero; LF and CRLF
+// and trailing space/tab on boundaries are supported. Other text is rejected.
+func validCertificatePEM(data []byte) bool {
+	lines := strings.Split(string(data), "\n")
+	count := 0
+	for i := 0; i < len(lines); i++ {
+		line := strings.Trim(lines[i], " \t\r")
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if strings.TrimRight(lines[i], " \t\r") != "-----BEGIN CERTIFICATE-----" {
+			return false
+		}
+		start := i
+		for i++; i < len(lines); i++ {
+			if strings.TrimRight(lines[i], " \t\r") == "-----END CERTIFICATE-----" {
+				break
+			}
+			// pem.Decode can skip a malformed block and find a later valid one.
+			// Reject nested/mismatched boundaries before giving it this block.
+			if strings.Contains(lines[i], "-----") {
+				return false
+			}
+		}
+		if i == len(lines) {
+			return false
+		}
+		block, rest := pem.Decode([]byte(strings.Join(lines[start:i+1], "\n") + "\n"))
+		if block == nil || block.Type != "CERTIFICATE" || len(block.Headers) != 0 || len(rest) != 0 {
+			return false
+		}
+		if _, err := x509.ParseCertificate(block.Bytes); err != nil {
+			return false
+		}
+		count++
+	}
+	return count > 0
 }
 
 func (n Network) Values() map[string]string {
