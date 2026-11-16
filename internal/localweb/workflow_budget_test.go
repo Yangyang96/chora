@@ -3,6 +3,7 @@ package localweb
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -335,5 +336,24 @@ func TestWorkflowPiExpiryStopsLocallyWithMissingBridge(t *testing.T) {
 	}
 	if _, err = reservePi(t, s.service, w, a, "expired", 100, 8); err == nil {
 		t.Fatal("expired dispatch admitted")
+	}
+}
+
+func TestWorkflowPiWrongTransportRefusesBeforeResearch(t *testing.T) {
+	s, _, task, _ := workflowFixtureWithModel(t, true)
+	ctx := context.Background()
+	id, _ := domain.ParseTaskID(task.ID)
+	settings, err := s.store.Reader().GetTaskExecutionSettings(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile, _ := domain.NewAgentExecutionProfileBinding(settings.AgentExecutionProfile)
+	p := domain.WorkflowPiAuthorization{Version: 1, Reference: "synthetic", AuthorizedAt: time.Now().UTC().Add(-time.Second), Deadline: time.Now().UTC().Add(time.Minute), MaxRequests: 1, MaxTokens: 10000, MaxOutputTokens: 8, PerRequestOutputTokens: 8, Model: settings.ModelBinding, Profile: profile.Record(), TransportIdentity: strings.Repeat("0", 64)}
+	requestJSONWithHeaders(t, s.Handler(), http.MethodPost, "/api/tasks/"+task.ID+"/workflow", map[string]any{"projectId": task.ResourceSnapshot.ProjectID, "question": task.Goal, "piAuthorization": p}, map[string]string{"Idempotency-Key": "wrong-transport"}, 403, nil)
+	if s.workflowBridge.(*fixtureResearchBridge).calls != 0 {
+		t.Fatal("wrong transport started research")
+	}
+	if _, err = s.store.Reader().GetTaskWorkflow(ctx, id); !errors.Is(err, storecontract.ErrNotFound) {
+		t.Fatalf("refused workflow persisted: %v", err)
 	}
 }

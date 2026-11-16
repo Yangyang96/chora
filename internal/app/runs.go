@@ -104,7 +104,7 @@ func (s *Service) prepare(ctx context.Context, meta CommandMeta, runID domain.Ru
 				return err
 			}
 		} else if w, e := tx.GetTaskWorkflow(ctx, run.TaskID()); e == nil {
-			if w.RunID != run.ID() {
+			if w.RunID != run.ID() || w.ActorID != meta.ActorID {
 				return ErrUnauthorizedCommand
 			}
 			if err = workflowRunAuthority(ctx, tx, w); err != nil {
@@ -407,7 +407,7 @@ func (s *Service) StartAttempt(ctx context.Context, request StartAttemptRequest)
 			if request.Mode != StartFresh {
 				return ErrUnauthorizedCommand
 			}
-			if w.RunID != run.ID() {
+			if w.RunID != run.ID() || w.ActorID != request.ActorID {
 				return ErrUnauthorizedCommand
 			}
 			if e = workflowBoundRunAuthority(ctx, tx, w); e != nil {

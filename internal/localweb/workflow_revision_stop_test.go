@@ -417,3 +417,41 @@ func TestWorkflowRegressionNoStartBeforePGBinding(t *testing.T) {
 		t.Fatal("Pi launched before durable PG binding acknowledgement")
 	}
 }
+
+func TestWorkflowPrepareAndStartRequireOriginalActor(t *testing.T) {
+	s, runtime, task, _ := workflowFixture(t)
+	ctx := context.Background()
+	w := approvedWorkflow(t, s, submitWorkflowFixture(t, s, task))
+	run, err := s.service.CreateWorkflowRun(ctx, w.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	commands, _ := s.store.Reader().ListWorkflowCommands(ctx, w.ID)
+	for _, c := range commands {
+		if c.Kind == "bind_run" {
+			body, e := s.workflowBridge.Execute(ctx, c)
+			if e != nil {
+				t.Fatal(e)
+			}
+			if e = s.service.ApplyWorkflowReceipt(ctx, c, body); e != nil {
+				t.Fatal(e)
+			}
+		}
+	}
+	foreign := commandMeta("foreign-prepare")
+	foreign.ActorID = "another-local-actor"
+	if _, err = s.service.PrepareRun(ctx, app.PrepareRunRequest{CommandMeta: foreign, RunID: run.ID(), ExpectedVersion: run.Version()}); err == nil {
+		t.Fatal("foreign actor prepared workflow Attempt")
+	}
+	prepared, err := s.service.PrepareRun(ctx, app.PrepareRunRequest{CommandMeta: commandMeta("owner-prepare"), RunID: run.ID(), ExpectedVersion: run.Version()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreign.IdempotencyKey = "foreign-start"
+	if _, err = s.service.StartAttempt(ctx, app.StartAttemptRequest{CommandMeta: foreign, RunID: run.ID(), ExpectedVersion: prepared.Run.Version(), Mode: app.StartFresh}); err == nil {
+		t.Fatal("foreign actor started workflow Attempt")
+	}
+	if n, _ := runtime.snapshot(); n != 0 {
+		t.Fatal("foreign actor caused a process start")
+	}
+}

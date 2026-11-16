@@ -512,7 +512,7 @@ func workflowRunAuthority(ctx context.Context, r storecontract.Reader, w domain.
 }
 
 func requireWorkflowPiBinding(ctx context.Context, r storecontract.Reader, taskID domain.TaskID, p domain.WorkflowPiAuthorization) error {
-	if p.Validate() != nil {
+	if p.Validate() != nil || p.TransportIdentity != WorkflowTransportIdentity() {
 		return ErrUnauthorizedCommand
 	}
 	settings, err := r.GetTaskExecutionSettings(ctx, taskID)
