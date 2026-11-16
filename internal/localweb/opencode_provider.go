@@ -13,7 +13,13 @@ import (
 // its trusted-host supervisor. Current native qualification failures propagate
 // before registration, binding, persistence, or process launch.
 func NewOpenCodeRuntimeProvider(ctx context.Context, config opencoderun.Config, runtimeRoot string) (RuntimeProviderRegistration, error) {
-	provider, err := opencoderun.New(ctx, config)
+	return NewOpenCodeRuntimeProviderWithProtocolReviews(ctx, config, runtimeRoot, nil)
+}
+
+// NewOpenCodeRuntimeProviderWithProtocolReviews consumes only a host-owned trust
+// service and propagates native safety rejection before route construction.
+func NewOpenCodeRuntimeProviderWithProtocolReviews(ctx context.Context, config opencoderun.Config, runtimeRoot string, reviews *opencoderun.ProtocolReviews) (RuntimeProviderRegistration, error) {
+	provider, err := opencoderun.NewReviewed(ctx, config, reviews)
 	if err != nil {
 		return RuntimeProviderRegistration{}, err
 	}

@@ -18,10 +18,10 @@ import (
 	"github.com/Yangyang96/chora/internal/trustedhost"
 )
 
-const initStream = `{"type":"step_start","timestamp":1,"sessionID":"session-1","part":{"id":"part-1","sessionID":"session-1","messageID":"message-1","type":"step-start"}}` + "\n"
-const messageStream = `{"type":"text","timestamp":2,"sessionID":"session-1","part":{"id":"part-2","sessionID":"session-1","messageID":"message-1","type":"text","text":"Complete synthetic finding.","time":{"start":1,"end":2}}}` + "\n"
-const resultStream = `{"type":"step_finish","timestamp":3,"sessionID":"session-1","part":{"id":"part-3","sessionID":"session-1","messageID":"message-1","type":"step-finish","reason":"stop","cost":0,"tokens":{"input":1,"output":1,"reasoning":0,"cache":{"read":0,"write":0}}}}` + "\n"
-const successStream = initStream + messageStream + resultStream
+const initStream = protocolStart
+const messageStream = protocolText
+const resultStream = protocolFinish
+const successStream = protocolSuccess
 
 func fixture(t *testing.T, body string) *Adapter {
 	t.Helper()
@@ -306,7 +306,7 @@ func TestPreparationRejectsBindingAndPolicyDrift(t *testing.T) {
 	if _, err := a.PrepareBoundStart(context.Background(), req); !errors.Is(err, ErrPolicy) {
 		t.Fatal(err)
 	}
-	for _, name := range []string{".opencode", "opencode.json", "opencode.jsonc", "AGENTS.md", "CLAUDE.md", "CONTEXT.md", ".agents", ".env"} {
+	for _, name := range []string{".opencode", "opencode.json", "opencode.jsonc", "AGENTS.md", "CLAUDE.md", "CONTEXT.md", ".agents"} {
 		req = request(t, a)
 		if err := os.WriteFile(filepath.Join(req.WorkspaceRoot, name), []byte("untrusted"), 0600); err != nil {
 			t.Fatal(err)

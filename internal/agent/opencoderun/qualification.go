@@ -12,8 +12,6 @@ import (
 	"github.com/Yangyang96/chora/internal/trustedhost"
 )
 
-var zeroCredentials = regexp.MustCompile(`(?m)^[│└ \t]*0 credentials[ \r]*$`)
-
 var nativeVersion = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$`)
 var requiredCapabilities = []string{"launch_arguments", "event_frames", "terminal_result", "process_supervision", "configuration_sources", "retry_control", "authentication_scope"}
 
@@ -29,7 +27,7 @@ func (e *QualificationError) Error() string { return e.cause.Error() }
 func (e *QualificationError) Unwrap() error { return e.cause }
 
 func (a *Adapter) qualificationIdentity() execution.QualificationIdentity {
-	fp := a.deriveFingerprint(a.executable)
+	fp := a.baseFingerprint(a.executable)
 	return execution.QualificationIdentity{RuntimeID: AdapterID, Version: a.version, ProtocolVersion: protocolVersion,
 		SourceIdentity: fp.SourceIdentity, ConfigurationIdentity: fp.Digest, SecurityIdentity: fp.SecurityFingerprint}
 }
@@ -39,34 +37,42 @@ func (a *Adapter) qualify(ctx context.Context) error {
 	observe := func(capability string, state execution.QualificationState, method, reference string) {
 		evidence = append(evidence, execution.CapabilityEvidence{Capability: capability, State: state, Method: method, Reference: reference})
 	}
-	help, err := a.probe(ctx, "run", "--help")
-	launchState, launchReference := execution.QualificationPending, "run_help_unavailable"
-	if err == nil {
-		launchState, launchReference = execution.QualificationVerified, "run_help_flags_present"
-		for _, flag := range []string{"--pure", "--format", "--model"} {
-			if !slices.Contains(strings.Fields(help), flag) {
-				launchState, launchReference = execution.QualificationRejected, "missing_flag:"+flag
-				break
-			}
-		}
-	}
-	observe("launch_arguments", launchState, "native_help", launchReference)
-	// One reviewed source anchor establishes this generation's semantics. It
-	// does not authorize every matching or newer SemVer release.
+	launch, _ := a.protocolEvidence(ctx)
+	evidence = append(evidence, launch)
+	source, method := "", "reviewed_source_and_adapter_fixture"
 	if a.version == "1.19.5" {
-		observe("event_frames", execution.QualificationVerified, "reviewed_source", sourceReference+"/cli/cmd/run.ts")
-		observe("terminal_result", execution.QualificationVerified, "reviewed_source_and_fixture", "step_finish_stop:paired_message:trusted_exit_zero")
+		source = sourceReference + "/cli/cmd/run.ts"
+	}
+	if approval, ok := a.protocolReviews.lookup(a.qualificationIdentity()); ok {
+		source = approval.attestation.SourceReference
+		method = "signed_native_source_review_and_adapter_corpus"
+		if approval.request.Fixture {
+			method = "signed_fixture_conformance:adapter_only"
+		}
+		a.protocolApproval = approval.digest
+	}
+	if source != "" {
+		for _, capability := range []string{"event_frames", "terminal_result"} {
+			observe(capability, execution.QualificationVerified, method, source)
+		}
 	}
 	observe("process_supervision", execution.QualificationVerified, "implementation_and_fixture", "trustedhost_process_group:not_authenticated_cancellation")
 	var failures []error
-	if a.version != "1.19.5" || launchState != execution.QualificationVerified {
+	if source == "" || launch.State != execution.QualificationVerified {
 		failures = append(failures, ErrVersion)
 	}
 	if a.nativeCheck == nil {
-		observe("configuration_sources", execution.QualificationRejected, "reviewed_source", "pure_retains_global_org_managed_config_and_native_resources")
-		observe("retry_control", execution.QualificationRejected, "reviewed_source", "session_retry_five_retries:no_qualified_disable_interface")
-		auth := a.authenticationDiagnostic(ctx)
-		observe("authentication_scope", execution.QualificationRejected, "native_metadata", auth.Error())
+		method, configReference, retryReference := "pre_effect_gate", "native_configuration_sources_unverifiable", "native_retry_control_unavailable"
+		if a.version == "1.19.5" {
+			method = "reviewed_source"
+			configReference = "pure_retains_global_org_managed_config_and_native_resources"
+			retryReference = "session_retry_five_retries:no_qualified_disable_interface"
+		}
+		observe("configuration_sources", execution.QualificationRejected, method, configReference)
+		observe("retry_control", execution.QualificationRejected, method, retryReference)
+		// User-scope credential metadata remains behind the safe-start gate.
+		auth := ErrAuthScope
+		observe("authentication_scope", execution.QualificationRejected, "pre_effect_gate", auth.Error())
 		failures = append(failures, ErrNativeConfig, ErrNativeRetry, auth)
 	} else {
 		// Only package-local fixtures reach this branch. These observations are
@@ -90,4 +96,26 @@ func (a *Adapter) qualify(ctx context.Context) error {
 		return &QualificationError{Report: report, cause: fmt.Errorf("opencode qualification_%s: %w", report.State, errors.Join(failures...))}
 	}
 	return nil
+}
+
+// protocolEvidence observes argument shape through isolated metadata only.
+func (a *Adapter) protocolEvidence(ctx context.Context) (execution.CapabilityEvidence, error) {
+	help, err := a.probe(ctx, "run", "--help")
+	launch := execution.CapabilityEvidence{Capability: "launch_arguments", State: execution.QualificationPending, Method: "isolated_native_help", Reference: "run_help_unavailable"}
+	if err != nil {
+		launch.Reference = "run_help_unavailable:" + err.Error()
+	}
+	if err == nil {
+		launch.State, launch.Reference = execution.QualificationVerified, "run_help_flags_present"
+		for _, flag := range []string{"--pure", "--format", "--model"} {
+			if !slices.Contains(strings.Fields(help), flag) {
+				launch.State, launch.Reference = execution.QualificationRejected, "missing_flag:"+flag
+				break
+			}
+		}
+	}
+	if launch.State != execution.QualificationVerified {
+		return launch, fmt.Errorf("%w: %s", ErrVersion, launch.Reference)
+	}
+	return launch, nil
 }
