@@ -149,8 +149,7 @@ func composePiRuntime(ctx context.Context, runtimeRoot, artifactRoot, repoRoot s
 		selection := composition.localSnapshot.Selection()
 		runtimeClosureIdentity := composition.localSnapshot.ContentSHA256()
 		trustedSupervisor, trustedErr := trustedhost.New(trustedhost.Config{
-			FilterPiProgress: true,
-			RuntimeRoot:      filepath.Join(runtimeRoot, "pi-trusted"), AllowedAdapterID: agentpi.AdapterID,
+			RuntimeRoot: filepath.Join(runtimeRoot, "pi-trusted"), AllowedAdapterID: agentpi.AdapterID,
 			AllowedExecutable: trustedhost.ExecutableIdentity{
 				Path: selection.Path(), ResolvedPath: selection.ResolvedPath(), SHA256: selection.ExecutableSHA256(),
 			},

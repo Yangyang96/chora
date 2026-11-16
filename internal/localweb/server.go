@@ -146,7 +146,6 @@ type piRuntimeStatus struct {
 }
 
 type ProductOptions struct {
-	RuntimeProviders       []RuntimeProviderRegistration
 	GracefulShutdown       bool
 	WorkbenchSourceRoot    string
 	PackagedIsolatedHelper string
@@ -304,7 +303,6 @@ func NewSourceCheckout(ctx context.Context, databasePath, webRoot string, logger
 // deliberately carries no repository root, Docker Engine identity, OAuth file,
 // or Preflight authority.
 type WorkbenchOptions struct {
-	RuntimeProviders       []RuntimeProviderRegistration
 	GracefulShutdown       bool
 	PackagedIsolatedHelper string
 	SourceRoot             string
@@ -327,7 +325,6 @@ func NewWorkbench(ctx context.Context, databasePath, webRoot string, logger *log
 		return nil, errors.New("workbench Web build must be inside the source checkout")
 	}
 	return newServer(ctx, databasePath, webRoot, logger, ProductOptions{
-		RuntimeProviders:       options.RuntimeProviders,
 		RepositorySource:       gitsource.Default{},
 		GracefulShutdown:       options.GracefulShutdown,
 		WorkbenchSourceRoot:    options.SourceRoot,
@@ -597,16 +594,6 @@ func newServer(ctx context.Context, databasePath, webRoot string, logger *log.Lo
 			store.Close()
 			return nil, fmt.Errorf("register Pi supervisor: %w", err)
 		}
-	}
-	if err := registerRuntimeProviders(registry, supervisor, options.RuntimeProviders); err != nil {
-		cancel()
-		store.Close()
-		return nil, err
-	}
-	if err := restoreProviderRoutes(runtimeContext, store.Reader(), registry, supervisor); err != nil {
-		cancel()
-		store.Close()
-		return nil, err
 	}
 	for _, route := range piRecoveryRoutes {
 		if err := supervisor.RestoreTarget(runtimeContext, route.target, route.identity, route.launch); err != nil {
@@ -2278,7 +2265,7 @@ func (server *Server) startRun(writer http.ResponseWriter, request *http.Request
 		return
 	}
 	adapterID := charter.AdapterID()
-	if _, resolveErr := server.registry.Get(adapterID); adapterID != "fake" && resolveErr != nil {
+	if adapterID != "fake" && adapterID != agentpi.AdapterID {
 		writeError(writer, http.StatusConflict, errors.New("accepted technical plan uses an unsupported execution profile"))
 		return
 	}
@@ -2298,20 +2285,16 @@ func (server *Server) startRun(writer http.ResponseWriter, request *http.Request
 			break
 		}
 	}
-	if charter.AgentExecutionProfileBinding().Bound() && startIsCurrentAction {
-		profileBinding := charter.AgentExecutionProfileBinding()
-		if profileBinding.Legacy() {
-			preference, preferenceErr := server.store.Reader().GetTaskAgentExecutionProfilePreference(request.Context(), task.ID())
-			if preferenceErr != nil {
-				writeStoreError(writer, preferenceErr)
-				return
-			}
-			var bindingErr error
-			profileBinding, bindingErr = domain.NewAgentExecutionProfileBinding(preference.Profile())
-			if bindingErr != nil {
-				writeError(writer, http.StatusConflict, errors.New("Task Agent execution profile is invalid"))
-				return
-			}
+	if adapterID == agentpi.AdapterID && startIsCurrentAction {
+		preference, preferenceErr := server.store.Reader().GetTaskAgentExecutionProfilePreference(request.Context(), task.ID())
+		if preferenceErr != nil {
+			writeStoreError(writer, preferenceErr)
+			return
+		}
+		profileBinding, bindingErr := domain.NewAgentExecutionProfileBinding(preference.Profile())
+		if bindingErr != nil {
+			writeError(writer, http.StatusConflict, errors.New("Task Agent execution profile is invalid"))
+			return
 		}
 		if !server.requireAgentExecutionRoute(writer, request, profileBinding) {
 			return
@@ -3137,10 +3120,6 @@ func (server *Server) retryRun(writer http.ResponseWriter, request *http.Request
 			writeError(writer, http.StatusInternalServerError, err)
 			return
 		}
-	} else if charter.AgentExecutionProfileBinding().RuntimeBindingJSON() != "" {
-		if !server.requireAgentExecutionRoute(writer, request, charter.AgentExecutionProfileBinding()) {
-			return
-		}
 	} else {
 		writeError(writer, http.StatusConflict, fmt.Errorf("run adapter %q is disabled", charter.AdapterID()))
 		return
@@ -3159,7 +3138,7 @@ func (server *Server) retryRun(writer http.ResponseWriter, request *http.Request
 	// Failed or incompatible Pi sessions start fresh. An interrupted local
 	// session is resumed only by this explicit action, through the existing
 	// recorded-session identity and workspace checks.
-	if (charter.AgentExecutionProfileBinding().Bound()) && (prepared.Attempt.ExternalSession() == "" || (recoveryRetry && attempt.State() != domain.AttemptStateInterrupted) || attempt.AgentExecutionProfileBinding().ExecutionProvider() != domain.TrustedHostExecutionProvider) {
+	if charter.AdapterID() == agentpi.AdapterID && (prepared.Attempt.ExternalSession() == "" || (recoveryRetry && attempt.State() != domain.AttemptStateInterrupted) || attempt.AgentExecutionProfileBinding().ExecutionProvider() != domain.TrustedHostExecutionProvider) {
 		startMode = app.StartFresh
 	}
 	started, err := server.startManagedAttempt(request.Context(), prepared.Attempt, app.StartAttemptRequest{
@@ -3290,9 +3269,8 @@ func (server *Server) retryVerifiedAgent(writer http.ResponseWriter, request *ht
 			return
 		}
 	default:
-		if !server.requireAgentExecutionRoute(writer, request, charter.AgentExecutionProfileBinding()) {
-			return
-		}
+		writeError(writer, http.StatusConflict, fmt.Errorf("run adapter %q is disabled", charter.AdapterID()))
+		return
 	}
 	prepared, err := server.prepareAndBindManagedAttempt(request.Context(), func(prepareCtx context.Context) (app.PrepareRunResult, error) {
 		return server.service.PrepareVerifiedAgentRetry(prepareCtx, app.PrepareVerifiedAgentRetryRequest{

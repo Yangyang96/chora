@@ -3,11 +3,8 @@ package app
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
-	"strings"
 
 	"github.com/Yangyang96/chora/internal/contextcore"
 	"github.com/Yangyang96/chora/internal/domain"
@@ -120,62 +117,14 @@ func (s *Service) prepare(ctx context.Context, meta CommandMeta, runID domain.Ru
 		if err != nil {
 			return err
 		}
-		adapter, resolveErr := s.deps.Agents.Get(charter.AdapterID())
-		if resolveErr != nil {
-			return resolveErr
-		}
-		if adapter.ID() != charter.AdapterID() {
-			return fmt.Errorf("%w: runtime registration mismatch", ErrInvalidCommand)
-		}
-		if provider, ok := adapter.(execution.Provider); ok {
-			environment := charter.AgentExecutionProfileBinding().ExecutionProvider()
-			if environment == "" {
-				environment = charter.AdapterID()
-			}
-			if raw := charter.AgentExecutionProfileBinding().RuntimeBindingJSON(); raw != "" {
-				binding, err := domain.ParseRuntimeBinding(raw)
-				if err != nil || binding.RuntimeID != adapter.ID() || binding.ProtocolVersion != provider.Describe().ProtocolVersion || binding.CapabilityDigest != fmt.Sprintf("%x", provider.Describe().Digest()) {
-					return fmt.Errorf("%w: runtime capability binding drift", ErrInvalidCommand)
-				}
-			}
-			taskKind := "code"
-			if planning != nil || synthesis != nil {
-				taskKind = "research"
-			} else if resources, err := tx.GetTaskResourceSnapshot(ctx, task.ID()); err == nil {
-				var snapshot domain.TaskResourceSnapshot
-				if err := json.Unmarshal(resources.CanonicalJSON, &snapshot); err != nil {
-					return err
-				}
-				if snapshot.OutcomeKind == "document" {
-					taskKind = "document"
-				}
-			} else if err != nil && !errors.Is(err, storecontract.ErrNotFound) {
-				return err
-			}
-			required := []string{}
-			for capability, enabled := range charter.CapabilityEnvelope() {
-				if enabled && strings.HasPrefix(capability, "runtime.") {
-					required = append(required, capability)
-				}
-			}
-			sort.Strings(required)
-			if err := provider.Describe().Require(environment, taskKind, required...); err != nil {
-				return err
-			}
-		}
 		var currentProfile domain.AgentExecutionProfilePreference
 		var currentProfileBinding domain.AgentExecutionProfileBinding
-		if charter.AgentExecutionProfileBinding().Legacy() {
+		if charter.AdapterID() == "pi" {
 			currentProfile, currentProfileBinding, err = taskAgentExecutionProfileBinding(ctx, tx, task.ID())
 			if err != nil {
 				return err
 			}
 			if err := requireProfileAcknowledgement(ctx, tx, currentProfile.Profile(), currentProfile.ActorID()); err != nil {
-				return err
-			}
-		}
-		if binding := charter.AgentExecutionProfileBinding(); binding.Bound() && !binding.Legacy() {
-			if err := requireProfileAcknowledgement(ctx, tx, binding.Profile(), meta.ActorID); err != nil {
 				return err
 			}
 		}
@@ -185,7 +134,7 @@ func (s *Service) prepare(ctx context.Context, meta CommandMeta, runID domain.Ru
 		var externalSession string
 		profile := charter.AgentExecutionProfileBinding()
 		modelBinding := charter.ModelBinding()
-		if retry == nil && charter.AgentExecutionProfileBinding().Legacy() && profile != currentProfileBinding {
+		if retry == nil && charter.AdapterID() == "pi" && profile != currentProfileBinding {
 			return fmt.Errorf("%w: Charter drifted from current Agent execution profile preference", ErrInvalidCommand)
 		}
 		if retry != nil {
@@ -213,17 +162,14 @@ func (s *Service) prepare(ctx context.Context, meta CommandMeta, runID domain.Ru
 			}
 			// Fresh recovery must not inherit the failed Pi session identity.
 			// Retain the predecessor link for provenance and explicit resume paths.
-			freshRetry := retry.ModelBinding.Configured() && retry.ModelBinding.Record().ModelIdentity != old.ModelBinding().Record().ModelIdentity || retry.Automatic || old.AgentExecutionProfileBinding().Bound() && ((run.State() == domain.RunStateRecoveryRequired && old.State() != domain.AttemptStateInterrupted) || old.AgentExecutionProfileBinding().ExecutionProvider() != domain.TrustedHostExecutionProvider)
-			if provider, ok := adapter.(execution.Provider); ok {
-				freshRetry = retry.Automatic || (retry.ModelBinding.Configured() && retry.ModelBinding.Record().ModelIdentity != old.ModelBinding().Record().ModelIdentity) || provider.Recover(execution.RecoveryRequest{Binding: old.AgentExecutionProfileBinding(), RunState: run.State(), AttemptState: old.State()}).FreshRetry || adapter.Capabilities().ResumeMode == execution.ResumeUnsupported
-			}
+			freshRetry := retry.ModelBinding.Configured() && retry.ModelBinding.Record().ModelIdentity != old.ModelBinding().Record().ModelIdentity || retry.Automatic || old.AdapterID() == "pi" && ((run.State() == domain.RunStateRecoveryRequired && old.State() != domain.AttemptStateInterrupted) || old.AgentExecutionProfileBinding().ExecutionProvider() != domain.TrustedHostExecutionProvider)
 			if sessionErr == nil && !freshRetry {
 				externalSession = session.ExternalReference
 			}
 			if old.ContextSnapshotID() != planBinding.SnapshotID() || old.ContextDigest() != planBinding.SnapshotDigest() {
 				return fmt.Errorf("%w: predecessor Attempt drifted from immutable planning binding", ErrInvalidCommand)
 			}
-			if old.AgentExecutionProfileBinding().Legacy() && old.AgentExecutionProfileBinding() != currentProfileBinding {
+			if old.AdapterID() == "pi" && old.AgentExecutionProfileBinding() != currentProfileBinding {
 				return fmt.Errorf("%w: predecessor Attempt drifted from current Agent execution profile preference", ErrInvalidCommand)
 			}
 			profile = old.AgentExecutionProfileBinding()
@@ -284,7 +230,7 @@ func (s *Service) prepare(ctx context.Context, meta CommandMeta, runID domain.Ru
 		if _, err := tx.AppendRunEvent(ctx, runID, storecontract.EventDraft{ID: s.deps.IDs.EventID(), Type: "run.prepared", Source: "app", OccurredAt: now, RecordedAt: now, NormalizedJSON: eventJSON}); err != nil {
 			return err
 		}
-		persistRetryMarker := attempt.AgentExecutionProfileBinding().Bound()
+		persistRetryMarker := attempt.AdapterID() == "pi"
 		if retry != nil && !persistRetryMarker {
 			events, eventsErr := tx.ListRunEvents(ctx, runID)
 			if eventsErr != nil {
@@ -364,7 +310,7 @@ func loadBoundRunContext(ctx context.Context, reader storecontract.Reader, run d
 	}
 	specBinding, err := reader.GetSpecCodingBinding(ctx, task.ID())
 	if err == nil {
-		if specBinding.Status != storecontract.SpecCodingRegistered || specBinding.SnapshotID != snapshot.ID() || specBinding.SnapshotDigest != snapshot.Digest() {
+		if specBinding.Status != storecontract.SpecCodingRegistered || specBinding.SnapshotID != snapshot.ID() || specBinding.SnapshotDigest != snapshot.Digest() || charter.AdapterID() != "pi" {
 			return domain.TechnicalPlanRunBinding{}, domain.RunCharter{}, contextcore.Snapshot{}, fmt.Errorf("%w: registered SpecCoding execution binding drift", ErrInvalidCommand)
 		}
 	} else if !errors.Is(err, storecontract.ErrNotFound) {
@@ -482,7 +428,7 @@ func (s *Service) StartAttempt(ctx context.Context, request StartAttemptRequest)
 		if err != nil {
 			return err
 		}
-		if attempt.AgentExecutionProfileBinding().Legacy() {
+		if attempt.AdapterID() == "pi" {
 			preference, binding, err := taskAgentExecutionProfileBinding(ctx, tx, run.TaskID())
 			if err != nil {
 				return err
@@ -492,23 +438,6 @@ func (s *Service) StartAttempt(ctx context.Context, request StartAttemptRequest)
 			}
 			if err := requireProfileAcknowledgement(ctx, tx, preference.Profile(), preference.ActorID()); err != nil {
 				return err
-			}
-		}
-		if binding := attempt.AgentExecutionProfileBinding(); binding.RuntimeBindingJSON() != "" {
-			if err := requireProfileAcknowledgement(ctx, tx, binding.Profile(), request.ActorID); err != nil {
-				return err
-			}
-			adapter, err := s.deps.Agents.Get(attempt.AdapterID())
-			if err != nil {
-				return err
-			}
-			provider, ok := adapter.(execution.Provider)
-			if !ok {
-				return execution.ErrInvalidRuntimeConfig
-			}
-			frozen, err := domain.ParseRuntimeBinding(binding.RuntimeBindingJSON())
-			if err != nil || frozen.CapabilityDigest != fmt.Sprintf("%x", provider.Describe().Digest()) {
-				return execution.ErrInvalidRuntimeConfig
 			}
 		}
 		next, err := run.Transition(domain.CommandStartAttempt, now)
@@ -530,7 +459,7 @@ func (s *Service) StartAttempt(ctx context.Context, request StartAttemptRequest)
 			return err
 		}
 		securityMode := charter.SandboxMode()
-		if attempt.AgentExecutionProfileBinding().Legacy() {
+		if attempt.AgentExecutionProfileBinding().Bound() {
 			securityMode = sandboxModeForAgentExecutionProfile(attempt.AgentExecutionProfileBinding())
 		}
 		intentFingerprint := sha256.Sum256([]byte("security:" + charter.AdapterID() + ":" + securityMode + ":" + executionRoot))
@@ -601,7 +530,7 @@ func (s *Service) StartAttempt(ctx context.Context, request StartAttemptRequest)
 		if !ok {
 			return s.recordStartOutcome(ctx, result, key, execution.StartOutcome{Kind: execution.StartProvenNoChild, LaunchToken: launch, Diagnostic: "profile-bound adapter does not support atomic start preparation"}, "", execution.RuntimeFingerprint{})
 		}
-		if result.Attempt.AgentExecutionProfileBinding().Bound() {
+		if adapter.ID() == "pi" {
 			executionContract, err = s.registeredExecutionContract(ctx, result.Run, result.Attempt)
 			if err != nil {
 				return s.recordStartOutcome(ctx, result, key, execution.StartOutcome{Kind: execution.StartProvenNoChild, LaunchToken: launch, Diagnostic: "registered Spec Coding execution authority unavailable"}, "", execution.RuntimeFingerprint{})
@@ -648,7 +577,7 @@ func (s *Service) StartAttempt(ctx context.Context, request StartAttemptRequest)
 			return s.recordStartOutcome(ctx, result, key, execution.StartOutcome{Kind: execution.StartProvenNoChild, LaunchToken: launch, Diagnostic: "recorded session binding does not match frozen runtime"}, "", fingerprint)
 		}
 		ownerAttemptID := previous.AttemptID
-		if result.Attempt.AgentExecutionProfileBinding().Bound() {
+		if adapter.ID() == "pi" {
 			var chainErr error
 			ownerAttemptID, chainErr = sessionOwnerAttempt(ctx, s.deps.Store.Reader(), previous, result.Attempt)
 			if chainErr != nil {
@@ -657,7 +586,7 @@ func (s *Service) StartAttempt(ctx context.Context, request StartAttemptRequest)
 		}
 		invocation, err = adapter.PrepareResume(ctx, execution.ResumeRequest{ExecutionContractDocument: executionContract, Run: result.Run, Attempt: result.Attempt, Binding: execution.ResumeBinding{ExternalSession: previous.ExternalReference, SessionOwnerAttemptID: ownerAttemptID, RuntimeFingerprint: execution.RuntimeFingerprint{Digest: previous.RuntimeFingerprint, Version: previous.RuntimeVersion}, WorkingRoot: previous.WorkingRoot, SecurityFingerprint: previous.SecurityFingerprint}, SecurityFingerprint: currentSession.SecurityFingerprint, DeltaInstruction: []byte(result.Attempt.ContextDelta()), LaunchToken: launch})
 	} else if !result.Attempt.AgentExecutionProfileBinding().Bound() {
-		if result.Attempt.AgentExecutionProfileBinding().Bound() {
+		if adapter.ID() == "pi" {
 			executionContract, err = s.registeredExecutionContract(ctx, result.Run, result.Attempt)
 			if err != nil {
 				return s.recordStartOutcome(ctx, result, key, execution.StartOutcome{Kind: execution.StartProvenNoChild, LaunchToken: launch, Diagnostic: "registered Spec Coding execution authority unavailable"}, "", fingerprint)
@@ -667,15 +596,6 @@ func (s *Service) StartAttempt(ctx context.Context, request StartAttemptRequest)
 	}
 	if err != nil {
 		return s.recordStartOutcome(ctx, result, key, execution.StartOutcome{Kind: execution.StartProvenNoChild, LaunchToken: launch, Diagnostic: err.Error()}, "", fingerprint)
-	}
-	if raw := result.Attempt.AgentExecutionProfileBinding().RuntimeBindingJSON(); raw != "" {
-		binding, bindingErr := domain.ParseRuntimeBinding(raw)
-		if bindingErr != nil || binding.ConfigurationFingerprint != fmt.Sprintf("%x", fingerprint.Digest) ||
-			fingerprint.SourceIdentity == ([32]byte{}) || fingerprint.SecurityFingerprint == ([32]byte{}) ||
-			binding.SourceIdentity != fmt.Sprintf("%x", fingerprint.SourceIdentity) ||
-			binding.SecurityFingerprint != fmt.Sprintf("%x", fingerprint.SecurityFingerprint) {
-			return s.recordStartOutcome(ctx, result, key, execution.StartOutcome{Kind: execution.StartProvenNoChild, LaunchToken: launch, Diagnostic: "runtime configuration identity drift"}, "", fingerprint)
-		}
 	}
 	expectedTarget, err := executionTargetForAttempt(result.Attempt)
 	if err != nil || invocation.LaunchToken() != launch || invocation.Target() != expectedTarget {

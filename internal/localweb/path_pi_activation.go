@@ -101,7 +101,6 @@ func composePathPiRuntime(ctx context.Context, runtimeRoot, sessionRoot string, 
 		return piComposition{}, result, fmt.Errorf("construct PATH Pi adapter: %w", err)
 	}
 	supervisorConfig := trustedhost.Config{
-		FilterPiProgress:    true,
 		RuntimeRoot:         filepath.Join(runtimeRoot, "pi-trusted"),
 		AllowedAdapterID:    agentpi.AdapterID,
 		AllowedExecutable:   executable,

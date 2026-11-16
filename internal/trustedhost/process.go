@@ -30,18 +30,17 @@ const (
 )
 
 type processSpec struct {
-	ExecutableIdentity   ExecutableIdentity
-	Arguments            []string
-	Environment          []string
-	Directory            string
-	Stdin                []byte
-	CloseStdinAfterInput bool
-	Stdout               *os.File
-	FilterPiProgress     bool
-	Stderr               *os.File
-	GateReceiptPath      string
-	GateNonce            string
-	GateWait             time.Duration
+	ExecutableIdentity ExecutableIdentity
+	Arguments          []string
+	Environment        []string
+	Directory          string
+	Stdin              []byte
+	Stdout             *os.File
+	FilterPiProgress   bool
+	Stderr             *os.File
+	GateReceiptPath    string
+	GateNonce          string
+	GateWait           time.Duration
 }
 
 type launcherConfig struct {
@@ -292,14 +291,12 @@ func (platform osPlatform) Start(spec processSpec) (childProcess, error) {
 		return nil, err
 	}
 	_ = stdinRead.Close()
-	// Deliver the prompt asynchronously. One-shot protocols need EOF before
-	// execution; Pi RPC keeps the pipe open until agent_settled is observed.
-	go func() {
-		_, _ = stdinWrite.Write(spec.Stdin)
-		if spec.CloseStdinAfterInput {
-			_ = stdinWrite.Close()
-		}
-	}()
+	// Deliver the prompt asynchronously and hold the write end open. Real Pi RPC
+	// runs until its stdin reaches EOF, so the supervisor must keep the pipe open
+	// and close it only after the terminal signal (agent_settled) is observed.
+	if len(spec.Stdin) > 0 {
+		go func() { _, _ = stdinWrite.Write(spec.Stdin) }()
+	}
 	_ = gateRead.Close()
 	_ = configRead.Close()
 	config := launcherConfig{Executable: spec.ExecutableIdentity, Arguments: append([]string(nil), spec.Arguments...), Environment: append([]string(nil), spec.Environment...)}

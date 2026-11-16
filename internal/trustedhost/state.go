@@ -304,11 +304,10 @@ func (supervisor *Supervisor) prepare(ctx context.Context, invocation execution.
 	}
 	cleanup = false
 	return record, processSpec{
-		CloseStdinAfterInput: supervisor.config.CloseStdinAfterInput,
-		ExecutableIdentity:   supervisor.config.AllowedExecutable, Arguments: append([]string(nil), arguments...),
+		ExecutableIdentity: supervisor.config.AllowedExecutable, Arguments: append([]string(nil), arguments...),
 		Environment: append([]string(nil), environment...), Directory: workspace,
 		Stdin: invocation.Stdin(), Stdout: stdoutFile, Stderr: stderrFile,
-		FilterPiProgress: supervisor.config.FilterPiProgress,
+		FilterPiProgress: supervisor.config.AllowedAdapterID == "pi",
 		GateReceiptPath:  gateReceiptPath, GateNonce: gateNonce, GateWait: supervisor.config.GateWait,
 	}, stdoutFile, stderrFile, nil
 }
