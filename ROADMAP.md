@@ -2,6 +2,12 @@
 
 [简体中文](ROADMAP.zh-CN.md) · [README](README.md)
 
+An opt-in [research-before-coding development slice](docs/research-workflow.md)
+now connects public-document research, durable human confirmation and an
+idempotent Pi Run handoff. Deterministic/PG/browser verification is separate
+from pending live-model/Pi and independent acceptance. This does not complete
+the broader LangGraph, RAG or multi-worker roadmap.
+
 Status, 2026-09-21: Developer Alpha with public source. Real multi-repository delivery
 qualification, `M2_S3_PASS` and local DA-1/O5 preparation are complete. Source was
 published on 2026-09-10; versioned prereleases are recorded on the

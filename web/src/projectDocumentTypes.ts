@@ -14,6 +14,7 @@ export type ProjectDocumentRevision = {
 }
 
 export type TaskContextSelection = {
+	researchBeforeCoding?: boolean
   synthesize?: boolean
   outcomeKind?: 'document'
   materials?: TaskMaterialInput[]

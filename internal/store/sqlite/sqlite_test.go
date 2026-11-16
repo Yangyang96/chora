@@ -313,7 +313,7 @@ func TestMigrationLedgerFailsClosedOnDriftGapAndNewerSchema(t *testing.T) {
 	for _, tc := range []struct{ name, mutate string }{
 		{"checksum drift", `UPDATE schema_migrations SET checksum=zeroblob(32) WHERE version=1`},
 		{"gap", `DELETE FROM schema_migrations WHERE version=2`},
-		{"newer", `INSERT INTO schema_migrations(version,name,checksum,applied_at) VALUES(50,'0050_future.sql',zeroblob(32),'2026-01-01T00:00:00Z')`},
+		{"newer", `INSERT INTO schema_migrations(version,name,checksum,applied_at) VALUES(51,'0050_future.sql',zeroblob(32),'2026-01-01T00:00:00Z')`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "data", "chora.db")

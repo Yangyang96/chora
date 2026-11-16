@@ -384,6 +384,16 @@ func (s *Service) StartAttempt(ctx context.Context, request StartAttemptRequest)
 		if err != nil {
 			return err
 		}
+		if w, e := tx.GetTaskWorkflow(ctx, run.TaskID()); e == nil {
+			if w.RunID != run.ID() {
+				return ErrUnauthorizedCommand
+			}
+			if e = workflowRunAuthority(ctx, tx, w); e != nil {
+				return e
+			}
+		} else if !errors.Is(e, storecontract.ErrNotFound) {
+			return e
+		}
 		if child, e := tx.GetDelegationChild(ctx, run.TaskID()); e == nil {
 			d, e := tx.GetTaskDelegation(ctx, child.ParentTaskID)
 			if e != nil {
@@ -521,6 +531,10 @@ func (s *Service) StartAttempt(ctx context.Context, request StartAttemptRequest)
 	var fingerprint execution.RuntimeFingerprint
 	var invocation execution.Invocation
 	var executionContract []byte
+	researchContext, err := s.workflowInstructions(ctx, result.Run.TaskID())
+	if err != nil {
+		return result, err
+	}
 	currentSession, err := s.deps.Store.Reader().GetRuntimeSession(ctx, result.Session.ID)
 	if err != nil {
 		return result, err
@@ -539,6 +553,7 @@ func (s *Service) StartAttempt(ctx context.Context, request StartAttemptRequest)
 		preparation, prepareErr := preparer.PrepareBoundStart(ctx, execution.StartRequest{
 			Run: result.Run, Attempt: result.Attempt, SnapshotDocument: snapshot.CanonicalJSON(),
 			ExecutionContractDocument: executionContract, WorkspaceRoot: executionRoot, LaunchToken: launch,
+			ResearchContext: researchContext,
 		})
 		if prepareErr != nil {
 			return s.recordStartOutcome(ctx, result, key, execution.StartOutcome{Kind: execution.StartProvenNoChild, LaunchToken: launch, Diagnostic: prepareErr.Error()}, "", execution.RuntimeFingerprint{})
@@ -592,7 +607,7 @@ func (s *Service) StartAttempt(ctx context.Context, request StartAttemptRequest)
 				return s.recordStartOutcome(ctx, result, key, execution.StartOutcome{Kind: execution.StartProvenNoChild, LaunchToken: launch, Diagnostic: "registered Spec Coding execution authority unavailable"}, "", fingerprint)
 			}
 		}
-		invocation, err = adapter.PrepareStart(ctx, execution.StartRequest{Run: result.Run, Attempt: result.Attempt, SnapshotDocument: snapshot.CanonicalJSON(), ExecutionContractDocument: executionContract, WorkspaceRoot: executionRoot, LaunchToken: launch})
+		invocation, err = adapter.PrepareStart(ctx, execution.StartRequest{ResearchContext: researchContext, Run: result.Run, Attempt: result.Attempt, SnapshotDocument: snapshot.CanonicalJSON(), ExecutionContractDocument: executionContract, WorkspaceRoot: executionRoot, LaunchToken: launch})
 	}
 	if err != nil {
 		return s.recordStartOutcome(ctx, result, key, execution.StartOutcome{Kind: execution.StartProvenNoChild, LaunchToken: launch, Diagnostic: err.Error()}, "", fingerprint)

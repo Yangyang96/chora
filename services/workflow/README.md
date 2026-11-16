@@ -1,8 +1,11 @@
-# Chora workflow M0
+# Chora research workflow
 
 An opt-in Python research harness with a LangGraph model/tool loop, a PostgreSQL
-operation journal, and a persisted review interrupt. It is not wired into Chora's
-Go service or UI. Existing Pi execution and Run/Attempt gates remain unchanged.
+operation journal, and a persisted review interrupt. The optional
+[product bridge](../../docs/research-workflow.md) connects it to Go and the UI
+for research, human confirmation and a recoverable Pi handoff. The manual M0
+harness remains available. Existing Pi execution and Run/Attempt gates retain
+their own authority.
 M0 acceptance requires a real authorized model tool round trip in addition to
 these deterministic tests; fixture results alone do not satisfy that requirement.
 

@@ -15,6 +15,10 @@ import (
 	storecontract "github.com/Yangyang96/chora/internal/store"
 )
 
+func (p *proposalTestPort) GetTaskWorkflow(context.Context, domain.TaskID) (domain.WorkflowExecution, error) {
+	return domain.WorkflowExecution{}, storecontract.ErrNotFound
+}
+
 const proposalTestText = "# Proposed research\n```chora-delegation-plan\n" + `{"schemaVersion":"chora.delegation-plan.v1","assignments":[{"role":"Researcher","title":"Compare","requirement":"Use supplied material."}]}` + "\n```"
 
 // This port double deliberately implements no document-review or runtime

@@ -53,10 +53,35 @@ func WrapIsolatedExecutionPrompt(snapshot, contract []byte, commands []string) (
 const FrozenExecutionInputSchemaV1 = "chora.execution-input.v1"
 
 type frozenExecutionInput struct {
+	ResearchContext  json.RawMessage `json:"research_context,omitempty"`
 	DeclaredCommands []string        `json:"declared_commands,omitempty"`
 	SchemaVersion    string          `json:"schema_version"`
 	ContextSnapshot  json.RawMessage `json:"context_snapshot"`
 	ActiveContract   json.RawMessage `json:"active_contract"`
+}
+
+// WithResearchContext adds a separately confirmed proposal as data. It never
+// rewrites the authoritative snapshot, contract or allowed command list.
+func WithResearchContext(message string, body []byte) (string, error) {
+	if !json.Valid(body) || len(body) > 20000 {
+		return "", errors.New("invalid research context")
+	}
+	for _, prefix := range []string{FrozenExecutionPromptPrefix, LocalConnectedExecutionPromptPrefix, TaskResourcesExecutionPromptPrefix, IsolatedTaskResourcesExecutionPromptPrefix, DocumentExecutionPromptPrefix} {
+		if !strings.HasPrefix(message, prefix) {
+			continue
+		}
+		var input frozenExecutionInput
+		if err := json.Unmarshal([]byte(strings.TrimPrefix(message, prefix)), &input); err != nil {
+			return "", err
+		}
+		if input.SchemaVersion != FrozenExecutionInputSchemaV1 {
+			return "", errors.New("unknown execution input schema")
+		}
+		input.ResearchContext = append(json.RawMessage(nil), body...)
+		b, err := json.Marshal(input)
+		return prefix + string(b), err
+	}
+	return "", errors.New("research context requires a frozen execution input")
 }
 
 func WrapFrozenExecutionPrompt(snapshot, contract []byte) (string, error) {
@@ -148,6 +173,7 @@ const (
 )
 
 type StartRequest struct {
+	ResearchContext           []byte
 	Run                       domain.AgentRun
 	Attempt                   domain.Attempt
 	SnapshotDocument          []byte

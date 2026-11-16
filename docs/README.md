@@ -11,6 +11,9 @@ The references below cover current operation and public-source checks.
 
 [Optional app preview](app-preview.md): inspect a Task Web app on demand without changing code acceptance.
 
+[Optional research before coding](research-workflow.md): a cited proposal,
+durable confirmation and a recoverable Pi handoff; development and live-validation limits.
+
 [macOS application](macos-application.md) — packaged runtime, authentication, migration, updates and distribution limits.
 
 ## Accepted product direction

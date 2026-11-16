@@ -34,6 +34,9 @@ type NewTaskProps = {
 }
 
 export function NewTask({ projectId, roomId, roomName, busy, preparationPending = false, trustedLocalSelectionReady, trustedLocalAcknowledgementPolicy, piDiscovery, isolatedLocal, onPrepareIsolatedLocal, onCancel, onSubmit, onAcknowledgeTrustedLocal, initialRequirement = '' }: NewTaskProps) {
+	const [researchAvailable, setResearchAvailable] = useState(false)
+	const [researchBeforeCoding, setResearchBeforeCoding] = useState(false)
+	useEffect(() => { const controller = new AbortController(); void api<{ enabled: boolean }>('/api/workflows/availability', { signal: controller.signal }).then((v) => setResearchAvailable(v.enabled === true)).catch(() => {}); return () => controller.abort() }, [])
   const { t } = useI18n()
   const [settingsVersion, setSettingsVersion] = useState<number>()
   const [resourceBlocker, setResourceBlocker] = useState('')
@@ -93,7 +96,7 @@ export function NewTask({ projectId, roomId, roomName, busy, preparationPending 
     if (usesTaskResources && suppliedOnly && (materialBlocker || materials.length === 0)) return
     if (projectId && !roomId && settingsVersion === undefined) return
     if (!projectId && !modelBinding) { onSubmit(requirement.trim(), agentExecutionProfile); return }
-    if (projectId && roomId && projectExecution) onSubmit(purpose === 'delegation' ? delegationPlanningRequirement(requirement) : requirement.trim(), agentExecutionProfile, undefined, suppliedOnly ? [] : resources, undefined, { projectVersion: projectExecution.version, ...(overrideExecution ? { agentExecutionProfile: agentExecutionProfile as 'trusted_local' | 'isolated_local', model: modelIdentity } : {}) }, { ...(suppliedOnly ? { outcomeKind: 'document' as const, materials } : {}), ...(purpose === 'delegation' && synthesize ? { synthesize: true } : {}), revisionIds })
+    if (projectId && roomId && projectExecution) onSubmit(purpose === 'delegation' ? delegationPlanningRequirement(requirement) : requirement.trim(), agentExecutionProfile, undefined, suppliedOnly ? [] : resources, undefined, { projectVersion: projectExecution.version, ...(overrideExecution ? { agentExecutionProfile: agentExecutionProfile as 'trusted_local' | 'isolated_local', model: modelIdentity } : {}) }, { ...(suppliedOnly ? { outcomeKind: 'document' as const, materials } : {}), ...(purpose === 'delegation' && synthesize ? { synthesize: true } : {}), revisionIds, ...(researchBeforeCoding && purpose === 'code' ? { researchBeforeCoding: true } : {}) })
     else if (projectId) onSubmit(requirement.trim(), agentExecutionProfile, settingsVersion, undefined, modelBinding)
     else onSubmit(requirement.trim(), agentExecutionProfile, undefined, undefined, modelBinding)
   }
@@ -151,12 +154,13 @@ export function NewTask({ projectId, roomId, roomName, busy, preparationPending 
       <p className="agent-profile-summary">
         {agentExecutionProfile ? <>{t('Selected environment:')} <AgentExecutionDisclosure profile={agentExecutionProfile} /></> : t('Choose Local execution and acknowledge its host access before starting.')}
       </p>
-      <div className="form-actions">
+      {usesTaskResources && purpose === 'code' && researchAvailable && <label><input type="checkbox" checked={researchBeforeCoding} disabled={busy} onChange={(event) => setResearchBeforeCoding(event.target.checked)} />{t('Research before coding')}</label>}
+    <div className="form-actions">
         <ActionButton type="button" className="btn-secondary" disabled={(busy && !preparationPending) || disclosurePending} disabledReason={disclosurePending ? 'Finish the Local execution acknowledgement first.' : 'Wait for the current operation to finish.'} onClick={onCancel}>
           {preparationPending ? t('Cancel preparation') : t('Cancel')}
         </ActionButton>
         <ActionButton type="submit" className="btn-primary" disabled={busy || disclosurePending || unavailable || !modelValid || !agentExecutionProfile || !requirement.trim() || (agentExecutionProfile === 'trusted_local' && !trustedLocalAcknowledged) || (usesTaskResources ? (!suppliedOnly && (!resources || resources.length === 0)) || (suppliedOnly && (Boolean(materialBlocker) || materials.length === 0)) || !projectExecution : !!projectId && settingsVersion === undefined)} disabledReason={startDisabledReason}>
-          {busy ? t('Starting…') : t(purpose === 'delegation' ? 'Start research delegation' : 'Start')}
+		{busy ? t('Starting…') : t(researchBeforeCoding && purpose === 'code' ? 'Start research before coding' : purpose === 'delegation' ? 'Start research delegation' : 'Start')}
         </ActionButton>
       </div>
     </form></>

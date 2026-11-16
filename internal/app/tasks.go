@@ -872,6 +872,19 @@ func (s *Service) CreateRun(ctx context.Context, request CreateRunRequest) (Crea
 	}
 	var result CreateRunResult
 	err = s.deps.Store.WithinWriteTx(ctx, func(tx storecontract.WriteTx) error {
+		workflow, workflowErr := tx.GetTaskWorkflow(ctx, request.TaskID)
+		if workflowErr == nil {
+			if request.workflowID != workflow.ID {
+				return ErrUnauthorizedCommand
+			}
+			if !workflow.RunID.Valid() {
+				if err := workflowRunAuthority(ctx, tx, workflow); err != nil {
+					return err
+				}
+			}
+		} else if !errors.Is(workflowErr, storecontract.ErrNotFound) {
+			return workflowErr
+		}
 		response, replayed, err := tx.LookupCommand(ctx, key)
 		if err != nil {
 			return err
@@ -954,6 +967,28 @@ func (s *Service) CreateRun(ctx context.Context, request CreateRunRequest) (Crea
 		if err := tx.InsertRun(ctx, run); err != nil {
 			return err
 		}
+		if workflowErr == nil {
+			before := workflow.Version
+			workflow.Version++
+			workflow.RunID = run.ID()
+			workflow.Status = "coding"
+			command := workflowCommand(workflow, "create_run", map[string]any{"input_digest": workflow.InputDigest, "revision": request.RevisionID.String()})
+			if err := tx.PutWorkflowCommand(ctx, command); err != nil {
+				return err
+			}
+			if err := tx.RecordWorkflowReceipt(ctx, command, responseBody(map[string]any{"run_id": run.ID().String(), "operation_id": command.OperationID, "input_digest": command.InputDigest})); err != nil {
+				return err
+			}
+			if err := tx.PutWorkflowCommand(ctx, workflowCommand(workflow, "bind_run", map[string]any{"input_digest": workflow.InputDigest, "go_operation_id": command.OperationID, "go_input_digest": command.InputDigest, "run_id": run.ID().String()})); err != nil {
+				return err
+			}
+			if err := tx.SaveWorkflowCAS(ctx, before, workflow); err != nil {
+				return err
+			}
+			if err := tx.AppendWorkflowEvent(ctx, workflow.ID, "run_created", responseBody(workflow)); err != nil {
+				return err
+			}
+		}
 		if request.delegationPlanning {
 			digest, e := planningAuthority(ctx, tx, request.TaskID)
 			if e != nil {
@@ -998,7 +1033,7 @@ func (s *Service) CreateRun(ctx context.Context, request CreateRunRequest) (Crea
 				return e
 			}
 		}
-		if charter.AdapterID() == "pi" && !request.delegationPlanning && synthesisErr != nil {
+		if charter.AdapterID() == "pi" && !request.delegationPlanning && synthesisErr != nil && workflowErr != nil {
 			payload := automaticRetryEvent{Type: automaticRetryEnabledEvent, RunID: run.ID().String(), MaxRetries: AutomaticRetryMaxRetries}
 			if _, err := tx.AppendRunEvent(ctx, run.ID(), storecontract.EventDraft{ID: s.deps.IDs.EventID(), Type: automaticRetryEnabledEvent, Source: "app", OccurredAt: now, RecordedAt: now, NormalizedJSON: responseBody(payload)}); err != nil {
 				return err

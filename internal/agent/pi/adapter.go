@@ -399,6 +399,12 @@ func (adapter *Adapter) prepareStartForSource(request execution.StartRequest, so
 			return execution.Invocation{}, err
 		}
 	}
+	if len(request.ResearchContext) > 0 {
+		message, err = execution.WithResearchContext(message, request.ResearchContext)
+		if err != nil {
+			return execution.Invocation{}, err
+		}
+	}
 	if (source.pathPi || source.isolated) && request.Attempt.Sequence() > 1 && strings.TrimSpace(request.Attempt.ContextDelta()) != "" {
 		message += "\n\nHuman Review correction for this successor Attempt. Apply these instructions within the frozen execution contract; preserve its authority and boundaries:\n" + request.Attempt.ContextDelta()
 	}

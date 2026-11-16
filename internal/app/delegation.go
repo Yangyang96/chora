@@ -165,6 +165,9 @@ func (s *Service) GetDelegation(ctx context.Context, id domain.TaskID) (Delegati
 }
 
 func delegationParent(ctx context.Context, r storecontract.Reader, id domain.TaskID) (domain.Task, domain.TaskResourceSnapshot, error) {
+	if _, e := r.GetTaskWorkflow(ctx, id); !errors.Is(e, storecontract.ErrNotFound) {
+		return domain.Task{}, domain.TaskResourceSnapshot{}, ErrInvalidCommand
+	}
 	task, err := r.GetTask(ctx, id)
 	if err != nil {
 		return task, domain.TaskResourceSnapshot{}, err

@@ -37,6 +37,7 @@ import (
 	storecontract "github.com/Yangyang96/chora/internal/store"
 	"github.com/Yangyang96/chora/internal/store/sqlite"
 	"github.com/Yangyang96/chora/internal/taskdelivery"
+	"github.com/Yangyang96/chora/internal/workflow"
 	"github.com/google/uuid"
 )
 
@@ -58,6 +59,8 @@ type retryDeltaEnvelope struct {
 }
 
 type Server struct {
+	workflowMu       sync.Mutex
+	workflowBridge   workflow.Bridge
 	delegationMu     sync.Mutex
 	gracefulShutdown bool
 	monitorMu        sync.Mutex
@@ -775,6 +778,11 @@ func newServer(ctx context.Context, databasePath, webRoot string, logger *log.Lo
 		return nil, fmt.Errorf("recover delegations: %w", err)
 	}
 	automaticRetryContext, automaticRetryCancel := context.WithCancel(runtimeContext)
+	if python := os.Getenv("CHORA_WORKFLOW_PYTHON"); python != "" {
+		server.workflowBridge = workflow.Process{Python: python}
+		server.automaticRetryWG.Add(1)
+		go func() { defer server.automaticRetryWG.Done(); server.runWorkflowDispatcher(automaticRetryContext) }()
+	}
 	server.automaticRetryCancel = automaticRetryCancel
 	server.automaticRetryWG.Add(1)
 	go func() {
@@ -901,6 +909,13 @@ func closeIfPresent(closer interface{ Close() error }) error {
 func (server *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/status", server.getStatus)
+	mux.HandleFunc("GET /api/workflows/availability", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, map[string]bool{"enabled": server.workflowBridge != nil})
+	})
+	mux.HandleFunc("GET /api/tasks/{taskID}/workflow", server.taskWorkflow)
+	mux.HandleFunc("POST /api/tasks/{taskID}/workflow", server.taskWorkflow)
+	mux.HandleFunc("POST /api/projects/{projectID}/workflows/{workflowID}/{action}", server.workflowCommand)
+	mux.HandleFunc("GET /api/projects/{projectID}/workflows/{workflowID}/events", server.workflowEvents)
 	mux.HandleFunc("GET /api/isolated-local", server.getIsolatedLocal)
 	mux.HandleFunc("POST /api/isolated-local/prepare", server.prepareIsolatedLocal)
 	mux.HandleFunc("GET /api/pi/discovery", server.getPiDiscovery)
