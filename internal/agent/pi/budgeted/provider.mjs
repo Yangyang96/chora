@@ -39,7 +39,8 @@ export function payload(context, options = {}) {
   });
   return body;
 }
-export function install(pi, createStream, dispatch) {
+export function install(pi, createStream, dispatch, outputCap = 2048) {
+  if (!Number.isInteger(outputCap)||outputCap<1||outputCap>2048) fail();
   pi.registerProvider(provider, {
     api:'openai-completions',baseUrl:'https://api.deepseek.com',apiKey:marker,authHeader:false,
     models:[{id:modelID,name:modelID,reasoning:false,input:['text'],cost:{input:0,output:0,cacheRead:0,cacheWrite:0},contextWindow:100000,maxTokens:2048}],
@@ -52,7 +53,9 @@ export function install(pi, createStream, dispatch) {
         try {
           if (model.provider !== provider || model.id !== modelID || model.api !== 'openai-completions' || model.baseUrl !== 'https://api.deepseek.com' || options.apiKey !== marker || options.headers && Object.keys(options.headers).length || options.env && Object.keys(options.env).length || options.reasoning && options.reasoning !== 'off') fail();
           options.signal?.throwIfAborted();
-          let body = payload(context,options);
+          const capped={...options,maxTokens:options.maxTokens??outputCap};
+          if (capped.maxTokens>outputCap) fail();
+          let body = payload(context,capped);
           if (options.onPayload) body = (await options.onPayload(body,model)) ?? body;
           options.signal?.throwIfAborted();
           const raw = JSON.stringify(body);

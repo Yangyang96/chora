@@ -40,3 +40,11 @@ test('unknown response model and bad tool result error after exactly one dispatc
     const f=fixture(reply);const e=await f.call(context).done;assert.equal(f.calls,1);assert.equal(e.at(-1).type,'error');
   }
 });
+test('bound output cap supplies default and rejects larger options before dispatch',async()=>{
+ let config,calls=0,body;
+ install({registerProvider:(_,c)=>config=c},()=>{let end;const done=new Promise(resolve=>end=resolve);return {push(){},end(){end();},done};},async raw=>{calls++;body=JSON.parse(raw);return JSON.stringify(response());},8);
+ const model={provider:'deepseek',id:'deepseek-v4-pro',api:'openai-completions',baseUrl:'https://api.deepseek.com'};
+ await config.streamSimple(model,context,{apiKey:marker}).done;assert.equal(body.max_tokens,8);assert.equal(calls,1);
+ await config.streamSimple(model,context,{apiKey:marker,maxTokens:9}).done;assert.equal(calls,1);
+ assert.throws(()=>install({registerProvider(){}},()=>{},()=>{},0));
+});

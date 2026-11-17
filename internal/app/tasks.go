@@ -344,7 +344,7 @@ func (s *Service) CreateTask(ctx context.Context, request CreateTaskRequest) (Cr
 					return fmt.Errorf("%w: resolved model does not match the selected model", ErrInvalidCommand)
 				}
 				frozenExecutionSettings = &domain.TaskExecutionSettings{ProjectID: room.ProjectID(), ProjectVersion: projectSettings.Version, AgentExecutionProfile: agentProfile, EnvironmentSource: environmentSource, ModelSource: modelSource, ModelBinding: resolvedModelBinding, CreatedAt: now}
-			} else if agentProfile == domain.AgentExecutionProfileTrustedLocal || agentProfile == domain.AgentExecutionProfileIsolatedLocal {
+			} else if agentProfile == domain.AgentExecutionProfileTrustedLocal || agentProfile == domain.AgentExecutionProfileIsolatedLocal || agentProfile == domain.AgentExecutionProfileIsolatedBudgeted {
 				// Legacy callers already supplied an exact environment and model binding.
 				// Freeze those values without consulting mutable Project defaults.
 				frozenExecutionSettings = &domain.TaskExecutionSettings{ProjectID: room.ProjectID(), AgentExecutionProfile: agentProfile, EnvironmentSource: domain.ExecutionSettingsSourceTask, ModelSource: domain.ExecutionSettingsSourceDefault, ModelBinding: resolvedModelBinding, CreatedAt: now}

@@ -148,6 +148,21 @@ UID0、drop ALL，独立检查控制 EOF、序列心跳、绝对 wall deadline �
 的 CLOCK_BOOTTIME。宿主仍须 inspect 精确容器死亡；daemon/VM 失联保持未决。
 镜像配方、inspect 与 pipe fixture 只是原 Runner 的组成部件，不能认证真实执行路线。
 
+现有 supervisor 已组合工作区准备、guardian 就绪与有效配置观察、帧通道、Pi exec、
+独立本地 Stop、导入导出和恢复。租约失效由 Go 独立触发 Stop；Go 丢失时仍由 PID1
+执行租约与绝对 deadline。复用原 Runner、终态处理和工作区导入日志。
+
+启动只接收显式非秘密 `BudgetedCandidate`：安装身份、单模型目录、原有与安装后的
+required 扩展清单、精确工具及只读掩码、明确 Runner 和 Engine 记录。没有发现默认值
+或其他 source 回退。required 扩展的路径、字节、依赖闭包和语义记录必须保持；wrapper
+再次核安装字节与最终 argv。清单缺失拒绝准备，清单相同不等于已证明真实权限行为。
+
+运行闭包身份只排除 Task snapshot/contract 哈希，避免合同循环引用；完整启动身份
+仍冻结二者，并由 Go 对照真实 Task 记录。授权的 output cap 传给 provider shim。
+恢复先证明本运行拥有的容器已不存在，再核私有、规范编码的启动清单，撤销原通道并
+对账原导入日志；不启动 Pi、不续租、不重发、不刷新 deadline。不安全、缺失或外来
+清单保留 unresolved。原 native 与 isolated 路由继续归原 supervisor 所有。
+
 生产发送返回 `bound_unproven`。旧 `8192+8*ASCII字节+256*消息数` 仅供显式
 `chora_offline_fixture` 构建使用，生产构造器不接收任意网络 transport 或证明函数。
 目前没有受信 renderer/计费策略。完整 Pi、实际安装闭包、required 权限扩展语义和

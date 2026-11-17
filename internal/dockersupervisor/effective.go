@@ -15,6 +15,9 @@ import (
 )
 
 type effectiveContainer struct {
+	State struct {
+		Running bool `json:"Running"`
+	} `json:"State"`
 	ID     string `json:"Id"`
 	Name   string `json:"Name"`
 	Image  string `json:"Image"`

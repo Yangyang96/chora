@@ -149,6 +149,8 @@ type piRuntimeStatus struct {
 }
 
 type ProductOptions struct {
+	// Non-secret explicit candidate; no provider credentials or discovery.
+	BudgetedCandidate      *BudgetedCandidate
 	GracefulShutdown       bool
 	WorkbenchSourceRoot    string
 	PackagedIsolatedHelper string
@@ -664,6 +666,16 @@ func newServer(ctx context.Context, databasePath, webRoot string, logger *log.Lo
 		roomCreationMode = app.RoomCreationProjectOnly
 	}
 	var server *Server
+	envelopeResolver := newBoundSpecCodingEnvelopeResolver(store.Reader(), installedSpecCodingEnvelope, pathPiDiscovery, composedPi.isolatedSource)
+	if options.BudgetedCandidate != nil {
+		source, sourceErr := agentpi.NewBudgetedSource(options.BudgetedCandidate.Identity)
+		if sourceErr != nil {
+			cancel()
+			_ = store.Close()
+			return nil, sourceErr
+		}
+		envelopeResolver.budgetedSource = source
+	}
 	service := app.NewService(app.Dependencies{
 		RoomCreationMode:            roomCreationMode,
 		Lifecycle:                   runtimeContext,
@@ -689,7 +701,7 @@ func newServer(ctx context.Context, databasePath, webRoot string, logger *log.Lo
 		TaskDeliveryGit:             taskdelivery.Git{},
 		TaskDeliveryHosting:         taskdelivery.NewGitHub(),
 		InstalledSpecCodingEnvelope: installedSpecCodingEnvelope,
-		SpecCodingEnvelopeResolver:  newBoundSpecCodingEnvelopeResolver(store.Reader(), installedSpecCodingEnvelope, pathPiDiscovery, composedPi.isolatedSource),
+		SpecCodingEnvelopeResolver:  envelopeResolver,
 		RepositorySource:            options.RepositorySource,
 		DataRoot:                    options.DataRoot,
 		AutoStartVerification:       true,
@@ -708,6 +720,13 @@ func newServer(ctx context.Context, databasePath, webRoot string, logger *log.Lo
 		pathPiEnabled:      options.PathPiEnabled,
 		piDiscoveryOptions: discoveryOptions,
 		piInstaller:        installer, piInstalledSelection: installedSelection, piInstallationBlocked: installationBlocked,
+	}
+	if options.BudgetedCandidate != nil {
+		if err = server.installBudgetedSource(runtimeContext, *options.BudgetedCandidate); err != nil {
+			cancel()
+			_ = store.Close()
+			return nil, fmt.Errorf("compose restricted source: %w", err)
+		}
 	}
 	server.appPreviewWorkspaces, _ = resourceWorkspaces.(*taskResourceWorkspaceManager)
 	server.o4Evidence, err = newO4EvidenceBoundary(options.O4Evidence, composedPi.dockerSupervisor)
@@ -841,6 +860,9 @@ func restorePiStartupRoutes(ctx context.Context, reader storecontract.Reader, su
 			continue
 		}
 		binding := candidate.Attempt.AgentExecutionProfileBinding()
+		if binding.Profile() == domain.AgentExecutionProfileIsolatedBudgeted {
+			continue
+		}
 		if !binding.Bound() {
 			return nil, fmt.Errorf("persisted Pi session %s has no execution-provider binding", session.ID)
 		}

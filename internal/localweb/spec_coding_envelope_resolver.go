@@ -22,6 +22,19 @@ type boundSpecCodingEnvelopeResolver struct {
 	installed      *speccoding.InstalledEnvelope
 	piVersion      string
 	isolatedSource agentpi.IsolatedSource
+	budgetedSource agentpi.BudgetedSource
+}
+
+func (r *boundSpecCodingEnvelopeResolver) ResolveBudgetedResourceSpecCodingEnvelope(ctx context.Context, room domain.Room, snapshot domain.TaskResourceSnapshot) (app.SpecCodingEnvelope, error) {
+	if !r.budgetedSource.Configured() || room.OwnershipKind() != domain.RoomOwnershipProject || snapshot.RoomID != room.ID().String() || snapshot.ProjectID != room.ProjectID().String() {
+		return nil, speccoding.ErrInvalidInstalledEnvelope
+	}
+	i := r.budgetedSource.Record()
+	e, err := speccoding.NewResourceEnvelope(room.WorkspaceRoot(), snapshot, i.PiVersion)
+	if err != nil {
+		return nil, err
+	}
+	return e.WithBudgetedExecution(speccoding.IsolatedExecutionIdentity{ImageSHA256: i.Image, SourceSHA256: i.RuntimeDigest(), PolicySHA256: i.Policy})
 }
 
 func newBoundSpecCodingEnvelopeResolver(reader storecontract.Reader, installed *speccoding.InstalledEnvelope, discovery pidiscovery.Result, isolated ...agentpi.IsolatedSource) *boundSpecCodingEnvelopeResolver {

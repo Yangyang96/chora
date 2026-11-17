@@ -17,13 +17,13 @@ func BudgetedImageRecipe(parentImageID string) (map[string][]byte, error) {
 		return nil, errors.New("exact parent image ID required")
 	}
 	files := map[string][]byte{}
-	for _, name := range []string{"provider", "relay", "extension", "wrapper"} {
+	for _, name := range []string{"provider", "relay", "extension", "wrapper", "launch"} {
 		body, err := agentpi.BudgetedAssets.ReadFile("budgeted/" + name + ".mjs")
 		if err != nil {
 			return nil, err
 		}
 		files[name+".mjs"] = body
 	}
-	files["Dockerfile"] = []byte("FROM " + parentImageID + " AS original\nFROM scratch\nCOPY --from=original / /\nCOPY chora-guardian /opt/chora/chora-guardian\nCOPY provider.mjs relay.mjs extension.mjs wrapper.mjs /opt/chora/budgeted/\nRUN [\"/bin/chmod\",\"0555\",\"/opt/chora/chora-guardian\"]\nRUN [\"/bin/chmod\",\"0444\",\"/opt/chora/budgeted/provider.mjs\",\"/opt/chora/budgeted/relay.mjs\",\"/opt/chora/budgeted/extension.mjs\",\"/opt/chora/budgeted/wrapper.mjs\"]\nENV PATH=/usr/local/bin:/usr/bin:/bin\nUSER 0:0\nWORKDIR /workspace/repository\nENTRYPOINT [\"/opt/chora/chora-guardian\"]\n")
+	files["Dockerfile"] = []byte("FROM " + parentImageID + " AS original\nFROM scratch\nCOPY --from=original / /\nCOPY chora-guardian /opt/chora/chora-guardian\nCOPY provider.mjs relay.mjs extension.mjs wrapper.mjs launch.mjs /opt/chora/budgeted/\nRUN [\"/bin/chmod\",\"0555\",\"/opt/chora/chora-guardian\"]\nRUN [\"/bin/chmod\",\"0444\",\"/opt/chora/budgeted/provider.mjs\",\"/opt/chora/budgeted/relay.mjs\",\"/opt/chora/budgeted/extension.mjs\",\"/opt/chora/budgeted/wrapper.mjs\",\"/opt/chora/budgeted/launch.mjs\"]\nENV PATH=/usr/local/bin:/usr/bin:/bin\nUSER 0:0\nWORKDIR /workspace/repository\nENTRYPOINT [\"/opt/chora/chora-guardian\"]\n")
 	return files, nil
 }

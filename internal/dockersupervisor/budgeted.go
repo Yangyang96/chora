@@ -21,13 +21,14 @@ type BudgetedPlan struct {
 	Bound                                                 domain.RestrictedLaunch
 	ImageID, Container, WorkspaceVolume, ContextDirectory string
 	ReadOnlyMounts                                        map[string]string // destination -> approved host source
+	Labels                                                map[string]string
 }
 
 const GuardianPath = "/opt/chora/chora-guardian"
 const BudgetedWrapperPath = "/opt/chora/budgeted/wrapper.mjs"
 
 func (p BudgetedPlan) Validate(now time.Time) error {
-	if p.Bound.Validate() != nil || now.Before(p.Bound.ObservedAt) || !now.Before(p.Bound.Deadline) || !validImageID(p.ImageID) || !validText(p.Container, 128) || !validText(p.WorkspaceVolume, 128) || !validText(p.ContextDirectory, 4096) || strings.ContainsAny(p.ContextDirectory, ",\\") || p.ContextDirectory[0] != '/' || len(p.ReadOnlyMounts) == 0 {
+	if p.Bound.Validate() != nil || now.Before(p.Bound.ObservedAt) || !now.Before(p.Bound.Deadline) || !validImageID(p.ImageID) || !validText(p.Container, 128) || !validText(p.WorkspaceVolume, 128) || !validText(p.ContextDirectory, 4096) || strings.ContainsAny(p.ContextDirectory, ",\\") || p.ContextDirectory[0] != '/' || p.ReadOnlyMounts == nil {
 		return errors.New("incomplete, expired or clock-regressed restricted plan")
 	}
 	for destination, source := range p.ReadOnlyMounts {
@@ -54,6 +55,9 @@ func (p BudgetedPlan) Create(now time.Time) (Command, error) {
 		return Command{}, err
 	}
 	args := []string{"create", "--pull=never", "--name", p.Container, "--interactive", "--network", "none", "--pid", "private", "--ipc", "private", "--restart", "no", "--user", "0:0", "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true", "--pids-limit", "256", "--cpus", "2", "--memory", "4096m", "--memory-swap", "4096m", "--ulimit", "nofile=1024:1024", "--log-driver", "none", "--mount", "type=volume,src=" + p.WorkspaceVolume + ",dst=/workspace", "--mount", "type=bind,src=" + p.ContextDirectory + ",dst=/input/context,readonly", "--tmpfs", "/tmp:rw,nosuid,nodev,noexec,uid=1000,gid=1000,size=64m", "--tmpfs", "/run/chora/pi:rw,nosuid,nodev,noexec,uid=1000,gid=1000,size=16m"}
+	for _, k := range sortedKeys(p.Labels) {
+		args = append(args, "--label", k+"="+p.Labels[k])
+	}
 	destinations := make([]string, 0, len(p.ReadOnlyMounts))
 	for d := range p.ReadOnlyMounts {
 		destinations = append(destinations, d)
@@ -104,6 +108,14 @@ func (p BudgetedPlan) VerifyEffective(raw []byte, exactContainerID string, now t
 	var c effectiveContainer
 	if json.Unmarshal(raw, &c) != nil || !domain.CanonicalSHA256(exactContainerID) || c.ID != exactContainerID || c.Image != p.ImageID || c.Name != "/"+p.Container {
 		return errors.New("restricted container identity drift")
+	}
+	for k, v := range p.Labels {
+		if c.Config.Labels[k] != v {
+			return errors.New("restricted resource ownership drift")
+		}
+	}
+	if !c.State.Running {
+		return errors.New("restricted guardian is not running")
 	}
 	h := c.HostConfig
 	if c.Config.User != "0:0" || !slices.Equal(c.Config.Entrypoint, []string{GuardianPath}) || !slices.Equal(c.Config.Cmd, []string{p.Bound.AuthorizedAt.Format(time.RFC3339Nano), p.Bound.Deadline.Format(time.RFC3339Nano)}) || h.NetworkMode != "none" || !exactNetworkMembership(c, []string{"none"}) || h.PidMode != "private" || h.IpcMode != "private" || h.RestartPolicy.Name != "no" || !h.ReadonlyRootfs || h.Privileged || len(h.CapAdd) != 0 || !slices.Equal(h.CapDrop, []string{"ALL"}) || !slices.Equal(h.SecurityOpt, []string{"no-new-privileges:true"}) || len(h.Devices) != 0 || len(h.DeviceRequests) != 0 || len(h.PortBindings) != 0 || h.LogConfig.Type != "none" || h.NanoCPUs != 2_000_000_000 || h.Memory != 4096<<20 || h.MemorySwap != 4096<<20 || h.PidsLimit != 256 || !hasNofileLimit(c, 1024) {

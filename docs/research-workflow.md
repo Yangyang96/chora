@@ -193,7 +193,7 @@ human delivery decision.
 `isolated_local` tasks. Selection is disabled in the UI and the API refuses a
 start or model discovery for it. The original profiles retain their contracts.
 
-The added components implement the following boundaries:
+The source composition implements the following boundaries:
 
 - A v2 authorization describes the exact non-secret installed closure, model
   catalog, transport, renderer/billing proof identities and frozen configuration.
@@ -218,8 +218,28 @@ The added components implement the following boundaries:
   a sequenced lease, wall deadline and `CLOCK_BOOTTIME` including suspend. Pi
   remains UID1000; PID1 uses container UID0 with all capabilities dropped. Host
   inspection must prove exact container death; daemon/VM loss stays unresolved.
-  Image recipe, inspect validation and pipe attachment are components for the
-  existing Runner, not an independently qualified new execution route.
+  The existing supervisor now composes preparation, guardian readiness/effective
+  inspection, workspace import/export, framed Pi exec, local cancellation and
+  recovery. A lost lease independently triggers Go Stop; PID1 remains the
+  separate enforcement boundary when Go is lost. The command Runner, terminal
+  handling and workspace journal remain the existing authorities.
+- Startup accepts only an explicit non-secret `BudgetedCandidate`: installed
+  identity, single-model catalog, original/current required extension inventory,
+  exact tool list and read-only resource masks, plus the explicit Runner and
+  Engine records. There is no discovery default or fallback to another source.
+  Required extensions must keep the same paths, bytes, dependency closure and
+  semantics records; missing inventory refuses preparation. The wrapper verifies
+  installed extension bytes and exact final argv before Pi. These checks retain
+  the declared contract; they do not certify its real runtime behavior.
+- Runtime closure identity excludes only Task snapshot/contract digests to avoid
+  a contract hash cycle. Full launch identity additionally freezes those digests,
+  and Go checks them against the actual Task records before binding. The bound
+  output cap reaches the provider shim; missing/changed source cannot renew it.
+  Recovery first proves owned Docker resources absent, validates the private
+  canonical launch manifest, revokes the original channel and reconciles the
+  existing import journal. It never starts Pi, renews a lease, resends a request
+  or refreshes the deadline. Missing/unsafe/foreign manifests retain unresolved
+  evidence. Old native and isolated routes keep their original owners.
 
 Production dispatch returns `bound_unproven`. The old
 `8192 + 8*ASCII bytes + 256*messages` formula is available only to an explicit

@@ -179,6 +179,7 @@ type Config struct {
 	WorkflowDispatchGuard func(context.Context, execution.StartRequest) error
 	IsolatedSource        IsolatedSource
 	BudgetedSource        BudgetedSource
+	BudgetedPermissions   BudgetedPermissionPlan
 	RuntimeConfig         []byte
 	Policy                []byte
 	AttemptImageID        string
@@ -323,6 +324,11 @@ func (adapter *Adapter) PrepareBoundStart(ctx context.Context, request execution
 	if err := adapter.validateModelBinding(ctx, source, request.Attempt.ModelBinding()); err != nil {
 		return execution.StartPreparation{}, err
 	}
+	if source.budgeted {
+		if err := adapter.config.BudgetedSource.ValidateContract(request.ExecutionContractDocument); err != nil {
+			return execution.StartPreparation{}, err
+		}
+	}
 	if source.isolated {
 		if err := adapter.config.IsolatedSource.ValidateContract(request.ExecutionContractDocument); err != nil {
 			return execution.StartPreparation{}, err
@@ -354,6 +360,8 @@ func (adapter *Adapter) validateModelBinding(ctx context.Context, source selecte
 	switch {
 	case source.pathPi:
 		expectedAgent = "path-pi"
+	case source.budgeted:
+		expectedAgent, expectedIdentity = "pi-budgeted", "sha256:"+adapter.config.BudgetedSource.identity.Image
 	case source.isolated:
 		expectedAgent, expectedIdentity = "pi-isolated", adapter.config.IsolatedSource.ImageID()
 	case source.managed:
@@ -399,7 +407,7 @@ func (adapter *Adapter) prepareStartForSource(request execution.StartRequest, so
 	if err != nil {
 		return execution.Invocation{}, err
 	}
-	if source.pathPi || source.isolated {
+	if source.pathPi || source.isolated || source.budgeted {
 		var document struct {
 			Acceptance struct {
 				VerificationCommands []speccoding.BoundedCommand `json:"verification_commands"`
@@ -416,7 +424,7 @@ func (adapter *Adapter) prepareStartForSource(request execution.StartRequest, so
 			}
 			commands = append(commands, text)
 		}
-		if source.isolated {
+		if source.isolated || source.budgeted {
 			message, err = execution.WrapIsolatedExecutionPrompt(request.SnapshotDocument, request.ExecutionContractDocument, commands)
 		} else {
 			message, err = execution.WrapLocalConnectedExecutionPrompt(request.SnapshotDocument, request.ExecutionContractDocument, commands)
@@ -431,7 +439,7 @@ func (adapter *Adapter) prepareStartForSource(request execution.StartRequest, so
 			return execution.Invocation{}, err
 		}
 	}
-	if (source.pathPi || source.isolated) && request.Attempt.Sequence() > 1 && strings.TrimSpace(request.Attempt.ContextDelta()) != "" {
+	if (source.pathPi || source.isolated || source.budgeted) && request.Attempt.Sequence() > 1 && strings.TrimSpace(request.Attempt.ContextDelta()) != "" {
 		message += "\n\nHuman Review correction for this successor Attempt. Apply these instructions within the frozen execution contract; preserve its authority and boundaries:\n" + request.Attempt.ContextDelta()
 	}
 	prompt, err := json.Marshal(struct {
@@ -443,7 +451,7 @@ func (adapter *Adapter) prepareStartForSource(request execution.StartRequest, so
 		return execution.Invocation{}, fmt.Errorf("encode Pi prompt: %w", err)
 	}
 	prompt = append(prompt, '\n')
-	if source.pathPi || source.isolated {
+	if source.pathPi || source.isolated || source.budgeted {
 		preflight := []byte("{\"id\":\"chora-get-state\",\"type\":\"get_state\"}\n")
 		prompt = append(preflight, prompt...)
 	}
@@ -473,6 +481,25 @@ func (adapter *Adapter) prepareStartForSource(request execution.StartRequest, so
 		if err := adapter.configureIsolatedObserver(request.Attempt.ID(), request.ExecutionContractDocument, environment); err != nil {
 			return execution.Invocation{}, err
 		}
+	}
+	if source.budgeted {
+		observer, err := IsolatedObserverConfig(request.Attempt.ID(), request.ExecutionContractDocument)
+		if err != nil {
+			return execution.Invocation{}, err
+		}
+		i := adapter.config.BudgetedSource.identity
+		fp := fingerprintForSource(source)
+		environment["CHORA_POLICY_DIGEST"] = i.Policy
+		environment["CHORA_ATTEMPT_IMAGE_ID"] = "sha256:" + i.Image
+		environment["CHORA_BOUNDARY_IMAGE_ID"] = ""
+		environment["CHORA_CAPABILITY_BUNDLE_ID"] = "chora.public-pi-budgeted.v1"
+		environment["CHORA_CAPABILITY_BUNDLE_SHA256"] = ResourceObserverSHA256()
+		environment["CHORA_CHECK_OBSERVER_CONFIG"] = "/input/context/observer.json"
+		environment["CHORA_CHECK_OBSERVER_CONFIG_SHA256"] = digest(observer)
+		environment["CHORA_CHECK_OBSERVER_HELPER"] = IsolatedHelperPath
+		environment["CHORA_CHECK_OBSERVER_HELPER_SHA256"] = i.Helper
+		environment["CHORA_CHECK_OBSERVER_RUNTIME_FINGERPRINT"] = hex.EncodeToString(fp.Digest[:])
+		environment["CHORA_CHECK_OBSERVER_SHA256"] = ResourceObserverSHA256()
 	}
 	if source.managed {
 		environment["CHORA_ATTEMPT_IMAGE_ID"] = adapter.managedSource.RuntimeImageID()
@@ -657,11 +684,11 @@ func (adapter *Adapter) DecodeEvent(chunk execution.EventChunk) (execution.Decod
 			return execution.DecodedChunk{}, fmt.Errorf("%w: invalid strict-LF Pi JSONL record", execution.ErrEventStreamInvalid)
 		}
 		strictModel := adapter.strictManagedModel
-		if chunk.Profile == domain.AgentExecutionProfileIsolatedLocal {
-			if !adapter.config.IsolatedSource.Configured() {
+		if chunk.Profile == domain.AgentExecutionProfileIsolatedLocal || chunk.Profile == domain.AgentExecutionProfileIsolatedBudgeted {
+			if chunk.Profile == domain.AgentExecutionProfileIsolatedLocal && !adapter.config.IsolatedSource.Configured() || chunk.Profile == domain.AgentExecutionProfileIsolatedBudgeted && !adapter.config.BudgetedSource.Configured() {
 				return execution.DecodedChunk{}, fmt.Errorf("%w: isolated decoder source unavailable", execution.ErrEventStreamInvalid)
 			}
-			if err := validateIsolatedEventModel(line); err != nil {
+			if err := validateIsolatedEventModel(line, chunk.Profile == domain.AgentExecutionProfileIsolatedBudgeted); err != nil {
 				return execution.DecodedChunk{}, fmt.Errorf("%w: %v", execution.ErrEventStreamInvalid, err)
 			}
 			// Isolated checks use the public observer, independently of the
@@ -1098,7 +1125,7 @@ func (adapter *Adapter) sourceForBinding(binding domain.AgentExecutionProfileBin
 		if !s.valid() {
 			return selectedSource{}, errors.New("restricted source is not prepared; complete identity and qualification required")
 		}
-		return selectedSource{binding: binding, executable: "chora-pi-budgeted", arguments: BudgetedArguments(), version: s.identity.PiVersion, identity: s.digest, budgeted: true}, nil
+		return selectedSource{binding: binding, executable: "chora-pi-budgeted", arguments: mustBudgetedArguments(adapter.config.BudgetedPermissions), version: s.identity.PiVersion, identity: s.digest, budgeted: true}, nil
 	case domain.AgentExecutionProfileIsolatedLocal:
 		s := adapter.config.IsolatedSource
 		if !s.valid() {
@@ -1141,7 +1168,7 @@ func (adapter *Adapter) sourceForBinding(binding domain.AgentExecutionProfileBin
 
 func (adapter *Adapter) validateSelectedSource(ctx context.Context, source selectedSource) error {
 	if source.budgeted {
-		return ValidateBudgetedCandidate(adapter.config.BudgetedSource.identity, false)
+		return ValidateBudgetedStructure(adapter.config.BudgetedSource.identity, adapter.config.BudgetedPermissions)
 	}
 	if source.managed || source.isolated {
 		return nil

@@ -32,5 +32,5 @@ export default function extension(pi) {
     frame(output,{type:'dispatch_request',id,payload:JSON.parse(raw)}).catch(()=>{
       pending?.reject(new Error('channel_write_unknown')); pending=undefined;
     });
-  }));
+  }),Number(process.env.CHORA_BUDGETED_OUTPUT_CAP));
 }

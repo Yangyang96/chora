@@ -1805,10 +1805,23 @@ func fakeEffectiveContainer(commands []Command, name string) (effectiveContainer
 				mount.Name = mount.Source
 			}
 			document.Mounts = append(document.Mounts, mount)
+		case "--pid":
+			document.HostConfig.PidMode = next()
+		case "--ipc":
+			document.HostConfig.IpcMode = next()
+		case "--restart":
+			document.HostConfig.RestartPolicy.Name = next()
 		case "--entrypoint":
 			if index+2 < len(launch) {
 				document.Image = launch[index+2]
 			}
+			if next() == GuardianPath {
+				document.Config.Entrypoint = []string{GuardianPath}
+				document.Config.Cmd = slices.Clone(launch[index+3:])
+				document.State.Running = true
+				document.Config.Env = append(document.Config.Env, "PATH=/usr/local/bin:/usr/bin:/bin")
+			}
+
 		}
 	}
 	if strings.HasSuffix(name, "-codex-boundary") {

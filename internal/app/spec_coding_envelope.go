@@ -79,6 +79,15 @@ func (s *Service) resolveTaskSpecCodingEnvelope(ctx context.Context, reader stor
 }
 
 func (s *Service) resolveResourceSpecCodingEnvelope(ctx context.Context, room domain.Room, snapshot domain.TaskResourceSnapshot, profile domain.AgentExecutionProfile) (SpecCodingEnvelope, error) {
+	if profile == domain.AgentExecutionProfileIsolatedBudgeted {
+		resolver, ok := s.deps.SpecCodingEnvelopeResolver.(interface {
+			ResolveBudgetedResourceSpecCodingEnvelope(context.Context, domain.Room, domain.TaskResourceSnapshot) (SpecCodingEnvelope, error)
+		})
+		if !ok {
+			return nil, fmt.Errorf("%w: restricted task resource envelope unavailable", speccoding.ErrInvalidInstalledEnvelope)
+		}
+		return resolver.ResolveBudgetedResourceSpecCodingEnvelope(ctx, room, snapshot)
+	}
 	if profile == domain.AgentExecutionProfileIsolatedLocal {
 		resolver, ok := s.deps.SpecCodingEnvelopeResolver.(IsolatedResourceSpecCodingEnvelopeResolver)
 		if !ok {

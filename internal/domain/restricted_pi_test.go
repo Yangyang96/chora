@@ -82,3 +82,17 @@ func TestRestrictedAuthorizationAndCostUnknownExpiryRoundingOverflow(t *testing.
 		t.Fatal("price overflow wrapped")
 	}
 }
+
+func TestRestrictedIdentityRuntimeScopeDoesNotCreateContractHashCycle(t *testing.T) {
+	i := restrictedIdentityFixture()
+	full, runtime := i.Digest(), i.RuntimeDigest()
+	i.Snapshot = strings.Repeat("b", 64)
+	i.Contract = strings.Repeat("c", 64)
+	if i.Digest() == full || i.RuntimeDigest() != runtime {
+		t.Fatal("Task scope not independently frozen")
+	}
+	i.Helper = strings.Repeat("d", 64)
+	if i.RuntimeDigest() == runtime {
+		t.Fatal("runtime closure drift ignored")
+	}
+}
