@@ -22,7 +22,7 @@ Install the locked Python package following
 and a disposable or explicitly provisioned UTF-8 PostgreSQL database. Run the
 documented `init-db` administrative command to add checkpoint and bridge tables;
 workers never run migrations automatically. SQLite upgrades through migration
-0050 when the workbench opens its database. Back up the database before an
+0051 (research workflows in 0050 and restricted channel records in 0051) when the workbench opens its database. Back up the database before an
 upgrade. A database upgraded on another feature branch is not a compatible
 replacement for this feature's migration history.
 

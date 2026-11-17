@@ -24,7 +24,7 @@ import (
 )
 
 const ManifestSchema = "chora.desktop-backup.v1"
-const SupportedSchema = 50
+const SupportedSchema = migrations.CurrentVersion
 
 type SchemaInspection struct {
 	DataRoot      string `json:"dataRoot"`

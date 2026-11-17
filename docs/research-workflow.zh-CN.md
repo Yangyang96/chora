@@ -15,7 +15,7 @@
 按[Worker 配置说明](../services/workflow/README.md)安装锁定版本的 Python 包，
 使用 Python 3.12 或 3.13，以及临时或明确配置的 UTF-8 PostgreSQL 数据库。执行说明中的
 `init-db` 管理命令以添加 checkpoint 和桥接表；Worker 不会自动迁移数据库。
-工作台打开 SQLite 时升级到迁移 0050。升级前备份数据库；其他功能分支迁移过的数据库
+工作台打开 SQLite 时升级到迁移 0051（0050 的研究工作流及 0051 的受限通道记录）。升级前备份数据库；其他功能分支迁移过的数据库
 不能直接替代本功能的迁移历史。
 
 将 `CHORA_WORKFLOW_PYTHON` 设为已安装 `chora_workflow` 的 Python 解释器绝对路径。

@@ -12,7 +12,8 @@ source checkout, and an explicit absolute Chora data root. It does not define an
 online backup service, cross-machine migration, or a general disaster-recovery
 system.
 
-The current development source uses SQLite schema 49; rc.10 uses schema 41.
+The current development source uses SQLite schema 51; rc.10 uses schema 41.
+Schemas 50–51 add research workflows and immutable restricted Pi launch/revocation records. Doctor, desktop adoption and migration share one build schema version.
 Schemas 46–49 add durable local delegation authority, child lineage, immutable
 Agent-plan provenance, single-attempt planning authority and frozen synthesis
 lineage. They do not
