@@ -393,3 +393,112 @@ func TestBudgetedStopCancelsBlockedProviderWithoutWaitingForReply(t *testing.T) 
 		t.Fatalf("requests=%d revoked=%d", a.requests, a.revoked)
 	}
 }
+
+func TestBudgetedRepeatedStopRetainsProofUntilFinalize(t *testing.T) {
+	s, runner, _, inv, _, _ := newBudgetedLifecycleFixture(t)
+	out := s.Start(context.Background(), inv, &testSink{binding: inv.LaunchToken()})
+	if out.Kind != execution.Started {
+		t.Fatal(out)
+	}
+	record := s.record(out.Handle)
+	manifest := filepath.Join(record.root, "budgeted.json")
+	before, err := os.ReadFile(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		stop, err := s.Stop(context.Background(), out.Handle, execution.StopIntent{Kind: execution.StopForCancel})
+		if err != nil || stop.Kind != execution.StopConfirmed {
+			t.Fatalf("Stop = %+v, %v", stop, err)
+		}
+		after, err := os.ReadFile(manifest)
+		if err != nil || string(after) != string(before) {
+			t.Fatalf("Stop lost original cleanup proof: %v", err)
+		}
+	}
+	if err := s.Finalize(context.Background(), out.Handle, execution.RetentionPolicy{}); !errors.Is(err, ErrFinalizeNotReady) {
+		t.Fatalf("Finalize before Drain = %v", err)
+	}
+	drainAll(t, s, out.Handle)
+	if err := s.Finalize(context.Background(), out.Handle, execution.RetentionPolicy{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(record.root); !os.IsNotExist(err) {
+		t.Fatalf("Finalize retained root: %v", err)
+	}
+	// An overlapping finalizer holding the original record must reuse only
+	// that record's completed proof, without reading the removed manifest.
+	commands := len(runner.allCommands())
+	if err := s.cleanup(context.Background(), record); err != nil {
+		t.Fatalf("repeated owned cleanup = %v", err)
+	}
+	if len(runner.allCommands()) != commands {
+		t.Fatal("completed cleanup touched resources again")
+	}
+	// Public handles are retired after Finalize, as on the legacy path.
+	if err := s.Finalize(context.Background(), out.Handle, execution.RetentionPolicy{}); !errors.Is(err, ErrUnknownHandle) {
+		t.Fatalf("retired handle = %v", err)
+	}
+}
+
+func TestBudgetedFinalizeRevalidatesRetainedManifest(t *testing.T) {
+	for _, fault := range []string{"missing", "writable", "foreign"} {
+		t.Run(fault, func(t *testing.T) {
+			s, _, _, inv, _, _ := newBudgetedLifecycleFixture(t)
+			out := s.Start(context.Background(), inv, &testSink{binding: inv.LaunchToken()})
+			if out.Kind != execution.Started {
+				t.Fatal(out)
+			}
+			record := s.record(out.Handle)
+			stop, err := s.Stop(context.Background(), out.Handle, execution.StopIntent{Kind: execution.StopForCancel})
+			if err != nil || stop.Kind != execution.StopConfirmed {
+				t.Fatalf("Stop = %+v, %v", stop, err)
+			}
+			name := filepath.Join(record.root, "budgeted.json")
+			raw, err := os.ReadFile(name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			switch fault {
+			case "missing":
+				err = os.Remove(name)
+			case "writable":
+				err = os.Chmod(name, 0600)
+			case "foreign":
+				s.config.Budgeted.Identity.Contract = strings.Repeat("d", 64)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			stop, err = s.Stop(context.Background(), out.Handle, execution.StopIntent{Kind: execution.StopForCancel})
+			if err != nil || stop.Kind != execution.StopUncertain {
+				t.Fatalf("unsafe repeated Stop = %+v, %v", stop, err)
+			}
+			drainAll(t, s, out.Handle)
+			if err := s.Finalize(context.Background(), out.Handle, execution.RetentionPolicy{}); err == nil {
+				t.Fatal("Finalize trusted earlier Stop instead of retained manifest")
+			}
+			if _, err := os.Stat(record.root); err != nil {
+				t.Fatalf("failed Finalize erased evidence: %v", err)
+			}
+			// A failed finalizer is retryable, never cached as completed.
+			if fault == "foreign" {
+				var original struct{ Identity domain.RestrictedPiIdentity }
+				if err := json.Unmarshal(raw, &original); err != nil {
+					t.Fatal(err)
+				}
+				s.config.Budgeted.Identity = original.Identity
+			} else {
+				if err := os.WriteFile(name, raw, 0400); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Chmod(name, 0400); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := s.Finalize(context.Background(), out.Handle, execution.RetentionPolicy{}); err != nil {
+				t.Fatalf("retry Finalize = %v", err)
+			}
+		})
+	}
+}

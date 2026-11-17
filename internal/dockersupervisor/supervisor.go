@@ -219,6 +219,7 @@ type attemptRecord struct {
 	readOnlyWorkspaceMounts                               []workbenchReadOnlyMount
 	workspaceVolume                                       string
 	cleanupMu                                             sync.Mutex
+	cleanupComplete                                       bool // guarded by cleanupMu; only after full removal proof
 }
 
 type acceptanceInjectionState uint8
@@ -1851,10 +1852,11 @@ func (supervisor *Supervisor) confirmStopped(record *attemptRecord) execution.St
 		return execution.StopOutcome{Kind: execution.StopConfirmed}
 	}
 	record.mu.Lock()
-	retainTerminal := record.timedOut
+	retainTerminal := record.timedOut || record.budgeted != nil
 	record.mu.Unlock()
-	// Expiry uses Stop to prove executor death, but the terminal consumer still
-	// needs its timeout Result. Finalize owns removal after Drain in this case.
+	// Stop proves executor death and revokes authority. Restricted attempts
+	// also need their host-owned manifest for Finalize's recovery checks.
+	// Finalize owns removal after Drain for these attempts and timeouts.
 	if err := supervisor.cleanupAttempt(record, retainTerminal); err != nil {
 		return execution.StopOutcome{Kind: execution.StopUncertain, Diagnostic: "process exited but Attempt cleanup is unproven: " + err.Error()}
 	}
@@ -2070,6 +2072,11 @@ func (supervisor *Supervisor) cleanupAttempt(record *attemptRecord, retainTermin
 	}
 	record.cleanupMu.Lock()
 	defer record.cleanupMu.Unlock()
+	// Concurrent Stop/Finalize callers can already hold the same owned record.
+	// Only this record's completed cleanup proves that a missing root is safe.
+	if record.cleanupComplete {
+		return nil
+	}
 	cleanupContext, cancel := context.WithTimeout(context.Background(), supervisor.config.DeathWait)
 	defer cancel()
 	filters := supervisor.ownedResourceFilters(record.attemptID)
@@ -2090,7 +2097,11 @@ func (supervisor *Supervisor) cleanupAttempt(record *attemptRecord, retainTermin
 	if retainTerminal {
 		return nil
 	}
-	return removeAndProveAbsent(record.root, "runtime workspace")
+	if err := removeAndProveAbsent(record.root, "runtime workspace"); err != nil {
+		return err
+	}
+	record.cleanupComplete = true
+	return nil
 }
 
 // Import state is host-owned and must survive cleanup until an interrupted
