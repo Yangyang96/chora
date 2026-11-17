@@ -273,6 +273,12 @@ func TestRuntimeFingerprintsDependOnlyOnSelectedRuntimeSourceAndFailClosedOnLoca
 			t.Fatal(err)
 		}
 		first, err := adapter.FingerprintForBinding(context.Background(), binding)
+		if profile == domain.AgentExecutionProfileIsolatedBudgeted {
+			if err == nil || first.Valid() {
+				t.Fatal("unprepared restricted source acquired a fingerprint")
+			}
+			continue
+		}
 		if err != nil || !first.Valid() {
 			t.Fatalf("fingerprint %q = %#v, %v", profile, first, err)
 		}

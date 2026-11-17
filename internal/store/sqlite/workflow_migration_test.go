@@ -40,10 +40,10 @@ func TestWorkflowV49UpgradeAndUnledgeredSchemaRefusal(t *testing.T) {
 		t.Fatal(err)
 	}
 	var version int
-	if err = raw.QueryRow(`SELECT max(version) FROM schema_migrations`).Scan(&version); err != nil || version != 50 {
+	if err = raw.QueryRow(`SELECT max(version) FROM schema_migrations`).Scan(&version); err != nil || version != len(available) {
 		t.Fatalf("upgrade=%d %v", version, err)
 	}
-	if _, err = raw.Exec(`DELETE FROM schema_migrations WHERE version=50`); err != nil {
+	if _, err = raw.Exec(`DELETE FROM schema_migrations WHERE version>=50`); err != nil {
 		t.Fatal(err)
 	}
 	if err = migrate(ctx, raw); err == nil {

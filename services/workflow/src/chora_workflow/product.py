@@ -58,6 +58,8 @@ def execute(worker, command):
     thread = command["workflow_id"]
     worker.config(thread)  # Canonical UUID before any write.
     kind = command["kind"]
+    if kind == "observe_stop":
+        return observe_stop(worker, command)
     if kind not in {"submit", "resume", "stop", "bind_run"}:
         raise ValueError("unsupported product command")
     if command["operation_id"] != thread + ":" + kind:
@@ -163,7 +165,7 @@ def execute(worker, command):
                     "SELECT 1 FROM workflow_owners WHERE thread_id=%s", (thread,)
                 ).fetchone():
                     worker.stop(thread)
-                result = {"status": "stopped"}
+                result = stop_evidence(conn, thread)
             elif binding["stopped"]:
                 result = {"status": "stopped"}
             else:
@@ -206,16 +208,83 @@ def execute(worker, command):
             conn.execute("SELECT pg_advisory_unlock(hashtextextended(%s, 50))", (lock_key,))
 
 
+def stop_evidence(conn, thread):
+    """A tombstone prevents admission; neither it nor a lease proves quiescence.
+
+    The independent graph session lock covers the whole product execution.
+    A crashed or failed call with no receipt remains unknown after lock release.
+    This does not cancel generation already accepted by an external provider.
+    """
+    acquired = conn.execute(
+        "SELECT pg_try_advisory_lock(hashtextextended(%s, 50)) AS acquired", (thread,)
+    ).fetchone()["acquired"]
+    try:
+        pending = conn.execute(
+            "SELECT operation_id,input_digest FROM workflow_operations "
+            "WHERE thread_id=%s AND (receipt IS NULL OR receipt->>'usage_unknown'='true') "
+            "ORDER BY operation_id",
+            (thread,),
+        ).fetchall()
+        terminated = acquired and not pending
+        return {
+            "status": "stopped" if terminated else "stopping",
+            "admission_closed": True,
+            "terminated": terminated,
+            "pending_operations": pending,
+            "graph_idle": acquired,
+        }
+    finally:
+        if acquired:
+            conn.execute("SELECT pg_advisory_unlock(hashtextextended(%s, 50))", (thread,))
+
+
+def observe_stop(worker, command):
+    """Read-only observation of the SAME Stop; never replaces its receipt."""
+    thread = command["workflow_id"]
+    raw = command["payload"]
+    if (
+        command["operation_id"] != thread + ":stop"
+        or hashlib.sha256(raw.encode()).hexdigest() != command["input_digest"]
+    ):
+        raise ValueError("stop observation identity changed")
+    with connect(worker.dsn) as conn:
+        row = conn.execute(
+            "SELECT * FROM workflow_bridge_commands WHERE operation_id=%s",
+            (command["operation_id"],),
+        ).fetchone()
+        binding = conn.execute(
+            "SELECT stopped FROM workflow_bridge_inputs WHERE thread_id=%s", (thread,)
+        ).fetchone()
+        if (
+            row is None
+            or row["receipt"] is None
+            or row["kind"] != "stop"
+            or row["thread_id"] != thread
+            or row["payload"] != raw
+            or row["input_digest"] != command["input_digest"]
+            or not binding
+            or not binding["stopped"]
+        ):
+            raise ValueError("durable original stop required")
+        return {
+            "schema": "chora.research-stop-observation.v1",
+            "operation_id": command["operation_id"],
+            "workflow_id": thread,
+            "input_digest": command["input_digest"],
+            **stop_evidence(conn, thread),
+        }
+
+
 def main():
     command = json.loads(sys.stdin.read(1_048_577))
     kind = command["kind"]
-    model = None if kind in {"stop", "bind_run"} else SDKModel()
+    model = None if kind in {"stop", "bind_run", "observe_stop"} else SDKModel()
     worker = Worker(
         os.environ["CHORA_WORKFLOW_DATABASE_URL"],
         model,
         PublicCatalog(),
         sample_type=None
-        if kind in {"stop", "bind_run"}
+        if kind in {"stop", "bind_run", "observe_stop"}
         else os.environ.get("CHORA_WORKFLOW_SAMPLE_TYPE"),
         code_revision=os.environ.get("CHORA_WORKFLOW_CODE_REVISION"),
     )

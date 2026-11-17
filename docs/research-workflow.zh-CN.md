@@ -124,3 +124,63 @@ SQLite 持久保存递增事件序号。SSE 支持 `Last-Event-ID` 或 `after`�
 这些流程使用合成研究响应和 Pi supervisor 夹具，不证明真实模型质量、实际 Pi 代码修改、
 人工业务批准、多 Worker 接管或生产运行。真实集成另需明确模型预算、已有 Pi 访问和真实人工
 交付决定。
+
+## 受限 Pi source（离线边界实现）
+
+新增独立 profile `isolated_budgeted`、source `public_pi_budgeted_v1`，当前不可用。
+UI 禁止选择，API 拒绝启动及模型发现；不会迁移已冻结的 `trusted_local` 或
+`isolated_local`，旧 profile 保持原契约。
+
+新增部件包括：v2 非秘密安装闭包与模型/传输/证明身份、SQLite 51 的不可变 launch
+和不可逆通道撤销、由 Go 绑定当前 Run/Attempt 的持久预留、有限串行进程帧通道、
+固定 provider shim 与 wrapper、Docker 无网络命令计划和 inspect 检查，以及独立的
+Linux PID1 guardian。请求、输入与硬输出预留不退款；崩溃和 unknown 保持占用，
+同 ID 只能查询原不可重放结果，不能再次发送。断线或应用重启不能恢复旧通道发送权。
+
+帧区分原生 `pi_rpc` 与 `dispatch_request`/`dispatch_result`；Go 校验 onPayload
+后的最终内容，shim 在解码前调用 onResponse，回调/翻译/取消失败不回退、不重发。
+wrapper 只提供没有上游权限的固定认证标记，不发现个人认证。Pi 数字 cost 字段在
+fixture 中仅满足接口形状，不是费用证据。
+
+容器命令计划使用 network none、私有 PID/IPC、只读代码与原资源 mask，无端口、
+凭据、宿主 HOME、代理或 Docker socket。Pi 保持 UID1000；只读 PID1 使用容器内
+UID0、drop ALL，独立检查控制 EOF、序列心跳、绝对 wall deadline 和包含 suspend
+的 CLOCK_BOOTTIME。宿主仍须 inspect 精确容器死亡；daemon/VM 失联保持未决。
+镜像配方、inspect 与 pipe fixture 只是原 Runner 的组成部件，不能认证真实执行路线。
+
+生产发送返回 `bound_unproven`。旧 `8192+8*ASCII字节+256*消息数` 仅供显式
+`chora_offline_fixture` 构建使用，生产构造器不接收任意网络 transport 或证明函数。
+目前没有受信 renderer/计费策略。完整 Pi、实际安装闭包、required 权限扩展语义和
+Docker guardian 均未获得资格证明，source 继续不可用。
+
+真实执行前须形成具体授权包：
+
+1. 精确 provider/model/API/endpoint、Pi/Node/image/rootfs/helper/guardian 安装
+   闭包、单模型 catalog、最终参数/非秘密配置/mount/tool/required 权限身份，以及
+   当前 Task/Charter/Run/Attempt 绑定。
+2. 覆盖全部最终 payload、隐藏模板、Unicode、工具 history/cache/renderer 和失败
+   计费的输入上界证明。使用 provider 硬上下文上界时，须证明其计费覆盖并能放入
+   原 100000-token 窗口，不能增额迁就。
+3. 不超过原 20 请求、100000 总 tokens、单次 2048 output 与累计 output 限额的
+   硬预算；覆盖研究、人工等待和所有 Attempt 的绝对授权/截止时间（最多20分钟）、
+   撤销和独立 runtime 资格。重启不刷新时间或余额。
+4. 有效的币种/最小货币单位、最贵适用缓存/输入/输出单价、全部固定/tool/error
+   费用与证据有效期。整数表达式 `Σ(I*输入单价+O*输出单价+固定费)` 向上取整。
+   覆盖未知或整数溢出即拒绝；计算 helper 对两项 token 上限均保守预留，算术不认证
+   价格或 provider 行为。
+5. 仅授权该 endpoint/model 的具体凭据范围引用，由 Go 持有，不进入 Pi、manifest、
+   回执或公共日志；不记秘密值及秘密值 hash。本轮 fixture 不提供凭据许可。
+
+实际 renderer、价格/附加计费覆盖、凭据范围和 runtime 闭包仍未知，建议限额不等于
+费用许可。费用许可、用户具体方案确认和交付决定继续分开。
+
+## Stop 意图与研究静止证明
+
+Stop 提交后立即禁止新准入，本地 Pi 独立取消。研究 graph session 仍活跃或存在
+缺失/unknown 操作回执时返回 `stopping`；持久 tombstone 不能充当终止证明。
+空闲研究返回明确的准入关闭、静止与空 pending 列表证明。
+
+对账使用 `observe_stop` 观察同一原 Stop：不创建模型、不再次发送、不退款、不覆盖
+原不可变回执、不创建新 Run。Go 只追加有界观察。迟到的已知结果可以证明静止；
+永久未知操作在解释器/应用重启后仍未决。这只证明本地研究静止，不能证明 provider
+已接受的生成或计费已停止。

@@ -188,11 +188,18 @@ def test_stop_during_inflight_model_call_prevents_the_next_operation(dsn):
         assert entered.wait(10)
         try:
             stop = execute(worker(dsn), command(thread, "stop", {"input_digest": "f" * 64}))
-            assert stop["status"] == "stopped"
+            assert stop["status"] == "stopping"
+            assert stop["admission_closed"] and not stop["terminated"]
+            assert len(stop["pending_operations"]) == 1
         finally:
             release.set()
         result = future.result(timeout=10)
     assert result["status"] == "stopped"
+    original = command(thread, "stop", {"input_digest": "f" * 64})
+    assert execute(worker(dsn), original) == stop
+    observation = execute(worker(dsn), {**original, "kind": "observe_stop"})
+    assert observation["terminated"] and observation["pending_operations"] == []
+    assert execute(worker(dsn), original) == stop
     assert w.model.calls == 1
     with connect(dsn) as conn:
         assert conn.execute("SELECT count(*) AS n FROM workflow_operations").fetchone()["n"] == 1
@@ -237,3 +244,53 @@ def test_concurrent_stops_reuse_the_original_receipt(dsn):
             conn.execute("SELECT count(*) AS n FROM workflow_bridge_deliveries").fetchone()["n"]
             == 2
         )
+
+
+def test_stop_unknown_remains_unresolved_across_fresh_workers(dsn):
+    entered, release = Event(), Event()
+
+    class LostReceiptModel(FixtureModel):
+        def invoke(self, *args):
+            entered.set()
+            assert release.wait(10)
+            raise RuntimeError("synthetic lost response")
+
+    w = Worker(dsn, LostReceiptModel(), FixtureCatalog())
+    thread = str(uuid4())
+    original = command(thread, "stop", {"input_digest": "f" * 64})
+    with ThreadPoolExecutor() as pool:
+        running = pool.submit(execute, w, submission(w, thread))
+        assert entered.wait(10)
+        try:
+            first = execute(worker(dsn), original)
+            assert first["status"] == "stopping" and not first["terminated"]
+        finally:
+            release.set()
+        try:
+            running.result(timeout=10)
+        except RuntimeError:
+            pass
+    for _ in range(2):
+        fresh = worker(dsn)
+        assert execute(fresh, original) == first
+        observed = execute(fresh, {**original, "kind": "observe_stop"})
+        assert observed["graph_idle"] and not observed["terminated"]
+        assert observed["status"] == "stopping" and len(observed["pending_operations"]) == 1
+        assert fresh.model.calls == 0
+    with connect(dsn) as conn:
+        assert conn.execute("SELECT count(*) AS n FROM workflow_operations").fetchone()["n"] == 1
+
+
+def test_idle_stop_has_explicit_quiescence_and_observation_identity(dsn):
+    w = worker(dsn)
+    thread = str(uuid4())
+    execute(w, submission(w, thread))
+    original = command(thread, "stop", {"input_digest": "f" * 64})
+    first = execute(w, original)
+    assert first["status"] == "stopped" and first["admission_closed"]
+    assert first["terminated"] and first["graph_idle"] and first["pending_operations"] == []
+    observed = execute(worker(dsn), {**original, "kind": "observe_stop"})
+    assert observed["terminated"]
+    assert execute(worker(dsn), original) == first
+    with pytest.raises(ValueError):
+        execute(worker(dsn), {**original, "kind": "observe_stop", "input_digest": "0" * 64})

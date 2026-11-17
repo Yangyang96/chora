@@ -2,9 +2,11 @@ package app
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Yangyang96/chora/internal/domain"
@@ -22,6 +24,49 @@ type WorkflowDispatchReservation struct {
 	OutputTokens  int       `json:"output_tokens"`
 	PayloadDigest string    `json:"payload_digest"`
 	Deadline      time.Time `json:"deadline"`
+	CapabilityID  string    `json:"capability_id,omitempty"`
+	Channel       string    `json:"channel,omitempty"`
+	LaunchToken   string    `json:"launch_token,omitempty"`
+	Authorization string    `json:"authorization,omitempty"`
+	SourceDigest  string    `json:"source_digest,omitempty"`
+	ConfigDigest  string    `json:"config_digest,omitempty"`
+	Epoch         uint64    `json:"epoch,omitempty"`
+	Sequence      int       `json:"sequence,omitempty"`
+}
+
+func workflowPiDispatchQuiescent(ctx context.Context, r storecontract.Reader, id string) error {
+	commands, err := r.ListWorkflowCommands(ctx, id)
+	if err != nil {
+		return err
+	}
+	known := map[string]bool{}
+	for _, c := range commands {
+		if strings.HasPrefix(c.Kind, "pi_dispatch_result:") {
+			var v struct {
+				RequestID string `json:"request_id"`
+				Outcome   string `json:"outcome"`
+			}
+			if json.Unmarshal(c.Receipt, &v) != nil {
+				return ErrInvalidCommand
+			}
+			known[v.RequestID] = v.Outcome == "response"
+		}
+	}
+	for _, c := range commands {
+		if c.Kind == "pi_dispatch" {
+			var v WorkflowDispatchReservation
+			if json.Unmarshal(c.Receipt, &v) != nil {
+				return ErrInvalidCommand
+			}
+			if !known[v.RequestID] {
+				return fmt.Errorf("%w: provider outcome pending or unknown after local stop", ErrUnauthorizedCommand)
+			}
+		}
+	}
+	return nil
+}
+func (s *Service) WorkflowPiDispatchQuiescent(ctx context.Context, id string) error {
+	return workflowPiDispatchQuiescent(ctx, s.deps.Store.Reader(), id)
 }
 
 // Unknown or exhausted provider authority also forbids a successor process;
@@ -89,12 +134,28 @@ func (s *Service) ReserveWorkflowDispatch(ctx context.Context, id string, runID 
 	if requestID == "" || len(requestID) > 128 || len(payloadDigest) != 64 || inputTokens < 0 || inputTokens > 100000 || outputTokens < 1 || outputTokens > 2048 {
 		return reservation, ErrInvalidCommand
 	}
+	return s.reserveWorkflowDispatch(ctx, id, runID, attemptID, requestID, transportIdentity, payloadDigest, inputTokens, outputTokens, nil)
+}
+func (s *Service) reserveWorkflowDispatch(ctx context.Context, id string, runID domain.RunID, attemptID domain.AttemptID, requestID, transportIdentity, payloadDigest string, inputTokens, outputTokens int, bound *domain.RestrictedLaunch) (reservation WorkflowDispatchReservation, err error) {
+	if requestID == "" || len(requestID) > 128 || !domain.CanonicalSHA256(payloadDigest) || inputTokens < 0 || inputTokens > 100000 || outputTokens < 1 || outputTokens > 2048 {
+		return reservation, ErrInvalidCommand
+	}
 	err = s.deps.Store.WithinWriteTx(ctx, func(tx storecontract.WriteTx) error {
 		w, e := tx.GetWorkflow(ctx, id)
 		if e != nil {
 			return e
 		}
 		if w.RunID != runID || w.PiAuthorization == nil || !w.PiAuthorization.Active(time.Now()) || w.PiAuthorization.TransportIdentity != transportIdentity {
+			return ErrUnauthorizedCommand
+		}
+		if w.PiAuthorization.Version == 2 {
+			if bound == nil {
+				return ErrUnauthorizedCommand
+			}
+			if e = restrictedLaunchAuthority(ctx, tx, w, *bound); e != nil {
+				return e
+			}
+		} else if bound != nil {
 			return ErrUnauthorizedCommand
 		}
 		if e = workflowBoundRunAuthority(ctx, tx, w); e != nil {
@@ -168,6 +229,16 @@ func (s *Service) ReserveWorkflowDispatch(ctx context.Context, id string, runID 
 			return fmt.Errorf("%w: Pi budget exhausted", ErrUnauthorizedCommand)
 		}
 		reservation = WorkflowDispatchReservation{RequestID: requestID, AttemptID: attemptID.String(), InputTokens: inputTokens, OutputTokens: outputTokens, PayloadDigest: payloadDigest, Deadline: p.Deadline}
+		if bound != nil {
+			reservation.CapabilityID = rand.Text()
+			reservation.Channel = bound.Channel
+			reservation.LaunchToken = bound.LaunchToken
+			reservation.Authorization = bound.Authorization
+			reservation.SourceDigest = bound.SourceDigest
+			reservation.ConfigDigest = bound.ConfigDigest
+			reservation.Epoch = bound.Epoch
+			reservation.Sequence = requests + 1
+		}
 		c := workflowCommand(w, "pi_dispatch:"+requestID, reservation)
 		c.Kind = "pi_dispatch"
 		if e = tx.PutWorkflowCommand(ctx, c); e != nil {
@@ -195,7 +266,7 @@ func (s *Service) FinishWorkflowDispatch(ctx context.Context, id string, reserva
 		for _, c := range commands {
 			if c.OperationID == id+":pi_dispatch:"+reservation.RequestID && c.Kind == "pi_dispatch" {
 				var saved WorkflowDispatchReservation
-				if json.Unmarshal(c.Receipt, &saved) == nil && saved.RequestID == reservation.RequestID && saved.AttemptID == reservation.AttemptID && saved.InputTokens == reservation.InputTokens && saved.OutputTokens == reservation.OutputTokens && saved.PayloadDigest == reservation.PayloadDigest && saved.Deadline.Equal(reservation.Deadline) {
+				if json.Unmarshal(c.Receipt, &saved) == nil && string(responseBody(saved)) == string(responseBody(reservation)) {
 					found = true
 				}
 			}

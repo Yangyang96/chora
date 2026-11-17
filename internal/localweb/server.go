@@ -375,6 +375,12 @@ func newServer(ctx context.Context, databasePath, webRoot string, logger *log.Lo
 	if err != nil {
 		return nil, err
 	}
+	// A process channel is never restored across app lifetimes. Revocation
+	// preserves all reservations/results; recovery cannot mint a fresh balance.
+	if err = store.WithinWriteTx(ctx, func(tx storecontract.WriteTx) error { return tx.RevokeRestrictedChannels(ctx) }); err != nil {
+		store.Close()
+		return nil, fmt.Errorf("revoke stale restricted channels: %w", err)
+	}
 	absoluteWebRoot, err := filepath.Abs(webRoot)
 	if err != nil {
 		store.Close()

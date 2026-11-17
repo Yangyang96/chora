@@ -178,6 +178,7 @@ type Config struct {
 	// Synthetic supervisors can inject this port without contacting a provider.
 	WorkflowDispatchGuard func(context.Context, execution.StartRequest) error
 	IsolatedSource        IsolatedSource
+	BudgetedSource        BudgetedSource
 	RuntimeConfig         []byte
 	Policy                []byte
 	AttemptImageID        string
@@ -246,7 +247,10 @@ func New(config Config) (*Adapter, error) {
 	if config.IsolatedSource.Configured() && !config.IsolatedSource.valid() {
 		return nil, errors.New("invalid isolated Pi source")
 	}
-	if !managed.Configured() && !config.LocalPiSource.Configured() && !config.PathPiSource.Configured() && !config.IsolatedSource.Configured() {
+	if config.BudgetedSource.Configured() && !config.BudgetedSource.valid() {
+		return nil, errors.New("invalid restricted Pi source identity")
+	}
+	if !managed.Configured() && !config.LocalPiSource.Configured() && !config.PathPiSource.Configured() && !config.IsolatedSource.Configured() && !config.BudgetedSource.Configured() {
 		return nil, errors.New("Pi Runtime requires at least one configured source")
 	}
 	if managed.Configured() {
@@ -1076,6 +1080,7 @@ type selectedSource struct {
 	managed          bool
 	pathPi           bool
 	isolated         bool
+	budgeted         bool
 	capabilityBundle ManagedCapabilityBundle
 }
 
@@ -1088,6 +1093,12 @@ func (adapter *Adapter) sourceForBinding(binding domain.AgentExecutionProfileBin
 		return selectedSource{}, errors.New("Pi Attempt execution profile binding drift")
 	}
 	switch binding.Profile() {
+	case domain.AgentExecutionProfileIsolatedBudgeted:
+		s := adapter.config.BudgetedSource
+		if !s.valid() {
+			return selectedSource{}, errors.New("restricted source is not prepared; complete identity and qualification required")
+		}
+		return selectedSource{binding: binding, executable: "chora-pi-budgeted", arguments: BudgetedArguments(), version: s.identity.PiVersion, identity: s.digest, budgeted: true}, nil
 	case domain.AgentExecutionProfileIsolatedLocal:
 		s := adapter.config.IsolatedSource
 		if !s.valid() {
@@ -1129,6 +1140,9 @@ func (adapter *Adapter) sourceForBinding(binding domain.AgentExecutionProfileBin
 }
 
 func (adapter *Adapter) validateSelectedSource(ctx context.Context, source selectedSource) error {
+	if source.budgeted {
+		return ValidateBudgetedCandidate(adapter.config.BudgetedSource.identity, false)
+	}
 	if source.managed || source.isolated {
 		return nil
 	}

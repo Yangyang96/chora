@@ -10,11 +10,13 @@ export const LOCAL_EXECUTION_LABEL = 'Local execution · No Sandbox'
 
 const profiles: Array<{ id: AgentExecutionProfile; label: string; description: string }> = [
   { id: 'isolated_local', label: 'Isolated execution', description: 'Pinned Pi in an isolated environment with bounded files, resources, network, and credentials.' },
+  { id: 'isolated_budgeted', label: 'Budgeted isolated execution (unavailable)', description: 'Isolated workspace and bounded model calls without personal authentication. Verified model limits and environment are required.' },
   { id: 'trusted_local', label: LOCAL_EXECUTION_LABEL, description: 'Supported local Pi with your native configuration and host access.' },
 ]
 
 export function agentExecutionProfileLabel(profile?: AgentExecutionProfile): string | null {
   if (profile === 'trusted_local') return LOCAL_EXECUTION_LABEL
+  if (profile === 'isolated_budgeted') return 'Budgeted isolated execution (unavailable)'
   if (profile === 'isolated_local') return 'Isolated execution'
   return profile ?? null
 }
@@ -102,7 +104,7 @@ export function AgentExecutionProfileSelector({ value, disabled, trustedLocalSel
               name={`agent-profile-${legendID}`}
               value={profile.id}
               aria-label={t(profile.label)}
-              disabled={profile.id === 'trusted_local' ? (!trustedLocalSelectable || !piReady) : false}
+              disabled={profile.id === 'isolated_budgeted' || (profile.id === 'trusted_local' && (!trustedLocalSelectable || !piReady))}
               checked={(pendingTrustedLocal ? 'trusted_local' : value) === profile.id}
               onChange={() => select(profile.id)}
             />

@@ -185,3 +185,88 @@ They do not establish live-model quality, actual Pi code changes, human business
 acceptance, multi-worker takeover, or production operation. Live integration
 requires a separately authorized model budget, existing Pi access and an actual
 human delivery decision.
+
+## Restricted Pi source (offline boundary work)
+
+`isolated_budgeted` is a separate, currently unavailable profile with source
+`public_pi_budgeted_v1`. It does not convert frozen `trusted_local` or
+`isolated_local` tasks. Selection is disabled in the UI and the API refuses a
+start or model discovery for it. The original profiles retain their contracts.
+
+The added components implement the following boundaries:
+
+- A v2 authorization describes the exact non-secret installed closure, model
+  catalog, transport, renderer/billing proof identities and frozen configuration.
+  Missing fields, partial v2 records and old bindings cannot supply defaults.
+  SQLite migration 51 retains history, adds immutable launch bindings and
+  irreversible channel revocation, and rejects opening with an older binary.
+- Go owns the launch/channel/epoch and checks the current Run/Attempt and original
+  authority in the reservation transaction. One request plus its full input and
+  hard output reservation stays consumed, including on crash or unknown result.
+  A duplicate logical ID returns an unreplayable original outcome and never
+  retransmits. A disconnected or restarted channel cannot recover sending rights.
+- A bounded, serial process channel separates `pi_rpc` from `dispatch_request` and
+  `dispatch_result`. The provider shim maps text and local functions, submits the
+  final `onPayload` replacement for Go admission, invokes `onResponse` before
+  decoding, and ends with an error on callback/translation/abort failures. It has
+  no built-in provider fallback, retry, arbitrary URL or credential lookup.
+  Its numeric Pi cost fields are interface placeholders in fixtures, not billing
+  evidence. The wrapper supplies a literal marker with no provider authority.
+- The new Docker command plan uses network `none`, private PID/IPC namespaces,
+  read-only code/masks, no published ports, credentials, host HOME, proxy or
+  Docker socket. A separate read-only Linux PID1 guardian watches control EOF,
+  a sequenced lease, wall deadline and `CLOCK_BOOTTIME` including suspend. Pi
+  remains UID1000; PID1 uses container UID0 with all capabilities dropped. Host
+  inspection must prove exact container death; daemon/VM loss stays unresolved.
+  Image recipe, inspect validation and pipe attachment are components for the
+  existing Runner, not an independently qualified new execution route.
+
+Production dispatch returns `bound_unproven`. The old
+`8192 + 8*ASCII bytes + 256*messages` formula is available only to an explicit
+`chora_offline_fixture` test build. The production constructor accepts no injected
+network transport or proof function. There is no installed trusted renderer or
+billing strategy. Required permission extension semantics, actual image/install
+closure, complete Pi execution and Docker guardian behavior are not certified by
+interface/pipe/inspect fixtures; the production source stays unavailable.
+
+Before live admission, a concrete authorization package must provide:
+
+1. Exact provider/model/API/endpoint, installed Pi/Node/image/rootfs/helper/guardian
+   closure, single-model catalog, final argument/config/mount/tool/required
+   permission identities and current Task/Charter/Run/Attempt bindings.
+2. An evidenced input bound for **every** allowed final payload, including hidden
+   templates, Unicode, tool history/cache/rendering, and failure billing. A hard
+   provider context ceiling may be conservatively reserved only if its billing
+   contract covers those paths and it fits the existing 100000-token ceiling.
+3. Request, total-token, per-call and total-output ceilings within the existing
+   maximums (20 / 100000 / 2048 / total output <= total tokens), absolute
+   authorization/deadline times spanning research and all Attempts (<=20 minutes),
+   revocation and independent runtime qualification. No restart refreshes them.
+4. Valid currency/minor-unit prices, worst applicable cached/input/output rates,
+   all fixed/tool/error charges and evidence expiry. Round the integer expression
+   `Σ(I*input_rate + O*output_rate + fixed_fee)` upward. Unknown coverage or integer
+   overflow refuses admission. The proposed cost helper over-reserves both token
+   ceilings; its arithmetic does not certify prices or provider behavior.
+5. An explicit credential-scope reference authorizing only that endpoint/model,
+   held by Go and never placed in Pi, manifests, receipts or public logs. Do not
+   record secret values or secret-value hashes. None is supplied by these tests.
+
+The actual renderer, prices/fee coverage, credential scope and runtime closure
+are still unknown. Do not infer a spend permission from the proposed limits.
+Expense permission, approval of the concrete user plan and final delivery remain
+separate decisions.
+
+## Stop intent and research quiescence
+
+A committed Stop closes admission immediately, while local Pi cancellation runs
+independently. Research returns `stopping` if its graph session is still active or
+any operation has a missing/unknown receipt; saving a tombstone cannot prove
+termination. Idle research returns explicit admission/quiescence evidence.
+
+Reconciliation observes the **same** original Stop with `observe_stop`, without
+creating a model, dispatching another call, refunding reservations, replacing its
+immutable receipt or creating another Run. Go appends the bounded observation to
+its event history. A late known result can establish quiescence; permanently
+unknown operations remain unresolved across interpreter/application restarts.
+This proves local research quiescence only, not cessation of provider generation
+or billing after an accepted request.

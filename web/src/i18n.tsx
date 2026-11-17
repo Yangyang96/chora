@@ -9,6 +9,8 @@ type I18n = { locale: Locale; setLocale: (locale: Locale) => void; t: (english: 
 const storageKey = 'chora.locale'
 
 const zhCN: Record<string, string> = {
+  "Budgeted isolated execution (unavailable)": "限额隔离执行（暂不可用）",
+  "Isolated workspace and bounded model calls without personal authentication. Verified model limits and environment are required.": "使用隔离工作区和限额模型调用，不继承个人认证。需先验证模型限额与执行环境。",
   "Research before coding": "先研究再编码",
   "Start research before coding": "开始研究，再确认编码",
   "Research public Chora documentation, then review the proposal before coding starts.": "研究公开的 Chora 文档，确认方案后再开始编码。",

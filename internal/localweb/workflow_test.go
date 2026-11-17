@@ -55,6 +55,10 @@ func (b *fixtureResearchBridge) Execute(_ context.Context, c domain.WorkflowComm
 		}
 	case "stop":
 		v["status"] = "stopped"
+		v["admission_closed"] = true
+		v["terminated"] = true
+		v["graph_idle"] = true
+		v["pending_operations"] = []any{}
 	case "bind_run":
 		var payload map[string]string
 		_ = json.Unmarshal([]byte(c.Payload), &payload)
@@ -531,6 +535,10 @@ func (b postgresResearchBridge) call(ctx context.Context, c any) (json.RawMessag
 }
 func (b postgresResearchBridge) Describe(ctx context.Context) (json.RawMessage, error) {
 	return b.call(ctx, map[string]string{"kind": "describe"})
+}
+func (b postgresResearchBridge) ObserveStop(ctx context.Context, c domain.WorkflowCommand) (json.RawMessage, error) {
+	c.Kind = "observe_stop"
+	return b.call(ctx, c)
 }
 func (b postgresResearchBridge) Execute(ctx context.Context, c domain.WorkflowCommand) (json.RawMessage, error) {
 	return b.call(ctx, c)

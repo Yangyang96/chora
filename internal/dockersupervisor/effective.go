@@ -19,11 +19,16 @@ type effectiveContainer struct {
 	Name   string `json:"Name"`
 	Image  string `json:"Image"`
 	Config struct {
-		User   string            `json:"User"`
-		Env    []string          `json:"Env"`
-		Labels map[string]string `json:"Labels"`
+		Entrypoint []string          `json:"Entrypoint"`
+		Cmd        []string          `json:"Cmd"`
+		User       string            `json:"User"`
+		Env        []string          `json:"Env"`
+		Labels     map[string]string `json:"Labels"`
 	} `json:"Config"`
 	HostConfig struct {
+		RestartPolicy struct {
+			Name string `json:"Name"`
+		} `json:"RestartPolicy"`
 		NetworkMode    string `json:"NetworkMode"`
 		ReadonlyRootfs bool   `json:"ReadonlyRootfs"`
 		NanoCPUs       int64  `json:"NanoCpus"`

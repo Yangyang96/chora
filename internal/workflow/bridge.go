@@ -54,6 +54,15 @@ func (p Process) Execute(ctx context.Context, c domain.WorkflowCommand) (json.Ra
 	return p.call(ctx, c)
 }
 
+// ObserveStop cannot dispatch research or mutate the original Stop receipt.
+func (p Process) ObserveStop(ctx context.Context, c domain.WorkflowCommand) (json.RawMessage, error) {
+	if c.Kind != "stop" {
+		return nil, errors.New("original stop required")
+	}
+	c.Kind = "observe_stop"
+	return p.call(ctx, c)
+}
+
 type limitedBuffer struct{ bytes.Buffer }
 
 func (b *limitedBuffer) Write(p []byte) (int, error) {

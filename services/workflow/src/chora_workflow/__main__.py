@@ -27,7 +27,9 @@ def main():
         ],
     )
     parser.add_argument("--batch-file", help="External shared acceptance ledger")
-    parser.add_argument("--authorization-file", help="Explicit small policy or audited continuation JSON")
+    parser.add_argument(
+        "--authorization-file", help="Explicit small policy or audited continuation JSON"
+    )
     parser.add_argument("--thread")
     parser.add_argument("--sample-type", help="Collection purpose; see PROTOCOL.md")
     parser.add_argument("--code-revision", help="Operator-supplied exact candidate commit SHA")

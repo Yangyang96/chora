@@ -12,23 +12,25 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Yangyang96/chora/internal/budgetchannel"
 	"github.com/Yangyang96/chora/internal/domain"
 )
 
 // The transport identity binds the implemented serializer/admission/dispatch
 // boundary. It is separate from the Pi runtime/catalog identity.
 //
-//go:embed workflow_transport.go workflow_dispatch.go workflow.go workflow_revision.go runs.go verified_retry.go
+//go:embed workflow_transport.go workflow_dispatch.go workflow.go workflow_revision.go runs.go verified_retry.go workflow_restricted.go workflow_stop_observation.go
 var workflowTransportSources embed.FS
 
 func WorkflowTransportIdentity() string {
 	var source bytes.Buffer
-	for _, name := range []string{"workflow_transport.go", "workflow_dispatch.go", "workflow.go", "workflow_revision.go", "runs.go", "verified_retry.go"} {
+	for _, name := range []string{"workflow_transport.go", "workflow_dispatch.go", "workflow.go", "workflow_revision.go", "runs.go", "verified_retry.go", "workflow_restricted.go", "workflow_stop_observation.go"} {
 		body, _ := workflowTransportSources.ReadFile(name)
 		source.WriteString(name + ":" + strconv.Itoa(len(body)) + ":")
 		source.Write(body)
 	}
 	source.WriteString(domain.WorkflowBudgetPolicyIdentity())
+	source.WriteString(budgetchannel.ProtocolIdentity())
 	return domain.WorkflowDigest(source.Bytes())
 }
 
@@ -37,33 +39,33 @@ func WorkflowTransportIdentity() string {
 // SDK retries, model fallback, reasoning or arbitrary upstream URL. Credentials
 // must be passed explicitly by an authorized composition; they never enter the
 // reservation, receipt, Pi process or error text.
-// Native Pi is NOT composed with this transport yet and remains refused.
+// The restricted provider source remains unavailable until renderer/billing and
+// independent runtime qualification are established.
 type WorkflowChatTransport struct {
-	service   *Service
-	key       string
-	roundTrip http.RoundTripper
+	service    *Service
+	inputBound func([]byte) (int, int, error)
+	key        string
+	roundTrip  http.RoundTripper
 }
 
-func NewWorkflowChatTransport(service *Service, explicitKey string, network http.RoundTripper) (*WorkflowChatTransport, error) {
+// Production has no transport or proof injection port. The renderer and billing
+// proofs have not been established, so Dispatch refuses before reserving/sending.
+func NewWorkflowChatTransport(service *Service, explicitKey string) (*WorkflowChatTransport, error) {
 	if service == nil || explicitKey == "" {
 		return nil, ErrInvalidCommand
 	}
-	if network == nil {
-		protocols := new(http.Protocols)
-		protocols.SetHTTP1(true)
-		// No reused connection or HTTP/2 retry machinery: one reservation can
-		// cause only one non-idempotent POST, even on a transport failure.
-		network = &http.Transport{Proxy: nil, Protocols: protocols, TLSHandshakeTimeout: 10 * time.Second, ResponseHeaderTimeout: 30 * time.Second, DisableKeepAlives: true}
-	}
-	// An injected connection is a trusted composition port (used for local HTTP
-	// fixtures). Production uses the direct, retry-free POST transport above.
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	network := &http.Transport{Proxy: nil, Protocols: protocols, TLSHandshakeTimeout: 10 * time.Second, ResponseHeaderTimeout: 30 * time.Second, DisableKeepAlives: true}
 	return &WorkflowChatTransport{service: service, key: explicitKey, roundTrip: network}, nil
 }
 
-// workflowChatEnvelope uses the same pinned text-only, nonthinking byte-envelope
-// premise as research v2, with a larger framing allowance for arbitrary Pi tool
-// schemas. Unknown renderer branches are refused. This premise still requires
-// independent renderer review; it is not a provider-side quota guarantee.
+var ErrBoundUnproven = errors.New("bound_unproven: exact input renderer and billing contract required")
+
+// workflowChatEnvelope is an UNPROVEN byte envelope for offline fixtures only.
+// It is never installed as the production inputBound strategy. A production
+// strategy must be bound to exact renderer and billing evidence; increasing
+// constants, observed usage, or account balance cannot provide that proof.
 func workflowChatEnvelope(raw []byte) (int, int, error) {
 	if len(raw) > 256<<10 {
 		return 0, 0, ErrInvalidCommand
@@ -290,14 +292,20 @@ func workflowTextSchema(raw json.RawMessage, depth int) bool {
 }
 
 func (transport *WorkflowChatTransport) Dispatch(ctx context.Context, workflowID string, runID domain.RunID, attemptID domain.AttemptID, requestID string, body []byte) (json.RawMessage, error) {
+	return transport.dispatch(ctx, workflowID, runID, attemptID, requestID, body, nil)
+}
+func (transport *WorkflowChatTransport) dispatch(ctx context.Context, workflowID string, runID domain.RunID, attemptID domain.AttemptID, requestID string, body []byte, bound *domain.RestrictedLaunch) (json.RawMessage, error) {
 	// Send the same canonical object we admit, including duplicate-key
 	// normalization; never validate one interpretation and dispatch another.
 	var admitted any
-	if len(body) > 256<<10 || json.Unmarshal(body, &admitted) != nil {
+	if len(body) > 256<<10 || !budgetchannel.JSONDepth(body, 32) || json.Unmarshal(body, &admitted) != nil {
 		return nil, ErrInvalidCommand
 	}
 	body, _ = json.Marshal(admitted)
-	input, output, err := workflowChatEnvelope(body)
+	if transport.inputBound == nil {
+		return nil, ErrBoundUnproven
+	}
+	input, output, err := transport.inputBound(body)
 	if err != nil {
 		return nil, err
 	}
@@ -308,7 +316,12 @@ func (transport *WorkflowChatTransport) Dispatch(ctx context.Context, workflowID
 	if w.PiAuthorization == nil || w.PiAuthorization.Model.Record().Provider != "deepseek" || w.PiAuthorization.Model.Record().ModelID != "deepseek-v4-pro" {
 		return nil, ErrUnauthorizedCommand
 	}
-	reservation, err := transport.service.ReserveWorkflowDispatch(ctx, workflowID, runID, attemptID, requestID, WorkflowTransportIdentity(), domain.WorkflowDigest(body), input, output)
+	if bound != nil {
+		if err = transport.service.restrictedReplay(ctx, *bound, requestID, domain.WorkflowDigest(body)); err != nil {
+			return nil, err
+		}
+	}
+	reservation, err := transport.service.reserveWorkflowDispatch(ctx, workflowID, runID, attemptID, requestID, WorkflowTransportIdentity(), domain.WorkflowDigest(body), input, output, bound)
 	if err != nil {
 		return nil, err
 	}
@@ -319,6 +332,19 @@ func (transport *WorkflowChatTransport) Dispatch(ctx context.Context, workflowID
 	}
 	dispatchCtx, cancel := context.WithDeadline(ctx, reservation.Deadline)
 	defer cancel()
+	if bound != nil {
+		current, e := transport.service.deps.Store.Reader().GetWorkflow(dispatchCtx, workflowID)
+		if e == nil {
+			e = restrictedLaunchAuthority(dispatchCtx, transport.service.deps.Store.Reader(), current, *bound)
+		}
+		if e != nil {
+			_ = finish(0, 0, false)
+			return nil, e
+		}
+		done := make(chan struct{})
+		go func() { defer close(done); transport.service.watchRestrictedDispatch(dispatchCtx, cancel, *bound) }()
+		defer func() { cancel(); <-done }()
+	}
 	request, err := http.NewRequestWithContext(dispatchCtx, http.MethodPost, "https://api.deepseek.com/chat/completions", bytes.NewReader(body))
 	if err != nil {
 		_ = finish(0, 0, false)

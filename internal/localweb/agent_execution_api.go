@@ -185,10 +185,14 @@ func (server *Server) switchAgentExecutionProfile(writer http.ResponseWriter, re
 // currentExecutionEnvironment identifies the two product execution choices.
 // Managed comparison profiles are not supported by the public local entry.
 func currentExecutionEnvironment(profile domain.AgentExecutionProfile) bool {
-	return profile == domain.AgentExecutionProfileTrustedLocal || profile == domain.AgentExecutionProfileIsolatedLocal
+	return profile == domain.AgentExecutionProfileTrustedLocal || profile == domain.AgentExecutionProfileIsolatedLocal || profile == domain.AgentExecutionProfileIsolatedBudgeted
 }
 
 func (server *Server) requireAgentExecutionRoute(writer http.ResponseWriter, request *http.Request, binding domain.AgentExecutionProfileBinding) bool {
+	if binding.Profile() == domain.AgentExecutionProfileIsolatedBudgeted {
+		writeError(writer, http.StatusServiceUnavailable, errors.New("Budgeted isolated execution is unavailable: verified model limits, billing bounds and runtime qualification are required"))
+		return false
+	}
 	if server.pathPiEnabled && !currentExecutionEnvironment(binding.Profile()) {
 		writeError(writer, http.StatusBadRequest, errors.New("this execution environment is unsupported; create a new Task with local execution or isolated execution"))
 		return false

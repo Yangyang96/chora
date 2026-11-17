@@ -147,6 +147,9 @@ func (server *Server) deliverWorkflowStop(ctx context.Context, w domain.Workflow
 				err = server.stopWorkflowResearch(stopCtx, w)
 			} else {
 				err = server.stopWorkflowRun(stopCtx, w)
+				if err == nil {
+					err = server.service.WorkflowPiDispatchQuiescent(stopCtx, w.ID)
+				}
 			}
 			result := "confirmed"
 			if err != nil {
@@ -184,10 +187,29 @@ func (server *Server) stopWorkflowResearch(ctx context.Context, w domain.Workflo
 		}
 		if c.Kind == "stop" {
 			var receipt struct {
-				Status string `json:"status"`
+				Status     string             `json:"status"`
+				Closed     bool               `json:"admission_closed"`
+				Terminated bool               `json:"terminated"`
+				Idle       bool               `json:"graph_idle"`
+				Pending    *[]json.RawMessage `json:"pending_operations"`
 			}
-			if json.Unmarshal(c.Receipt, &receipt) != nil || receipt.Status != "stopped" {
-				return errors.New("research termination not proven")
+			if json.Unmarshal(c.Receipt, &receipt) != nil {
+				return errors.New("invalid research stop receipt")
+			}
+			if receipt.Status != "stopped" || !receipt.Closed || !receipt.Terminated || !receipt.Idle || receipt.Pending == nil || len(*receipt.Pending) != 0 {
+				observer, ok := server.workflowBridge.(interface {
+					ObserveStop(context.Context, domain.WorkflowCommand) (json.RawMessage, error)
+				})
+				if !ok {
+					return errors.New("research termination not proven")
+				}
+				observation, e := observer.ObserveStop(ctx, c)
+				if e != nil {
+					return e
+				}
+				if e = server.service.RecordResearchStopObservation(ctx, c, observation); e != nil {
+					return e
+				}
 			}
 		}
 	}

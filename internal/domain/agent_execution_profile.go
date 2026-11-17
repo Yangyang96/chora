@@ -12,10 +12,13 @@ import (
 type AgentExecutionProfile string
 
 const (
-	AgentExecutionProfileMinimal       AgentExecutionProfile = "minimal"
-	AgentExecutionProfileStandard      AgentExecutionProfile = "standard"
-	AgentExecutionProfileTrustedLocal  AgentExecutionProfile = "trusted_local"
-	AgentExecutionProfileIsolatedLocal AgentExecutionProfile = "isolated_local"
+	AgentExecutionProfileMinimal          AgentExecutionProfile = "minimal"
+	AgentExecutionProfileStandard         AgentExecutionProfile = "standard"
+	AgentExecutionProfileTrustedLocal     AgentExecutionProfile = "trusted_local"
+	AgentExecutionProfileIsolatedLocal    AgentExecutionProfile = "isolated_local"
+	AgentExecutionProfileIsolatedBudgeted AgentExecutionProfile = "isolated_budgeted"
+	BudgetedPiRuntimeSource                                     = "public_pi_budgeted_v1"
+	BudgetedCapabilityPolicy                                    = "chora.isolated-budgeted.v1"
 
 	ManagedPiRuntimeSource       = "managed_pi_image"
 	PublicPiRuntimeSource        = "public_pi_image"
@@ -187,6 +190,7 @@ func SupportedAgentExecutionProfiles() []AgentExecutionProfile {
 		AgentExecutionProfileStandard,
 		AgentExecutionProfileTrustedLocal,
 		AgentExecutionProfileIsolatedLocal,
+		AgentExecutionProfileIsolatedBudgeted,
 	}
 }
 
@@ -201,6 +205,11 @@ func ParseAgentExecutionProfile(value string) (AgentExecutionProfile, error) {
 func AgentExecutionProfileContractFor(profile AgentExecutionProfile) (AgentExecutionProfileContract, error) {
 	contract := AgentExecutionProfileContract{Profile: profile, RuntimeAdapterID: "pi"}
 	switch profile {
+	case AgentExecutionProfileIsolatedBudgeted:
+		contract.RuntimeSource = BudgetedPiRuntimeSource
+		contract.ExecutionProvider = DockerExecutionProvider
+		contract.CapabilityPolicy = BudgetedCapabilityPolicy
+		contract.RequiresSandbox = true
 	case AgentExecutionProfileIsolatedLocal:
 		contract.RuntimeSource = PublicPiRuntimeSource
 		contract.ExecutionProvider = DockerExecutionProvider
