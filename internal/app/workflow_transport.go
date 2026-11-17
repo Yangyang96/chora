@@ -19,12 +19,12 @@ import (
 // The transport identity binds the implemented serializer/admission/dispatch
 // boundary. It is separate from the Pi runtime/catalog identity.
 //
-//go:embed workflow_transport.go workflow_dispatch.go workflow.go workflow_revision.go runs.go verified_retry.go workflow_restricted.go workflow_stop_observation.go
+//go:embed workflow_transport.go workflow_dispatch.go workflow.go workflow_revision.go runs.go verified_retry.go workflow_restricted.go workflow_stop_observation.go workflow_bound.go
 var workflowTransportSources embed.FS
 
 func WorkflowTransportIdentity() string {
 	var source bytes.Buffer
-	for _, name := range []string{"workflow_transport.go", "workflow_dispatch.go", "workflow.go", "workflow_revision.go", "runs.go", "verified_retry.go", "workflow_restricted.go", "workflow_stop_observation.go"} {
+	for _, name := range []string{"workflow_transport.go", "workflow_dispatch.go", "workflow.go", "workflow_revision.go", "runs.go", "verified_retry.go", "workflow_restricted.go", "workflow_stop_observation.go", "workflow_bound.go"} {
 		body, _ := workflowTransportSources.ReadFile(name)
 		source.WriteString(name + ":" + strconv.Itoa(len(body)) + ":")
 		source.Write(body)
@@ -44,6 +44,7 @@ func WorkflowTransportIdentity() string {
 type WorkflowChatTransport struct {
 	service    *Service
 	inputBound func([]byte) (int, int, error)
+	proofs     []workflowBoundStrategy
 	key        string
 	roundTrip  http.RoundTripper
 }
@@ -57,7 +58,7 @@ func NewWorkflowChatTransport(service *Service, explicitKey string) (*WorkflowCh
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)
 	network := &http.Transport{Proxy: nil, Protocols: protocols, TLSHandshakeTimeout: 10 * time.Second, ResponseHeaderTimeout: 30 * time.Second, DisableKeepAlives: true}
-	return &WorkflowChatTransport{service: service, key: explicitKey, roundTrip: network}, nil
+	return &WorkflowChatTransport{service: service, key: explicitKey, roundTrip: network, proofs: trustedWorkflowBoundStrategies()}, nil
 }
 
 var ErrBoundUnproven = errors.New("bound_unproven: exact input renderer and billing contract required")
@@ -302,12 +303,8 @@ func (transport *WorkflowChatTransport) dispatch(ctx context.Context, workflowID
 		return nil, ErrInvalidCommand
 	}
 	body, _ = json.Marshal(admitted)
-	if transport.inputBound == nil {
+	if transport.inputBound == nil && len(transport.proofs) == 0 {
 		return nil, ErrBoundUnproven
-	}
-	input, output, err := transport.inputBound(body)
-	if err != nil {
-		return nil, err
 	}
 	w, err := transport.service.deps.Store.Reader().GetWorkflow(ctx, workflowID)
 	if err != nil {
@@ -315,6 +312,15 @@ func (transport *WorkflowChatTransport) dispatch(ctx context.Context, workflowID
 	}
 	if w.PiAuthorization == nil || w.PiAuthorization.Model.Record().Provider != "deepseek" || w.PiAuthorization.Model.Record().ModelID != "deepseek-v4-pro" {
 		return nil, ErrUnauthorizedCommand
+	}
+	var input, output int
+	if transport.inputBound != nil {
+		input, output, err = transport.inputBound(body)
+	} else {
+		input, output, err = workflowProvenBound(transport.proofs, w.PiAuthorization, body)
+	}
+	if err != nil {
+		return nil, err
 	}
 	if bound != nil {
 		if err = transport.service.restrictedReplay(ctx, *bound, requestID, domain.WorkflowDigest(body)); err != nil {
