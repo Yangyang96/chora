@@ -37,6 +37,7 @@ func TestMetadataProbeGroupLifecycle(t *testing.T) {
 			}
 			executable := filepath.Join(root, "metadata")
 			pidPath, markerPath, scratchPath := filepath.Join(root, "child.pid"), filepath.Join(root, "late.marker"), filepath.Join(root, "scratch.path")
+			fixturePIDPath := filepath.Join(root, "fixture.pid")
 			delay := "1"
 			if mode == "timeout" {
 				delay = "7"
@@ -45,7 +46,7 @@ func TestMetadataProbeGroupLifecycle(t *testing.T) {
 			if mode == "parent_exit_redirected" || mode == "cancel" || mode == "timeout" {
 				child += " >/dev/null 2>&1"
 			}
-			script := "#!/bin/sh\npwd > " + scratchPath + "\n" + child + " &\necho $! > " + pidPath + "\necho metadata\n"
+			script := "#!/bin/sh\nprintf '%s\\n' \"$$\" > " + fixturePIDPath + "\npwd > " + scratchPath + "\n" + child + " &\necho $! > " + pidPath + "\necho metadata\n"
 			switch mode {
 			case "success":
 				script += "wait\n"
@@ -64,9 +65,20 @@ func TestMetadataProbeGroupLifecycle(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
-			done := make(chan error, 1)
-			go func() { _, err := Probe(ctx, executable, home, nil, "--version"); done <- err }()
+			type probeResult struct {
+				output string
+				err    error
+			}
+			done := make(chan probeResult, 1)
+			go func() {
+				out, err := Probe(ctx, executable, home, nil, "--version")
+				done <- probeResult{out, err}
+			}()
 			pid := waitFixturePID(t, pidPath)
+			before := observeFixtureProcess(pid)
+			fixtureRaw, fixtureReadErr := os.ReadFile(fixturePIDPath)
+			fixturePID, fixtureParseErr := strconv.Atoi(strings.TrimSpace(string(fixtureRaw)))
+			owner := observeFixtureProcess(fixturePID)
 			if mode == "cancel" || mode == "timeout" {
 				if err := syscall.Kill(pid, 0); err != nil {
 					t.Fatal("fixture not alive before stop", err)
@@ -75,11 +87,26 @@ func TestMetadataProbeGroupLifecycle(t *testing.T) {
 			if mode == "cancel" {
 				cancel()
 			}
-			var err error
+			var result probeResult
 			select {
-			case err = <-done:
+			case result = <-done:
 			case <-time.After(8 * time.Second):
 				t.Fatal("probe did not converge")
+			}
+			// Sample kill(0) immediately, before diagnostic queries can hide a race.
+			visibleErr := syscall.Kill(pid, 0)
+			after := observeFixtureProcess(pid)
+			sameProcess := before.Start != "" && before.Start == after.Start
+			ownedGroup := fixtureReadErr == nil && fixtureParseErr == nil && fixturePID > 1 &&
+				before.Presence == "present" && owner.Presence == "present" &&
+				before.PGID > 1 && before.PGID == owner.PGID
+			err := result.err
+			t.Logf("mode=%s error_chain=%v ErrProbe=%t ErrCleanup=%t ErrMetadataCleanup=%t canceled=%t deadline=%t output_bytes=%d fixture_pid=%d fixture_read_error=%v fixture_parse_error=%v owner=%+v before=%+v after=%+v same_start=%t owned_group_at_observation=%t kill0=%v",
+				mode, err, errors.Is(err, ErrProbe), errors.Is(err, ErrCleanup), errors.Is(err, ErrMetadataCleanup),
+				errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded), len(result.output),
+				fixturePID, fixtureReadErr, fixtureParseErr, owner, before, after, sameProcess, ownedGroup, visibleErr)
+			if (errors.Is(err, ErrCleanup) || errors.Is(err, ErrMetadataCleanup)) && result.output != "" {
+				t.Error("cleanup uncertainty returned metadata")
 			}
 			if mode == "success" && err != nil {
 				t.Fatal(err)
@@ -87,8 +114,10 @@ func TestMetadataProbeGroupLifecycle(t *testing.T) {
 			if (mode == "cancel" || mode == "timeout" || mode == "failure" || mode == "overflow") && !errors.Is(err, ErrProbe) {
 				t.Fatal("missing failure", err)
 			}
-			if syscall.Kill(pid, 0) == nil {
-				t.Fatal("descendant alive after probe returned", mode)
+			if !errors.Is(visibleErr, syscall.ESRCH) {
+				// Keep failure, but also collect the unchanged late-write/scope checks.
+				// Permission/query errors and zombies are not proof of absence.
+				t.Errorf("descendant absence unconfirmed after probe returned: mode=%s kill0=%v", mode, visibleErr)
 			}
 			if mode != "success" && mode != "failure" {
 				time.Sleep(1100 * time.Millisecond)
@@ -163,4 +192,13 @@ func TestMetadataScopeAndTemporaryBase(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Diagnostic evidence only. It never grants signal authority or treats an
+// unknown state, PID reuse, or a zombie as proof of absence.
+type fixtureProcessObservation struct {
+	PID, PPID, PGID int
+	Presence        string
+	Start, State    string
+	QueryError      string
 }
