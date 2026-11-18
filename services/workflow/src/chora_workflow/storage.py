@@ -13,6 +13,34 @@ from .protocol import digest
 from .observation import Execution, Sample, validate_observation
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS workflow_bridge_inputs (
+    thread_id text PRIMARY KEY,
+    input_digest text NOT NULL,
+    stopped boolean NOT NULL DEFAULT false
+);
+CREATE TABLE IF NOT EXISTS workflow_bridge_commands (
+    operation_id text PRIMARY KEY,
+    thread_id text NOT NULL,
+    kind text NOT NULL,
+    input_digest text NOT NULL,
+    payload text NOT NULL,
+    receipt jsonb
+);
+ALTER TABLE workflow_bridge_commands ADD COLUMN IF NOT EXISTS delivery_attempt bigint NOT NULL DEFAULT 0;
+CREATE TABLE IF NOT EXISTS workflow_bridge_deliveries (
+    operation_id text NOT NULL REFERENCES workflow_bridge_commands(operation_id),
+    delivery_attempt bigint NOT NULL,
+    worker_id text NOT NULL,
+    received_at double precision NOT NULL,
+    PRIMARY KEY(operation_id,delivery_attempt)
+);
+CREATE TABLE IF NOT EXISTS workflow_go_operations (
+    operation_id text PRIMARY KEY,
+    thread_id text NOT NULL REFERENCES workflow_bridge_inputs(thread_id),
+    input_digest text NOT NULL,
+    run_id text NOT NULL UNIQUE,
+    receipt jsonb NOT NULL
+);
 CREATE TABLE IF NOT EXISTS workflow_owners (
     thread_id text PRIMARY KEY,
     owner_epoch bigint NOT NULL DEFAULT 0,
@@ -133,7 +161,10 @@ class Journal:
     def check(self):
         with self.transaction() as conn:
             if conn.execute(
-                "SELECT stopped FROM workflow_owners WHERE thread_id=%s", (self.thread,)
+                "SELECT (stopped OR EXISTS (SELECT 1 FROM workflow_bridge_inputs b "
+                "WHERE b.thread_id=workflow_owners.thread_id AND b.stopped)) AS stopped "
+                "FROM workflow_owners WHERE thread_id=%s",
+                (self.thread,),
             ).fetchone()["stopped"]:
                 raise Stopped("stop requested")
 
@@ -211,7 +242,10 @@ class Journal:
         key = digest(inputs)
         with self.transaction() as conn:
             if conn.execute(
-                "SELECT stopped FROM workflow_owners WHERE thread_id=%s", (self.thread,)
+                "SELECT (stopped OR EXISTS (SELECT 1 FROM workflow_bridge_inputs b "
+                "WHERE b.thread_id=workflow_owners.thread_id AND b.stopped)) AS stopped "
+                "FROM workflow_owners WHERE thread_id=%s",
+                (self.thread,),
             ).fetchone()["stopped"]:
                 raise Stopped("stop requested")
             row = conn.execute(

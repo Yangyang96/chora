@@ -37,6 +37,7 @@ import (
 	storecontract "github.com/Yangyang96/chora/internal/store"
 	"github.com/Yangyang96/chora/internal/store/sqlite"
 	"github.com/Yangyang96/chora/internal/taskdelivery"
+	"github.com/Yangyang96/chora/internal/workflow"
 	"github.com/google/uuid"
 )
 
@@ -58,6 +59,8 @@ type retryDeltaEnvelope struct {
 }
 
 type Server struct {
+	workflowMu       sync.Mutex
+	workflowBridge   workflow.Bridge
 	delegationMu     sync.Mutex
 	gracefulShutdown bool
 	monitorMu        sync.Mutex
@@ -146,6 +149,8 @@ type piRuntimeStatus struct {
 }
 
 type ProductOptions struct {
+	// Non-secret explicit candidate; no provider credentials or discovery.
+	BudgetedCandidate      *BudgetedCandidate
 	GracefulShutdown       bool
 	WorkbenchSourceRoot    string
 	PackagedIsolatedHelper string
@@ -371,6 +376,12 @@ func newServer(ctx context.Context, databasePath, webRoot string, logger *log.Lo
 	store, err := sqlite.Open(ctx, databasePath)
 	if err != nil {
 		return nil, err
+	}
+	// A process channel is never restored across app lifetimes. Revocation
+	// preserves all reservations/results; recovery cannot mint a fresh balance.
+	if err = store.WithinWriteTx(ctx, func(tx storecontract.WriteTx) error { return tx.RevokeRestrictedChannels(ctx) }); err != nil {
+		store.Close()
+		return nil, fmt.Errorf("revoke stale restricted channels: %w", err)
 	}
 	absoluteWebRoot, err := filepath.Abs(webRoot)
 	if err != nil {
@@ -655,6 +666,16 @@ func newServer(ctx context.Context, databasePath, webRoot string, logger *log.Lo
 		roomCreationMode = app.RoomCreationProjectOnly
 	}
 	var server *Server
+	envelopeResolver := newBoundSpecCodingEnvelopeResolver(store.Reader(), installedSpecCodingEnvelope, pathPiDiscovery, composedPi.isolatedSource)
+	if options.BudgetedCandidate != nil {
+		source, sourceErr := agentpi.NewBudgetedSource(options.BudgetedCandidate.Identity)
+		if sourceErr != nil {
+			cancel()
+			_ = store.Close()
+			return nil, sourceErr
+		}
+		envelopeResolver.budgetedSource = source
+	}
 	service := app.NewService(app.Dependencies{
 		RoomCreationMode:            roomCreationMode,
 		Lifecycle:                   runtimeContext,
@@ -680,7 +701,7 @@ func newServer(ctx context.Context, databasePath, webRoot string, logger *log.Lo
 		TaskDeliveryGit:             taskdelivery.Git{},
 		TaskDeliveryHosting:         taskdelivery.NewGitHub(),
 		InstalledSpecCodingEnvelope: installedSpecCodingEnvelope,
-		SpecCodingEnvelopeResolver:  newBoundSpecCodingEnvelopeResolver(store.Reader(), installedSpecCodingEnvelope, pathPiDiscovery, composedPi.isolatedSource),
+		SpecCodingEnvelopeResolver:  envelopeResolver,
 		RepositorySource:            options.RepositorySource,
 		DataRoot:                    options.DataRoot,
 		AutoStartVerification:       true,
@@ -699,6 +720,13 @@ func newServer(ctx context.Context, databasePath, webRoot string, logger *log.Lo
 		pathPiEnabled:      options.PathPiEnabled,
 		piDiscoveryOptions: discoveryOptions,
 		piInstaller:        installer, piInstalledSelection: installedSelection, piInstallationBlocked: installationBlocked,
+	}
+	if options.BudgetedCandidate != nil {
+		if err = server.installBudgetedSource(runtimeContext, *options.BudgetedCandidate); err != nil {
+			cancel()
+			_ = store.Close()
+			return nil, fmt.Errorf("compose restricted source: %w", err)
+		}
 	}
 	server.appPreviewWorkspaces, _ = resourceWorkspaces.(*taskResourceWorkspaceManager)
 	server.o4Evidence, err = newO4EvidenceBoundary(options.O4Evidence, composedPi.dockerSupervisor)
@@ -775,6 +803,13 @@ func newServer(ctx context.Context, databasePath, webRoot string, logger *log.Lo
 		return nil, fmt.Errorf("recover delegations: %w", err)
 	}
 	automaticRetryContext, automaticRetryCancel := context.WithCancel(runtimeContext)
+	if python := os.Getenv("CHORA_WORKFLOW_PYTHON"); python != "" {
+		server.workflowBridge = workflow.Process{Python: python}
+	}
+	// Local deadline/Stop authority still runs when research configuration is
+	// absent at restart. It does not need a PG connection to cancel an owned Pi.
+	server.automaticRetryWG.Add(1)
+	go func() { defer server.automaticRetryWG.Done(); server.runWorkflowDispatcher(automaticRetryContext) }()
 	server.automaticRetryCancel = automaticRetryCancel
 	server.automaticRetryWG.Add(1)
 	go func() {
@@ -825,6 +860,9 @@ func restorePiStartupRoutes(ctx context.Context, reader storecontract.Reader, su
 			continue
 		}
 		binding := candidate.Attempt.AgentExecutionProfileBinding()
+		if binding.Profile() == domain.AgentExecutionProfileIsolatedBudgeted {
+			continue
+		}
 		if !binding.Bound() {
 			return nil, fmt.Errorf("persisted Pi session %s has no execution-provider binding", session.ID)
 		}
@@ -901,6 +939,13 @@ func closeIfPresent(closer interface{ Close() error }) error {
 func (server *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/status", server.getStatus)
+	mux.HandleFunc("GET /api/workflows/availability", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, map[string]bool{"enabled": server.workflowBridge != nil})
+	})
+	mux.HandleFunc("GET /api/tasks/{taskID}/workflow", server.taskWorkflow)
+	mux.HandleFunc("POST /api/tasks/{taskID}/workflow", server.taskWorkflow)
+	mux.HandleFunc("POST /api/projects/{projectID}/workflows/{workflowID}/{action}", server.workflowCommand)
+	mux.HandleFunc("GET /api/projects/{projectID}/workflows/{workflowID}/events", server.workflowEvents)
 	mux.HandleFunc("GET /api/isolated-local", server.getIsolatedLocal)
 	mux.HandleFunc("POST /api/isolated-local/prepare", server.prepareIsolatedLocal)
 	mux.HandleFunc("GET /api/pi/discovery", server.getPiDiscovery)
@@ -2938,7 +2983,13 @@ func (server *Server) retryRun(writer http.ResponseWriter, request *http.Request
 		return
 	}
 	blockedPreparedRetry := run.State() == domain.RunStateReady && automaticRetry != nil && automaticRetry.State == app.AutomaticRetryBlocked
-	if run.State() != domain.RunStateRevisionRequired && !recoveryRetry && !cancelRetry && !blockedPreparedRetry {
+	_, workflowErr := reader.GetTaskWorkflow(request.Context(), run.TaskID())
+	if workflowErr != nil && !errors.Is(workflowErr, storecontract.ErrNotFound) {
+		writeStoreError(writer, workflowErr)
+		return
+	}
+	preparedWorkflowRevision := run.State() == domain.RunStateReady && workflowErr == nil && run.CurrentAttemptNumber() > 1
+	if run.State() != domain.RunStateRevisionRequired && !recoveryRetry && !cancelRetry && !blockedPreparedRetry && !preparedWorkflowRevision {
 		writeError(writer, http.StatusConflict, errors.New("run is not ready for retry"))
 		return
 	}
@@ -2953,6 +3004,33 @@ func (server *Server) retryRun(writer http.ResponseWriter, request *http.Request
 	}
 	if err := server.stopTaskAppPreviews(request.Context(), run.TaskID()); err != nil {
 		writeError(writer, http.StatusConflict, err)
+		return
+	}
+	if preparedWorkflowRevision {
+		prepared, e := server.service.RecoverPreparedWorkflowRevision(request.Context(), app.PrepareRetryRequest{CommandMeta: childCommandMeta(meta, "recover-workflow-revision"), RunID: run.ID(), ExpectedVersion: run.Version(), Instructions: input.Instructions, ModelBinding: modelBinding})
+		if e != nil {
+			writeWorkflowError(writer, e)
+			return
+		}
+		if e = server.bindAndPublishManagedAttempt(request.Context(), prepared.Attempt); e != nil {
+			writeMutationConflictError(writer, e)
+			return
+		}
+		started, e := server.startManagedAttempt(request.Context(), prepared.Attempt, app.StartAttemptRequest{CommandMeta: childCommandMeta(meta, "start-workflow-revision"), RunID: run.ID(), ExpectedVersion: prepared.Run.Version(), Mode: app.StartFresh})
+		if e != nil || started.Session == nil || !started.Session.Identity.Valid() {
+			if e == nil {
+				e = errors.New("workflow revision launch unresolved")
+			}
+			writeMutationError(writer, 500, e)
+			return
+		}
+		server.startRuntimeMonitor(prepared.Attempt.AdapterID(), started.Run.ID(), started.Session.ID, started.Session.Identity)
+		view, e := server.runView(request.Context(), run.ID())
+		if e != nil {
+			writeStoreError(writer, e)
+			return
+		}
+		writeJSON(writer, 200, view)
 		return
 	}
 	if blockedPreparedRetry {

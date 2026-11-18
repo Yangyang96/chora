@@ -1,8 +1,9 @@
 import { isDelegationPlanningTask } from './delegationPlanning'
+import { ResearchWorkflow } from './ui/ResearchWorkflow'
 import { TaskDelegation } from './ui/TaskDelegation'
 import { ActionButton } from './ui/ActionButton'
 import { automaticRetryActive } from './taskStatus'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { api, commandKey, message } from './api'
 import { LanguageProvider, useI18n } from './i18n'
@@ -69,6 +70,9 @@ function NewAppContent() {
   const [task, setTask] = useState<TaskRef | null>(null)
   const [view, setView] = useState<'home' | 'createRoom' | 'newTask' | 'addProject'>('home')
   const [busy, setBusy] = useState(false)
+  const [researchManagedTask, setResearchManagedTask] = useState('')
+  const researchTaskId = route.kind === 'task' || route.kind === 'run' ? route.taskID : ''
+  const onResearchManaged = useCallback((managed: boolean) => setResearchManagedTask(managed ? researchTaskId : ''), [researchTaskId])
   const [error, setError] = useState('')
   const [initialRequirement, setInitialRequirement] = useState('')
   const [directoryRefresh, setDirectoryRefresh] = useState(0)
@@ -309,7 +313,7 @@ function NewAppContent() {
   // Plan default-pass: submit the generated draft, accept the revision, and
   // start the Run automatically so the user lands directly on the execution
   // stream (the plan remains viewable through the audit details).
-  async function autoRun(task: TaskRef, signal?: AbortSignal, synthesize = false): Promise<RunView | null> {
+  async function autoRun(task: TaskRef, signal?: AbortSignal, synthesize = false, researchBeforeCoding = false): Promise<RunView | null> {
     let current = task
     const hasResourceSnapshot = Boolean((current as ResourceTaskRef).resourceSnapshot)
     if (current.executionProfile === 'real_spec_coding' && !hasResourceSnapshot && current.worktree?.state !== 'ready') {
@@ -338,6 +342,10 @@ function NewAppContent() {
     }
     const acceptance = current.planning?.acceptance
     if (!acceptance) return null
+    if (researchBeforeCoding && routeProject) {
+      await api(`/api/tasks/${encodeURIComponent(current.id)}/workflow`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': `research-${current.id}` }, body: JSON.stringify({ projectId: routeProject.id, question: current.goal }), signal })
+      return null
+    }
     if (isDelegationPlanningTask(current.goal)) {
       await api<unknown>(`/api/tasks/${encodeURIComponent(current.id)}/delegation/planning`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': commandKey('start-planning-delegation') }, body: JSON.stringify(synthesize ? { synthesize: true } : {}), signal,
@@ -493,7 +501,8 @@ function NewAppContent() {
       }
       setDirectoryRefresh((n) => n + 1)
       navigate(`/rooms/${encodeURIComponent(roomID)}/tasks/${encodeURIComponent(created.id)}`)
-      const started = await autoRun(created, controller.signal, context?.synthesize)
+      const started = await autoRun(created, controller.signal, context?.synthesize, context?.researchBeforeCoding)
+      setDirectoryRefresh((n) => n + 1)
       if (started) navigate(`/rooms/${encodeURIComponent(roomID)}/tasks/${encodeURIComponent(created.id)}/runs/${encodeURIComponent(started.id)}`)
     } catch (reason) {
       if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : String(reason))
@@ -789,7 +798,7 @@ function NewAppContent() {
         {unsupportedTaskProfile ? <>
           <p role="status">{t('This task selected a retired execution environment, which this local workbench cannot start. Keep this task and reuse its requirement to explicitly choose an available environment for a new task.')}</p>
           <ActionButton type="button" className="btn-primary" disabled={busy} disabledReason={'Wait for the current operation to finish.'} onClick={recoverExecutionChoice}>{t('Reuse requirement and choose execution mode')}</ActionButton>
-        </> : task && !isDelegationPlanningTask(task.goal) && <ActionButton type="button" className="btn-primary" disabled={busy || frozenTaskProfileUnavailable || workBlocked} disabledReason={busy ? 'Wait for the current operation to finish.' : frozenTaskProfileUnavailable ? 'The selected execution environment is not ready.' : 'Restore the Project and Room before starting new work.'} onClick={() => void startExistingTask(task)}>{t(isDelegationPlanningTask(task.goal) ? 'Start research delegation' : 'Start Run')}</ActionButton>}
+        </> : task && researchManagedTask !== task.id && !isDelegationPlanningTask(task.goal) && <ActionButton type="button" className="btn-primary" disabled={busy || frozenTaskProfileUnavailable || workBlocked} disabledReason={busy ? 'Wait for the current operation to finish.' : frozenTaskProfileUnavailable ? 'The selected execution environment is not ready.' : 'Restore the Project and Room before starting new work.'} onClick={() => void startExistingTask(task)}>{t(isDelegationPlanningTask(task.goal) ? 'Start research delegation' : 'Start Run')}</ActionButton>}
         {workBlocked && <p role="status">{t('New work is blocked by the current Project or Room state.')}</p>}
         {task?.agentExecutionProfile && <p>{t('Execution environment')} · <AgentExecutionDisclosure profile={task.agentExecutionProfile} /></p>}
       </div>
@@ -816,6 +825,7 @@ function NewAppContent() {
       </section>}
       {localWorkbench && (route.kind === 'directory' || view === 'newTask') && <PiInstallation existing={piDiscovery.phase === 'loaded' ? piDiscovery.discovery : undefined} onChanged={() => { void api<PiDiscoveryView>('/api/pi/discovery').then(discovery => setPiDiscovery({phase:'loaded',discovery})).catch(() => setPiDiscovery({phase:'error'})) }} />}
       {main}
+      {(route.kind === 'task' || route.kind === 'run') && <ResearchWorkflow key={`research-${route.taskID}`} taskId={route.taskID} roomId={route.roomID} onNavigate={navigate} refreshKey={directoryRefresh} onManaged={onResearchManaged} />}
       {(route.kind === 'task' || route.kind === 'run') && (routeRun?.outcomeKind === 'document' || (task as ResourceTaskRef | null)?.resourceSnapshot?.outcomeKind === 'document') && <TaskDelegation key={route.taskID} taskId={route.taskID} roomId={route.roomID} onNavigate={navigate} planningTask={isDelegationPlanningTask(task?.goal ?? routeRun?.task.goal)} starting={busy || frozenTaskProfileUnavailable || workBlocked} onStartPlanning={route.kind === 'task' && task ? (synthesize) => startExistingTask(task, synthesize) : undefined} />}
     </AppShell>
   )

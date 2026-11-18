@@ -5,6 +5,8 @@ import os
 import time
 from urllib.parse import urlsplit
 
+import httpx
+
 from openai import (
     OpenAI,
     APIConnectionError,
@@ -43,6 +45,27 @@ class SDKModel:
         self.batch = None
         self.batch_context = {}
         if self.deepseek:
+            # The pinned SDK reads these even with an explicit key and URL.
+            # Check presence only, before opening the ledger or any client;
+            # empty values are unsupported too. Never inspect their contents
+            # or temporarily mutate the process-wide environment.
+            # Snapshot keys: os.environ's mapping membership can fetch values.
+            present = frozenset(os.environ)
+            unsupported = [
+                name
+                for name in (
+                    "OPENAI_ADMIN_KEY",
+                    "OPENAI_ORG_ID",
+                    "OPENAI_PROJECT_ID",
+                    "OPENAI_WEBHOOK_SECRET",
+                    "OPENAI_CUSTOM_HEADERS",
+                )
+                if name in present
+            ]
+            if unsupported:
+                raise ValueError(
+                    "unsupported SDK environment configuration: " + ", ".join(unsupported)
+                )
             if (
                 endpoint.scheme != "https"
                 or endpoint.path.rstrip("/") not in {"", "/v1"}
@@ -67,16 +90,32 @@ class SDKModel:
             "profile": "deepseek.nonthinking.v1" if self.deepseek else "openai.compatible.v1",
             "thinking": "disabled" if self.deepseek else "provider_default",
             "output_parameter": "max_tokens" if self.deepseek else "max_completion_tokens",
-            "max_output_tokens": 2048,
+            "max_output_tokens": self.batch.identity["policy"]["max_output_tokens"]
+            if self.batch
+            else 2048,
             "tool_choice": "required",
             "stream": False,
             "sdk_retries": 0,
             "graph_retries": self.retry_limit,
             "acceptance_batch": self.batch.identity if self.batch else None,
         }
-        self.client = OpenAI(
-            base_url=os.environ[names[0]], api_key=os.environ[names[2]], max_retries=0
-        )
+        client_options = {
+            "base_url": os.environ[names[0]],
+            "api_key": os.environ[names[2]],
+            "max_retries": 0,
+        }
+        if self.deepseek:
+            # SDK defaults can follow redirects even when SDK retries are zero.
+            # Pin one direct transport entry per reservation; do not discover
+            # proxies or credentials from the operator's environment.
+            client_options["http_client"] = httpx.Client(
+                trust_env=False,
+                follow_redirects=False,
+                transport=httpx.HTTPTransport(retries=0),
+            )
+            self.identity["physical_transport"] = "httpx.direct.no-redirect.v1"
+            self.identity["sdk_environment_policy"] = "reject-ambient-config.v1"
+        self.client = OpenAI(**client_options)
 
     def bind_workflow(self, thread, code_revision):
         if self.batch:
@@ -93,7 +132,9 @@ class SDKModel:
         reservation = None
         if self.deepseek:
             options.update(
-                max_tokens=min(2048, max_tokens), thinking={"type": "disabled"}, stream=False
+                max_tokens=min(self.batch.identity["policy"]["max_output_tokens"], max_tokens),
+                thinking={"type": "disabled"},
+                stream=False,
             )
             try:
                 reservation = self.batch.reserve(options, **self.batch_context)

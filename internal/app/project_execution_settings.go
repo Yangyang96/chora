@@ -153,5 +153,5 @@ func (s *Service) UpdateProjectExecutionSettings(ctx context.Context, request Up
 }
 
 func currentProjectExecutionProfile(profile domain.AgentExecutionProfile) bool {
-	return profile == domain.AgentExecutionProfileTrustedLocal || profile == domain.AgentExecutionProfileIsolatedLocal
+	return profile == domain.AgentExecutionProfileTrustedLocal || profile == domain.AgentExecutionProfileIsolatedLocal || profile == domain.AgentExecutionProfileIsolatedBudgeted
 }

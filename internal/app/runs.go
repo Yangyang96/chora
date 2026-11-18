@@ -97,6 +97,22 @@ func (s *Service) prepare(ctx context.Context, meta CommandMeta, runID domain.Ru
 		if run.Version() != expected {
 			return storecontract.ErrVersionConflict
 		}
+		var workflowRevision *domain.WorkflowExecution
+		if retry != nil {
+			workflowRevision, err = authorizeWorkflowRevision(ctx, tx, run, meta, retry.ModelBinding, retry.Automatic, false)
+			if err != nil {
+				return err
+			}
+		} else if w, e := tx.GetTaskWorkflow(ctx, run.TaskID()); e == nil {
+			if w.RunID != run.ID() || w.ActorID != meta.ActorID {
+				return ErrUnauthorizedCommand
+			}
+			if err = workflowRunAuthority(ctx, tx, w); err != nil {
+				return err
+			}
+		} else if !errors.Is(e, storecontract.ErrNotFound) {
+			return e
+		}
 		task, err := tx.GetTask(ctx, run.TaskID())
 		if err != nil {
 			return err
@@ -162,7 +178,7 @@ func (s *Service) prepare(ctx context.Context, meta CommandMeta, runID domain.Ru
 			}
 			// Fresh recovery must not inherit the failed Pi session identity.
 			// Retain the predecessor link for provenance and explicit resume paths.
-			freshRetry := retry.ModelBinding.Configured() && retry.ModelBinding.Record().ModelIdentity != old.ModelBinding().Record().ModelIdentity || retry.Automatic || old.AdapterID() == "pi" && ((run.State() == domain.RunStateRecoveryRequired && old.State() != domain.AttemptStateInterrupted) || old.AgentExecutionProfileBinding().ExecutionProvider() != domain.TrustedHostExecutionProvider)
+			freshRetry := workflowRevision != nil || retry.ModelBinding.Configured() && retry.ModelBinding.Record().ModelIdentity != old.ModelBinding().Record().ModelIdentity || retry.Automatic || old.AdapterID() == "pi" && ((run.State() == domain.RunStateRecoveryRequired && old.State() != domain.AttemptStateInterrupted) || old.AgentExecutionProfileBinding().ExecutionProvider() != domain.TrustedHostExecutionProvider)
 			if sessionErr == nil && !freshRetry {
 				externalSession = session.ExternalReference
 			}
@@ -212,6 +228,9 @@ func (s *Service) prepare(ctx context.Context, meta CommandMeta, runID domain.Ru
 		if err := tx.InsertAttempt(ctx, attempt); err != nil {
 			return err
 		}
+		if err = recordWorkflowRevision(ctx, tx, workflowRevision, attempt); err != nil {
+			return err
+		}
 		if synthesis != nil {
 			if e := tx.BindSynthesisAttempt(ctx, run.TaskID(), attempt.ID()); e != nil {
 				return e
@@ -242,7 +261,7 @@ func (s *Service) prepare(ctx context.Context, meta CommandMeta, runID domain.Ru
 			}
 			persistRetryMarker = state.enabled
 		}
-		if retry != nil && persistRetryMarker {
+		if retry != nil && persistRetryMarker && workflowRevision == nil {
 			eventType := automaticRetryResetEvent
 			payload := automaticRetryEvent{Type: eventType, RunID: runID.String(), AttemptID: attempt.ID().String(), MaxRetries: AutomaticRetryMaxRetries}
 			if retry.Automatic {
@@ -384,6 +403,19 @@ func (s *Service) StartAttempt(ctx context.Context, request StartAttemptRequest)
 		if err != nil {
 			return err
 		}
+		if w, e := tx.GetTaskWorkflow(ctx, run.TaskID()); e == nil {
+			if request.Mode != StartFresh {
+				return ErrUnauthorizedCommand
+			}
+			if w.RunID != run.ID() || w.ActorID != request.ActorID {
+				return ErrUnauthorizedCommand
+			}
+			if e = workflowBoundRunAuthority(ctx, tx, w); e != nil {
+				return e
+			}
+		} else if !errors.Is(e, storecontract.ErrNotFound) {
+			return e
+		}
 		if child, e := tx.GetDelegationChild(ctx, run.TaskID()); e == nil {
 			d, e := tx.GetTaskDelegation(ctx, child.ParentTaskID)
 			if e != nil {
@@ -402,6 +434,13 @@ func (s *Service) StartAttempt(ctx context.Context, request StartAttemptRequest)
 		attempt, err := tx.GetCurrentAttempt(ctx, request.RunID)
 		if err != nil {
 			return err
+		}
+		if w, e := tx.GetTaskWorkflow(ctx, run.TaskID()); e == nil {
+			if e = workflowAttemptAuthority(ctx, tx, w, attempt); e != nil {
+				return e
+			}
+		} else if !errors.Is(e, storecontract.ErrNotFound) {
+			return e
 		}
 		if synthesis, e := synthesisForRun(ctx, tx, run); e != nil {
 			return e
@@ -521,6 +560,10 @@ func (s *Service) StartAttempt(ctx context.Context, request StartAttemptRequest)
 	var fingerprint execution.RuntimeFingerprint
 	var invocation execution.Invocation
 	var executionContract []byte
+	researchContext, err := s.workflowInstructions(ctx, result.Run.TaskID())
+	if err != nil {
+		return result, err
+	}
 	currentSession, err := s.deps.Store.Reader().GetRuntimeSession(ctx, result.Session.ID)
 	if err != nil {
 		return result, err
@@ -539,6 +582,7 @@ func (s *Service) StartAttempt(ctx context.Context, request StartAttemptRequest)
 		preparation, prepareErr := preparer.PrepareBoundStart(ctx, execution.StartRequest{
 			Run: result.Run, Attempt: result.Attempt, SnapshotDocument: snapshot.CanonicalJSON(),
 			ExecutionContractDocument: executionContract, WorkspaceRoot: executionRoot, LaunchToken: launch,
+			ResearchContext: researchContext,
 		})
 		if prepareErr != nil {
 			return s.recordStartOutcome(ctx, result, key, execution.StartOutcome{Kind: execution.StartProvenNoChild, LaunchToken: launch, Diagnostic: prepareErr.Error()}, "", execution.RuntimeFingerprint{})
@@ -592,7 +636,7 @@ func (s *Service) StartAttempt(ctx context.Context, request StartAttemptRequest)
 				return s.recordStartOutcome(ctx, result, key, execution.StartOutcome{Kind: execution.StartProvenNoChild, LaunchToken: launch, Diagnostic: "registered Spec Coding execution authority unavailable"}, "", fingerprint)
 			}
 		}
-		invocation, err = adapter.PrepareStart(ctx, execution.StartRequest{Run: result.Run, Attempt: result.Attempt, SnapshotDocument: snapshot.CanonicalJSON(), ExecutionContractDocument: executionContract, WorkspaceRoot: executionRoot, LaunchToken: launch})
+		invocation, err = adapter.PrepareStart(ctx, execution.StartRequest{ResearchContext: researchContext, Run: result.Run, Attempt: result.Attempt, SnapshotDocument: snapshot.CanonicalJSON(), ExecutionContractDocument: executionContract, WorkspaceRoot: executionRoot, LaunchToken: launch})
 	}
 	if err != nil {
 		return s.recordStartOutcome(ctx, result, key, execution.StartOutcome{Kind: execution.StartProvenNoChild, LaunchToken: launch, Diagnostic: err.Error()}, "", fingerprint)
@@ -605,6 +649,10 @@ func (s *Service) StartAttempt(ctx context.Context, request StartAttemptRequest)
 		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), domain.RepositoryMetadataTimeout)
 		defer cancel()
 		return s.recordStartOutcome(cleanupCtx, result, key, execution.StartOutcome{Kind: execution.StartProvenNoChild, LaunchToken: launch, Diagnostic: "start cancelled before provider launch"}, "", fingerprint)
+	}
+	invocation, err = s.recordWorkflowLaunch(ctx, result.Run, result.Attempt, invocation, fingerprint)
+	if err != nil {
+		return s.recordStartOutcome(ctx, result, key, execution.StartOutcome{Kind: execution.StartProvenNoChild, LaunchToken: launch, Diagnostic: "workflow launch authority or identity unavailable"}, "", fingerprint)
 	}
 	outcome := s.deps.Supervisor.Start(ctx, invocation, sink)
 	if !validStartOutcome(outcome, launch) {

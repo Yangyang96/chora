@@ -1,0 +1,201 @@
+# 先研究再编码
+
+[English](research-workflow.md)
+
+这项可选开发功能会研究公开的 Chora 文档，展示带来源的方案，等待任务所有者确认或
+补充编码要求，再为原 Task 创建一个 Pi Run。检查、结果评审和显式交付继续使用工作台
+原流程。接受研究方案不等于接受代码，也不授权发布。未选择研究时仍使用默认 Pi 流程。
+
+**编码通路当前保持关闭。** 研究管理的原生 Pi 启动会被拒绝，直到受限提供商 transport
+完成组合并通过独立验证。确认方案可以创建 Run，但不会因此启动 Pi。离线生命周期夹具
+不认证原生 Pi 的费用边界。普通 Pi 路径不受影响。
+
+## 配置与使用
+
+按[Worker 配置说明](../services/workflow/README.md)安装锁定版本的 Python 包，
+使用 Python 3.12 或 3.13，以及临时或明确配置的 UTF-8 PostgreSQL 数据库。执行说明中的
+`init-db` 管理命令以添加 checkpoint 和桥接表；Worker 不会自动迁移数据库。
+工作台打开 SQLite 时升级到迁移 0051（0050 的研究工作流及 0051 的受限通道记录）。升级前备份数据库；其他功能分支迁移过的数据库
+不能直接替代本功能的迁移历史。
+
+将 `CHORA_WORKFLOW_PYTHON` 设为已安装 `chora_workflow` 的 Python 解释器绝对路径。
+向工作台进程提供说明中的 `CHORA_WORKFLOW_DATABASE_URL`、模型及提供商环境配置。
+`CHORA_WORKFLOW_CODE_REVISION` 应为实际部署的 40 位 commit，
+`CHORA_WORKFLOW_SAMPLE_TYPE` 应如实标记采集用途。凭据仅留在操作者环境中，不写入
+仓库、浏览器请求或诊断。已有验收账本和过期授权不构成新模型调用预算。
+
+创建仓库 Task 时选择“先研究再编码”。工作台激活原有计划，冻结需求及已接受的上下文，
+启动研究而不是 Pi。已有 Task 在计划已激活、尚无 Run 时也提供“开始研究，再确认编码”。
+首版仅检索固定版本的公开 Chora 文档。任务私有材料仍冻结在 Go 执行快照中，不上传给研究。
+本阶段未启用完整 RAG、私有来源工具或并发研究 Worker。
+
+检查摘要和来源链接，可补充编码要求，然后选择“确认并编码”或“拒绝方案”。无答案的方案
+不能确认编码。补充要求仍受任务原执行契约约束。“打开编码结果”进入原检查与人工评审流程。
+刷新待确认页面仍保留同一个 gate。图、样本、预算和操作元数据仅在诊断中展示，主进度显示
+业务状态。
+
+## 恢复与边界
+
+Go 权威管理项目/操作者授权、任务快照、人工决定、Run、Attempt、工作区和交付；Python
+管理图推进和 checkpoint。一个 Task 只有一个调度器，旧委派与自动重试不推进研究管理的
+Task。M1 只允许单研究 Worker，不提供自动多 Worker 租约或高可用承诺。
+
+SQLite 先提交命令再投递，Python 将 inbox 和回执保存在 PG。
+稳定的 `operation_id` 和载荷 `input_digest` 不随解释器、投递 attempt 改变。
+Worker 身份、投递 attempt 与图 owner epoch 分别记录，不改变操作身份。
+图操作保留 M0 journal 和 checkpoint fencing。新图操作前核对冻结的模型、提示词、工具、
+语料、图、样本及部署版本。旧暂停任务需恢复原解释器与配置；修改默认值不等于图迁移。
+
+gate 绑定所有者、项目、内容摘要和展示版本。相同决定重放返回同一结果；冲突决定和旧页面
+会被拒绝。研究及补充要求作为独立、不可信的上下文传入 Pi，不重写快照或扩大权限。
+研究仅使用固定公开目录，没有可跨项目或跨 epoch 复用的受保护来源授权接口。
+
+创建 Run、操作回执和工作流映射在同一个 SQLite 事务中提交。响应丢失后查询并复用原 Run。
+Pi 启动前，PG 记录同一个 Go 操作 ID、输入摘要和 Run 回执。此确认丢失后重放绑定，
+仍保留已创建的 Run。
+PG 与 SQLite 没有共享事务，桥接和 checkpoint 都不保证模型/工具外部副作用 exactly-once。
+
+“停止研究与编码”先持久化停止意图，再操作 Worker 或进程。迟到回执不能撤销停止。
+研究提交前到达的 Stop 会在 PG 留下持久停止标记。没有 runtime session 的 Run 可直接取消；
+进程身份不确定时保留 unresolved。在 Stop 之前已接受的启动仍可能发生，必须由原 supervisor
+取消并对账。
+研究侧与本地取消会独立尝试，分别持久保存结果。PG 连接失败或错误研究回执不能跳过
+本地取消。只有两侧均证实终止才标为 stopped；不确定结果继续 unresolved。
+
+人工拒绝结果可授权同一 Run 的后继 Attempt。准备、工作流状态转换和授权回执在同一
+事务中提交。原研究 gate、范围、模型和预算保持冻结，自动重试不能使用该通路。
+已准备但未启动的修订，必须保持相同指令、前驱和有效人工拒绝，且没有 runtime session
+才能恢复。Stop、过期或未知提供商授权禁止新修订启动。
+
+## 授权与调用预算
+
+新的研究账本支持比旧 policy 更小、不可修改的 v3 授权，绑定授权引用、请求/总 token
+上限、单次/累计输出上限、固定输入估算身份，以及从授权起算的绝对截止；重启不续时。
+旧账本和续验记录保持原样。[Worker 配置](../services/workflow/README.md)说明显式创建
+输入；功能入口或未用余额都不构成费用许可。
+
+工作流可选的 `piAuthorization` 绑定非秘密的明确模型目录/选择、runtime 版本和来源身份、
+profile 契约、transport 源码摘要、请求/token/输出上限及绝对截止。Task 和 Charter 绑定
+必须一致。每次准备启动记录实际 runtime 指纹和最终参数摘要，不以 managed 常量推定
+PATH runtime 的实际身份。缺少身份或 transport 时拒绝启动。
+
+Go 调用边界在实际 HTTP POST 之前提交预留。同一 Run 的所有 Attempt 共用预算，预留
+永不退款。重放、pending 或 unknown 不得再次发请求。只有用量已知且在限额内的响应
+才允许下一次预留；用量格式错误、输出超限、传输失败或过期均保持 unresolved。
+目前受限 transport 仅支持明确的纯文本、非思考 DeepSeek chat-completions 请求，不做
+SDK 重试、重定向或模型回退。其保守 renderer 估算仍需独立验证；这是 transport 部件，
+**不是已经接通的原生 Pi 硬预算保证**。
+
+原生 Pi 保留用户配置、扩展和工具权限策略。现有观察 hook 不能证明每次 SDK 重试或
+提供商切换都经过该边界；单独覆盖 provider 也不能证明这一点。组合受限编码通路需要
+明确的 runtime/profile 契约，并保留工具授权边界；默认组合未提供这种 guard。
+该部件不会把原生凭据复制进调用账本或发送给 Pi。
+
+Trusted-host supervisor 将绝对截止写入启动契约，在 spawn 和 gate release 前检查，
+到期终止受管进程组，并在暴露恢复句柄之前核对过期。修改截止会导致 manifest 验证失败。
+SQLite 过期检查和本地取消不依赖 PG。Docker 当前拒绝此绝对截止通路。
+supervisor 停机期间，不承诺存在独立常驻 watchdog。已被提供商接受的请求在取消后仍可能
+计费，预留继续占用。无法证明进程终止时保留 unresolved。
+
+费用许可、确认具体修改方案、接受或交付结果是三个独立决定。真实授权包需要实际研究与
+编码身份、输入准入结果、硬上限/截止、价格依据或费用上界、已有凭据范围，以及准确源码/
+配置绑定。合成决定不代表这些真人批准。
+
+传输失败或 Pi 结果不确定时显示“需要对账”，暂停自动推进。检查原操作/Run 后可选择
+“对账原有操作”。恢复沿用原命令或查询原 Run，不重置用量、截止、重试、模型版本和权限。
+未知模型/工具 reservation 保持 unresolved。使用原 Run 的恢复流程补足 runtime 证据，
+不要创建新 Run。桥接子进程上限 130 秒，超时可能留下不确定的图操作，需对账而非重新提交。
+
+SQLite 持久保存递增事件序号。SSE 支持 `Last-Event-ID` 或 `after`，先补完所有分页再等待。
+浏览器重连能补读终态，较旧投影不能覆盖较新的界面状态。
+
+## 验证
+
+运行仓库标准检查及锁定 Python 测试。局部命令：
+`go test ./internal/localweb -run '^TestWorkflow'` 和
+`python -m pytest services/workflow/tests/test_product.py`。后者需要
+`CHORA_WORKFLOW_TEST_DSN` 指向临时 UTF-8 PG，各测试自行创建并删除独立 schema。
+
+可选 Go 跨语言流程使用 `CHOR50_TEST_PYTHON`、`CHOR50_TEST_DSN`，先用 `init-db`
+初始化专用 schema。每次桥接启动新解释器。构建前端并安装 Chromium 后，执行
+`CHOR50_BROWSER=1 go test ./internal/localweb -run '^TestWorkflowBrowserJourney$'`，
+在临时 Go 服务上检查入口、gate 刷新、修改后确认、评审、窄屏和浏览历史。
+
+这些流程使用合成研究响应和 Pi supervisor 夹具，不证明真实模型质量、实际 Pi 代码修改、
+人工业务批准、多 Worker 接管或生产运行。真实集成另需明确模型预算、已有 Pi 访问和真实人工
+交付决定。
+
+## 受限 Pi source（离线边界实现）
+
+新增独立 profile `isolated_budgeted`、source `public_pi_budgeted_v1`，当前不可用。
+UI 禁止选择，API 拒绝启动及模型发现；不会迁移已冻结的 `trusted_local` 或
+`isolated_local`，旧 profile 保持原契约。
+
+新增部件包括：v2 非秘密安装闭包与模型/传输/证明身份、SQLite 51 的不可变 launch
+和不可逆通道撤销、由 Go 绑定当前 Run/Attempt 的持久预留、有限串行进程帧通道、
+固定 provider shim 与 wrapper、Docker 无网络命令计划和 inspect 检查，以及独立的
+Linux PID1 guardian。请求、输入与硬输出预留不退款；崩溃和 unknown 保持占用，
+同 ID 只能查询原不可重放结果，不能再次发送。断线或应用重启不能恢复旧通道发送权。
+
+帧区分原生 `pi_rpc` 与 `dispatch_request`/`dispatch_result`；Go 校验 onPayload
+后的最终内容，shim 在解码前调用 onResponse，回调/翻译/取消失败不回退、不重发。
+wrapper 只提供没有上游权限的固定认证标记，不发现个人认证。Pi 数字 cost 字段在
+fixture 中仅满足接口形状，不是费用证据。
+
+容器命令计划使用 network none、私有 PID/IPC、只读代码与原资源 mask，无端口、
+凭据、宿主 HOME、代理或 Docker socket。Pi 保持 UID1000；只读 PID1 使用容器内
+UID0、drop ALL，独立检查控制 EOF、序列心跳、绝对 wall deadline 和包含 suspend
+的 CLOCK_BOOTTIME。宿主仍须 inspect 精确容器死亡；daemon/VM 失联保持未决。
+镜像配方、inspect 与 pipe fixture 只是原 Runner 的组成部件，不能认证真实执行路线。
+
+现有 supervisor 已组合工作区准备、guardian 就绪与有效配置观察、帧通道、Pi exec、
+独立本地 Stop、导入导出和恢复。租约失效由 Go 独立触发 Stop；Go 丢失时仍由 PID1
+执行租约与绝对 deadline。复用原 Runner、终态处理和工作区导入日志。
+
+启动只接收显式非秘密 `BudgetedCandidate`：安装身份、单模型目录、原有与安装后的
+required 扩展清单、精确工具及只读掩码、明确 Runner 和 Engine 记录。没有发现默认值
+或其他 source 回退。required 扩展的路径、字节、依赖闭包和语义记录必须保持；wrapper
+再次核安装字节与最终 argv。清单缺失拒绝准备，清单相同不等于已证明真实权限行为。
+
+运行闭包身份只排除 Task snapshot/contract 哈希，避免合同循环引用；完整启动身份
+仍冻结二者，并由 Go 对照真实 Task 记录。授权的 output cap 传给 provider shim。
+恢复先证明本运行拥有的容器已不存在，再核私有、规范编码的启动清单，撤销原通道并
+对账原导入日志；不启动 Pi、不续租、不重发、不刷新 deadline。不安全、缺失或外来
+清单保留 unresolved。原 native 与 isolated 路由继续归原 supervisor 所有。
+
+生产发送返回 `bound_unproven`。旧 `8192+8*ASCII字节+256*消息数` 仅供显式
+`chora_offline_fixture` 构建使用，生产构造器不接收任意网络 transport 或证明函数。
+目前没有受信 renderer/计费策略。完整 Pi、实际安装闭包、required 权限扩展语义和
+Docker guardian 均未获得资格证明，source 继续不可用。
+
+真实执行前须形成具体授权包：
+
+1. 精确 provider/model/API/endpoint、Pi/Node/image/rootfs/helper/guardian 安装
+   闭包、单模型 catalog、最终参数/非秘密配置/mount/tool/required 权限身份，以及
+   当前 Task/Charter/Run/Attempt 绑定。
+2. 覆盖全部最终 payload、隐藏模板、Unicode、工具 history/cache/renderer 和失败
+   计费的输入上界证明。使用 provider 硬上下文上界时，须证明其计费覆盖并能放入
+   原 100000-token 窗口，不能增额迁就。
+3. 不超过原 20 请求、100000 总 tokens、单次 2048 output 与累计 output 限额的
+   硬预算；覆盖研究、人工等待和所有 Attempt 的绝对授权/截止时间（最多20分钟）、
+   撤销和独立 runtime 资格。重启不刷新时间或余额。
+4. 有效的币种/最小货币单位、最贵适用缓存/输入/输出单价、全部固定/tool/error
+   费用与证据有效期。整数表达式 `Σ(I*输入单价+O*输出单价+固定费)` 向上取整。
+   覆盖未知或整数溢出即拒绝；计算 helper 对两项 token 上限均保守预留，算术不认证
+   价格或 provider 行为。
+5. 仅授权该 endpoint/model 的具体凭据范围引用，由 Go 持有，不进入 Pi、manifest、
+   回执或公共日志；不记秘密值及秘密值 hash。本轮 fixture 不提供凭据许可。
+
+实际 renderer、价格/附加计费覆盖、凭据范围和 runtime 闭包仍未知，建议限额不等于
+费用许可。费用许可、用户具体方案确认和交付决定继续分开。
+
+## Stop 意图与研究静止证明
+
+Stop 提交后立即禁止新准入，本地 Pi 独立取消。研究 graph session 仍活跃或存在
+缺失/unknown 操作回执时返回 `stopping`；持久 tombstone 不能充当终止证明。
+空闲研究返回明确的准入关闭、静止与空 pending 列表证明。
+
+对账使用 `observe_stop` 观察同一原 Stop：不创建模型、不再次发送、不退款、不覆盖
+原不可变回执、不创建新 Run。Go 只追加有界观察。迟到的已知结果可以证明静止；
+永久未知操作在解释器/应用重启后仍未决。这只证明本地研究静止，不能证明 provider
+已接受的生成或计费已停止。

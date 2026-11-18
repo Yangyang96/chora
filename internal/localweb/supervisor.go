@@ -3,6 +3,7 @@ package localweb
 import (
 	"context"
 	"fmt"
+	"github.com/Yangyang96/chora/internal/domain"
 	"sync"
 
 	"github.com/Yangyang96/chora/internal/execution"
@@ -15,6 +16,7 @@ type routingSupervisor struct {
 	// only for legacy Fake/dev injection while server composition migrates.
 	byTarget  map[execution.ExecutionTarget]execution.ProcessSupervisor
 	byAdapter map[string]execution.ProcessSupervisor
+	budgeted  execution.ProcessSupervisor
 
 	byHandle   map[string]execution.ExecutionTarget
 	byIdentity map[string]execution.ExecutionTarget
@@ -26,6 +28,8 @@ type supervisorRoute struct {
 	target   execution.ExecutionTarget
 	identity string
 	launch   string
+	profile  domain.AgentExecutionProfile
+	owner    execution.ProcessSupervisor
 }
 
 // newTargetRoutingSupervisor constructs the exact production router. Registry
@@ -97,6 +101,15 @@ func (supervisor *routingSupervisor) hasTarget(target execution.ExecutionTarget)
 func (supervisor *routingSupervisor) Start(ctx context.Context, invocation execution.Invocation, sink execution.RuntimeSink) execution.StartOutcome {
 	target := invocation.Target()
 	processSupervisor := supervisor.forTarget(target)
+	profile := domain.AgentExecutionProfile(invocation.Environment()["CHORA_AGENT_EXECUTION_PROFILE"])
+	if profile == domain.AgentExecutionProfileIsolatedBudgeted {
+		supervisor.mu.RLock()
+		processSupervisor = supervisor.budgeted
+		supervisor.mu.RUnlock()
+		if target.AdapterID() != "pi" || target.ProviderID() != domain.DockerExecutionProvider {
+			processSupervisor = nil
+		}
+	}
 	if processSupervisor == nil {
 		return execution.StartOutcome{
 			Kind: execution.StartProvenNoChild, LaunchToken: invocation.LaunchToken(),
@@ -105,7 +118,13 @@ func (supervisor *routingSupervisor) Start(ctx context.Context, invocation execu
 	}
 	outcome := processSupervisor.Start(ctx, invocation, sink)
 	if (outcome.Kind == execution.Started || outcome.Kind == execution.StartReconciliationRequired) && outcome.Handle.Valid() && outcome.LaunchToken == invocation.LaunchToken() {
-		if err := supervisor.recordRoute(target, outcome.Handle, outcome.Identity, outcome.LaunchToken); err != nil {
+		var err error
+		if profile == domain.AgentExecutionProfileIsolatedBudgeted {
+			err = supervisor.recordOwnedRoute(target, profile, processSupervisor, outcome.Handle, outcome.Identity, outcome.LaunchToken)
+		} else {
+			err = supervisor.recordRoute(target, outcome.Handle, outcome.Identity, outcome.LaunchToken)
+		}
+		if err != nil {
 			outcome.Kind = execution.StartReconciliationRequired
 			outcome.Diagnostic = joinSupervisorDiagnostic(outcome.Diagnostic, err.Error())
 		}
@@ -162,6 +181,9 @@ func validReconcileKind(kind execution.ReconcileOutcomeKind) bool {
 }
 
 func (supervisor *routingSupervisor) recordRoute(target execution.ExecutionTarget, handle execution.RuntimeHandle, identity execution.ProcessIdentity, launch execution.LaunchToken) error {
+	return supervisor.recordOwnedRoute(target, "", nil, handle, identity, launch)
+}
+func (supervisor *routingSupervisor) recordOwnedRoute(target execution.ExecutionTarget, profile domain.AgentExecutionProfile, owner execution.ProcessSupervisor, handle execution.RuntimeHandle, identity execution.ProcessIdentity, launch execution.LaunchToken) error {
 	if !target.Valid() || !handle.Valid() || !launch.Valid() {
 		return fmt.Errorf("runtime route requires exact target, handle, and launch token")
 	}
@@ -170,7 +192,7 @@ func (supervisor *routingSupervisor) recordRoute(target execution.ExecutionTarge
 	if existing, ok := supervisor.byHandle[handle.Value]; ok && existing != target {
 		return fmt.Errorf("runtime handle is already owned by another execution target")
 	}
-	if existing, ok := supervisor.routes[handle.Value]; ok && (existing.target != target || existing.identity != identity.Value || existing.launch != launch.Value) {
+	if existing, ok := supervisor.routes[handle.Value]; ok && (existing.target != target || existing.identity != identity.Value || existing.launch != launch.Value || existing.profile != profile) {
 		return fmt.Errorf("runtime handle route binding conflicts with an existing route")
 	}
 	for existingHandle, existing := range supervisor.routes {
@@ -193,7 +215,7 @@ func (supervisor *routingSupervisor) recordRoute(target execution.ExecutionTarge
 		return fmt.Errorf("launch token is already owned by another execution target")
 	}
 	supervisor.byHandle[handle.Value] = target
-	supervisor.routes[handle.Value] = supervisorRoute{target: target, identity: identity.Value, launch: launch.Value}
+	supervisor.routes[handle.Value] = supervisorRoute{target: target, identity: identity.Value, launch: launch.Value, profile: profile, owner: owner}
 	if identity.Valid() {
 		supervisor.byIdentity[identity.Value] = target
 	}
@@ -217,6 +239,14 @@ func (supervisor *routingSupervisor) Reconcile(ctx context.Context, identity exe
 		return execution.ReconcileOutcome{Kind: execution.ReconcileUncertain, Diagnostic: "unknown process identity"}, nil
 	}
 	processSupervisor := supervisor.forTarget(target)
+	supervisor.mu.RLock()
+	for _, r := range supervisor.routes {
+		if r.identity == identity.Value && r.owner != nil {
+			processSupervisor = r.owner
+			break
+		}
+	}
+	supervisor.mu.RUnlock()
 	if processSupervisor == nil {
 		return execution.ReconcileOutcome{Kind: execution.ReconcileUncertain, Diagnostic: "execution target is no longer registered"}, nil
 	}
@@ -231,6 +261,14 @@ func (supervisor *routingSupervisor) ReconcileLaunch(ctx context.Context, launch
 		return execution.ReconcileOutcome{Kind: execution.ReconcileUncertain, LaunchToken: launch, Diagnostic: "unknown launch token"}, nil
 	}
 	processSupervisor := supervisor.forTarget(target)
+	supervisor.mu.RLock()
+	for _, r := range supervisor.routes {
+		if r.launch == launch.Value && r.owner != nil {
+			processSupervisor = r.owner
+			break
+		}
+	}
+	supervisor.mu.RUnlock()
 	if processSupervisor == nil {
 		return execution.ReconcileOutcome{Kind: execution.ReconcileUncertain, LaunchToken: launch, Diagnostic: "execution target is no longer registered"}, nil
 	}
@@ -312,10 +350,38 @@ func (supervisor *routingSupervisor) forTarget(target execution.ExecutionTarget)
 	return processSupervisor
 }
 
+// RestoreBudgeted never tries the native/isolated source on missing evidence.
+func (s *routingSupervisor) RestoreBudgeted(ctx context.Context, identity execution.ProcessIdentity, launch execution.LaunchToken) error {
+	s.mu.RLock()
+	owner := s.budgeted
+	s.mu.RUnlock()
+	if owner == nil {
+		return fmt.Errorf("restricted recovery source unavailable")
+	}
+	var outcome execution.ReconcileOutcome
+	var err error
+	if identity.Valid() {
+		outcome, err = owner.Reconcile(ctx, identity)
+	} else {
+		outcome, err = owner.ReconcileLaunch(ctx, launch)
+	}
+	if err != nil {
+		return err
+	}
+	if !validReconcileKind(outcome.Kind) || !outcome.Handle.Valid() || outcome.LaunchToken != launch {
+		return fmt.Errorf("restricted recovered ownership unproven")
+	}
+	target, _ := execution.NewExecutionTarget("pi", domain.DockerExecutionProvider)
+	return s.recordOwnedRoute(target, domain.AgentExecutionProfileIsolatedBudgeted, owner, outcome.Handle, identity, launch)
+}
+
 func (supervisor *routingSupervisor) forHandle(handle execution.RuntimeHandle) (execution.ProcessSupervisor, execution.ExecutionTarget, error) {
 	supervisor.mu.RLock()
 	target, ok := supervisor.byHandle[handle.Value]
 	processSupervisor := supervisor.byTarget[target]
+	if route := supervisor.routes[handle.Value]; route.owner != nil {
+		processSupervisor = route.owner
+	}
 	supervisor.mu.RUnlock()
 	if !ok || processSupervisor == nil {
 		return nil, execution.ExecutionTarget{}, fmt.Errorf("unknown runtime handle")

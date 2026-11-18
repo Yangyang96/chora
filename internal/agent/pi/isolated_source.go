@@ -128,7 +128,7 @@ func (a *Adapter) WithIsolatedSource(source IsolatedSource) (*Adapter, error) {
 // Model identity is checked against the persisted profile's exact model before
 // projecting any terminal completion or check evidence. Partial progress frames
 // may omit identity; a terminal assistant message must report both fields.
-func validateIsolatedEventModel(line []byte) error {
+func validateIsolatedEventModel(line []byte, budgeted ...bool) error {
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(line, &raw); err != nil {
 		return err
@@ -165,6 +165,9 @@ func validateIsolatedEventModel(line []byte) error {
 			}
 			provider = nestedProvider
 		}
+	}
+	if len(budgeted) > 0 && budgeted[0] && (provider != "" && provider != "deepseek" || model != "" && model != "deepseek-v4-pro") {
+		return errors.New("restricted Pi model identity mismatch")
 	}
 	if required && (provider == "" || model == "") {
 		return errors.New("isolated Pi model identity is missing")

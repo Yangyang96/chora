@@ -11,7 +11,7 @@ export function ProjectExecutionSettingsPanel({ projectId, editable }: { project
   const currentProject = useRef(projectId); currentProject.current = projectId
   const [value, setValue] = useState<ProjectExecutionSettings>()
   const [open, setOpen] = useState(false)
-  const [profile, setProfile] = useState<'trusted_local' | 'isolated_local'>('isolated_local')
+  const [profile, setProfile] = useState<'trusted_local' | 'isolated_local' | 'isolated_budgeted'>('isolated_local')
   const [model, setModel] = useState<ModelIdentity | null>(null)
   const [validModel, setValidModel] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -41,7 +41,7 @@ export function ProjectExecutionSettingsPanel({ projectId, editable }: { project
     {error && <p role="alert" className="error-banner">{error}</p>}
     {!value && !error && <p role="status">{t('Loading…')}</p>}
     {value && <>
-      <AgentExecutionProfileSelector value={profile} disabled={!editable || busy} trustedLocalSelectable requireTrustedLocalAcknowledgement={false} onChange={(next) => setProfile(next as 'trusted_local' | 'isolated_local')} onAcknowledgeTrustedLocal={async () => false} />
+      <AgentExecutionProfileSelector value={profile} disabled={!editable || busy} trustedLocalSelectable requireTrustedLocalAcknowledgement={false} onChange={(next) => setProfile(next as 'trusted_local' | 'isolated_local' | 'isolated_budgeted')} onAcknowledgeTrustedLocal={async () => false} />
       <ModelSelector agentExecutionProfile={profile} identity={model} onIdentityChange={setModel} onValidityChange={setValidModel} defaultLabel="Use runtime default" disabled={!editable || busy} />
       {!editable && <p className="entry-help">{t('Restore the Project before editing execution defaults.')}</p>}
       <ActionButton type="button" className="btn-primary" disabled={!editable || busy || !validModel} disabledReason={!validModel ? 'Choose a supported model or the runtime default.' : 'Saving changes. Please wait.'} onClick={() => void save()}>{busy ? t('Saving…') : t('Save execution defaults')}</ActionButton>

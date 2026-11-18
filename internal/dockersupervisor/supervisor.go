@@ -131,6 +131,7 @@ type Config struct {
 	EngineQualification           EngineQualification
 	ColimaVersion                 func(context.Context) (string, error)
 	Workbench                     *WorkbenchConfig
+	Budgeted                      *BudgetedConfig
 }
 
 // WorkbenchConfig opts the existing supervisor into the public Workbench
@@ -178,6 +179,7 @@ type Supervisor struct {
 }
 
 type attemptRecord struct {
+	budgeted                                              *budgetedRuntime
 	progress                                              *pistream.Writer
 	livenessMu                                            sync.Mutex
 	livenessAt                                            time.Time
@@ -217,6 +219,7 @@ type attemptRecord struct {
 	readOnlyWorkspaceMounts                               []workbenchReadOnlyMount
 	workspaceVolume                                       string
 	cleanupMu                                             sync.Mutex
+	cleanupComplete                                       bool // guarded by cleanupMu; only after full removal proof
 }
 
 type acceptanceInjectionState uint8
@@ -242,14 +245,24 @@ func New(config Config) (*Supervisor, error) {
 		copy.Arguments = slices.Clone(copy.Arguments)
 		config.Workbench = &copy
 	}
+	if config.Budgeted != nil {
+		copy := *config.Budgeted
+		copy.Permissions = copy.Permissions.Clone()
+		config.Budgeted = &copy
+	}
 	workbench := config.Workbench != nil
 	validWorkbench := !workbench || validWorkbenchConfig(config.Workbench)
+	policy := WorkbenchPolicyDigest
+	if config.Budgeted != nil {
+		validWorkbench = validBudgetedConfig(config)
+		policy = BudgetedPolicyDigest
+	}
 	if !filepath.IsAbs(config.RuntimeRoot) || !validDigest(config.PolicyDigest) ||
 		!filepath.IsAbs(config.ArtifactRoot) || config.ArtifactRoot == config.RuntimeRoot ||
 		!validImageID(config.AttemptImageID) || (!workbench && !validImageID(config.BoundaryImageID)) || (workbench && config.BoundaryImageID != "") || config.VerifierImageID != "" && !validImageID(config.VerifierImageID) || !validDigest(config.RuntimeSourceIdentity) ||
 		(config.CredentialSource != "" && !filepath.IsAbs(config.CredentialSource)) || (!workbench && !filepath.IsAbs(config.TrustAnchorSource)) || (workbench && config.TrustAnchorSource != "") ||
 		(config.AcceptanceTimeoutPolicyDigest != "" && !validDigest(config.AcceptanceTimeoutPolicyDigest)) ||
-		(!workbench && config.PolicyDigest != pinnedPolicyDigest) || (workbench && config.PolicyDigest != WorkbenchPolicyDigest) || !validWorkbench || config.CooperativeWait < 0 || config.DeathWait < 0 || config.AttemptTimeout < 0 {
+		(!workbench && config.PolicyDigest != pinnedPolicyDigest) || (workbench && config.PolicyDigest != policy) || !validWorkbench || config.CooperativeWait < 0 || config.DeathWait < 0 || config.AttemptTimeout < 0 {
 		return nil, ErrInvalidConfig
 	}
 	hasContract := len(config.CapabilityContract.canonical) != 0
@@ -349,6 +362,9 @@ func installedColimaVersion(ctx context.Context) (string, error) {
 
 func (supervisor *Supervisor) Start(ctx context.Context, invocation execution.Invocation, sink execution.RuntimeSink) execution.StartOutcome {
 	launch := invocation.LaunchToken()
+	if !invocation.Deadline().IsZero() && supervisor.config.Budgeted == nil {
+		return noChild(launch, "absolute workflow deadline is not supported by this Docker execution route")
+	}
 	metadata, err := supervisor.validateInvocation(invocation, sink)
 	if err != nil {
 		return noChild(launch, err.Error())
@@ -359,6 +375,19 @@ func (supervisor *Supervisor) Start(ctx context.Context, invocation execution.In
 	if duplicate {
 		return noChild(launch, "launch token is already known")
 	}
+	var bound domain.RestrictedLaunch
+	if supervisor.config.Budgeted != nil {
+		if invocation.Deadline().IsZero() || !time.Now().Before(invocation.Deadline()) {
+			return noChild(launch, "restricted absolute deadline missing or expired")
+		}
+		bound, err = supervisor.config.Budgeted.Authority.Bind(ctx, invocation)
+		if err != nil {
+			return noChild(launch, err.Error())
+		}
+		if err = supervisor.config.Budgeted.Authority.Admit(ctx, bound); err != nil {
+			return noChild(launch, err.Error())
+		}
+	}
 	directive, err := supervisor.consumeAcceptanceDirective(invocation, metadata)
 	if err != nil {
 		return noChild(launch, err.Error())
@@ -367,7 +396,9 @@ func (supervisor *Supervisor) Start(ctx context.Context, invocation execution.In
 		return noChild(launch, err.Error())
 	}
 	var projection taskProjection
-	if supervisor.config.Workbench != nil {
+	if supervisor.config.Budgeted != nil {
+		// No auth projection or host HOME lookup exists on the budgeted route.
+	} else if supervisor.config.Workbench != nil {
 		projection, err = loadWorkbenchAPIKeyProjection(supervisor.config.CredentialSource)
 	} else {
 		projection, err = supervisor.loadProjection(supervisor.config.CredentialSource, supervisor.config.TrustAnchorSource)
@@ -380,6 +411,9 @@ func (supervisor *Supervisor) Start(ctx context.Context, invocation execution.In
 	if err != nil {
 		return noChild(launch, err.Error())
 	}
+	if supervisor.config.Budgeted != nil {
+		record.budgeted = &budgetedRuntime{bound: bound}
+	}
 	if err := supervisor.setup(ctx, record, invocation, metadata, projection); err != nil {
 		return supervisor.finishFailedSetup(record, err)
 	}
@@ -391,6 +425,9 @@ func (supervisor *Supervisor) Start(ctx context.Context, invocation execution.In
 	supervisor.mu.Unlock()
 
 	go supervisor.wait(record)
+	if record.budgeted != nil {
+		go supervisor.watchBudgetedLease(record)
+	}
 	go supervisor.expire(record)
 	prompt := invocation.Stdin()
 	written, writeErr := record.process.Write(prompt)
@@ -416,6 +453,9 @@ func (supervisor *Supervisor) Start(ctx context.Context, invocation execution.In
 }
 
 func (supervisor *Supervisor) finishFailedSetup(record *attemptRecord, setupErr error) execution.StartOutcome {
+	if record.budgeted != nil {
+		setupErr = errors.Join(setupErr, record.budgeted.close())
+	}
 	if record.process == nil {
 		cleanupErr := supervisor.cleanup(context.Background(), record)
 		if !record.startReturned && cleanupErr == nil {
@@ -548,7 +588,12 @@ func (supervisor *Supervisor) validateInvocation(invocation execution.Invocation
 	if supervisor.config.Workbench != nil {
 		argumentsValid = workbenchInvocationArgumentsMatch(invocation.Arguments(), supervisor.config.Workbench.Arguments)
 	}
-	if invocation.AdapterID() != allowedAdapter || invocation.Executable() != allowedExecutable || !argumentsValid {
+	executable := allowedExecutable
+	if supervisor.config.Budgeted != nil {
+		executable = "chora-pi-budgeted"
+		argumentsValid = slices.Equal(invocation.Arguments(), supervisor.config.Workbench.Arguments)
+	}
+	if invocation.AdapterID() != allowedAdapter || invocation.Executable() != executable || !argumentsValid {
 		return invocationMetadata{}, errors.New("invocation identity or arguments are not frozen Pi RPC")
 	}
 	if sink == nil || !invocation.LaunchToken().Valid() || sink.Binding() != invocation.LaunchToken() {
@@ -579,6 +624,9 @@ func (supervisor *Supervisor) validateInvocation(invocation execution.Invocation
 		}
 	}
 	if supervisor.config.Workbench != nil {
+		if supervisor.config.Budgeted != nil {
+			return supervisor.validateBudgetedInvocation(invocation, environment)
+		}
 		return supervisor.validateWorkbenchInvocation(invocation, environment)
 	}
 	profile := domain.AgentExecutionProfile(environment[EnvExecutionProfile])
@@ -863,7 +911,10 @@ func (supervisor *Supervisor) newRecord(ctx context.Context, invocation executio
 			_ = os.RemoveAll(root)
 			return nil, fmt.Errorf("resolve Workbench read-only paths: %w", err)
 		}
-		mounts, err := resolveReadOnlyWorkspacePaths(repository, paths)
+		var mounts []workbenchReadOnlyMount
+		if supervisor.config.Budgeted == nil || len(paths) != 0 || paths == nil {
+			mounts, err = resolveReadOnlyWorkspacePaths(repository, paths)
+		}
 		if err != nil {
 			_ = os.RemoveAll(root)
 			return nil, err
@@ -976,6 +1027,9 @@ func (supervisor *Supervisor) writeAttemptRootMarker(root, attemptID string) err
 }
 
 func (supervisor *Supervisor) setup(ctx context.Context, record *attemptRecord, invocation execution.Invocation, metadata invocationMetadata, projection taskProjection) error {
+	if supervisor.config.Budgeted != nil {
+		return supervisor.setupBudgeted(ctx, record, invocation, metadata)
+	}
 	if supervisor.config.Workbench != nil {
 		return supervisor.setupWorkbench(ctx, record, invocation, metadata, projection)
 	}
@@ -1362,6 +1416,9 @@ func (supervisor *Supervisor) runOK(ctx context.Context, args []string) error {
 
 func (supervisor *Supervisor) wait(record *attemptRecord) {
 	exitCode, _ := record.process.Wait()
+	if record.budgeted != nil {
+		defer record.budgeted.close()
+	}
 	if record.progress != nil {
 		_ = record.progress.Flush()
 	}
@@ -1666,7 +1723,11 @@ func (record *attemptRecord) completeAcceptanceInjection(state acceptanceInjecti
 }
 
 func (supervisor *Supervisor) expire(record *attemptRecord) {
-	timer := time.NewTimer(record.attemptTimeout)
+	remaining := record.attemptTimeout
+	if !record.invocation.Deadline().IsZero() {
+		remaining = min(remaining, time.Until(record.invocation.Deadline()))
+	}
+	timer := time.NewTimer(max(0, remaining))
 	defer timer.Stop()
 	select {
 	case <-record.done:
@@ -1745,7 +1806,9 @@ func (supervisor *Supervisor) Stop(ctx context.Context, handle execution.Runtime
 	record.closeStdin()
 	forceContext, cancel := context.WithDeadline(context.Background(), deathDeadline)
 	defer cancel()
-	_ = supervisor.runAllowFailure(forceContext, []string{"network", "disconnect", "-f", record.internalNetwork, record.container})
+	if supervisor.config.Budgeted == nil {
+		_ = supervisor.runAllowFailure(forceContext, []string{"network", "disconnect", "-f", record.internalNetwork, record.container})
+	}
 	_ = supervisor.runAllowFailure(forceContext, []string{"rm", "-f", record.container})
 	_ = record.process.Kill()
 	for {
@@ -1789,10 +1852,11 @@ func (supervisor *Supervisor) confirmStopped(record *attemptRecord) execution.St
 		return execution.StopOutcome{Kind: execution.StopConfirmed}
 	}
 	record.mu.Lock()
-	retainTerminal := record.timedOut
+	retainTerminal := record.timedOut || record.budgeted != nil
 	record.mu.Unlock()
-	// Expiry uses Stop to prove executor death, but the terminal consumer still
-	// needs its timeout Result. Finalize owns removal after Drain in this case.
+	// Stop proves executor death and revokes authority. Restricted attempts
+	// also need their host-owned manifest for Finalize's recovery checks.
+	// Finalize owns removal after Drain for these attempts and timeouts.
 	if err := supervisor.cleanupAttempt(record, retainTerminal); err != nil {
 		return execution.StopOutcome{Kind: execution.StopUncertain, Diagnostic: "process exited but Attempt cleanup is unproven: " + err.Error()}
 	}
@@ -2002,8 +2066,17 @@ func (supervisor *Supervisor) cleanup(_ context.Context, record *attemptRecord) 
 }
 
 func (supervisor *Supervisor) cleanupAttempt(record *attemptRecord, retainTerminal bool) error {
+	var childErr error
+	if record.budgeted != nil {
+		childErr = record.budgeted.close()
+	}
 	record.cleanupMu.Lock()
 	defer record.cleanupMu.Unlock()
+	// Concurrent Stop/Finalize callers can already hold the same owned record.
+	// Only this record's completed cleanup proves that a missing root is safe.
+	if record.cleanupComplete {
+		return nil
+	}
 	cleanupContext, cancel := context.WithTimeout(context.Background(), supervisor.config.DeathWait)
 	defer cancel()
 	filters := supervisor.ownedResourceFilters(record.attemptID)
@@ -2013,7 +2086,10 @@ func (supervisor *Supervisor) cleanupAttempt(record *attemptRecord, retainTermin
 	operationErr := supervisor.removeResources(cleanupContext, verified)
 	proofErr := supervisor.proveAttemptResourcesAbsent(cleanupContext, filters, record)
 	if dockerErr := errors.Join(inventoryErr, exactInventoryErr, ownershipErr, operationErr, proofErr); dockerErr != nil {
-		return dockerErr
+		return errors.Join(childErr, dockerErr)
+	}
+	if childErr != nil {
+		return childErr
 	}
 	if err := supervisor.recoverWorkspaceImport(cleanupContext, record.root); err != nil {
 		return err
@@ -2021,12 +2097,19 @@ func (supervisor *Supervisor) cleanupAttempt(record *attemptRecord, retainTermin
 	if retainTerminal {
 		return nil
 	}
-	return removeAndProveAbsent(record.root, "runtime workspace")
+	if err := removeAndProveAbsent(record.root, "runtime workspace"); err != nil {
+		return err
+	}
+	record.cleanupComplete = true
+	return nil
 }
 
 // Import state is host-owned and must survive cleanup until an interrupted
 // multi-repository import has been reconciled. Call only after Docker death proof.
 func (supervisor *Supervisor) recoverWorkspaceImport(ctx context.Context, root string) error {
+	if err := supervisor.recoverBudgeted(ctx, root); err != nil {
+		return err
+	}
 	state := filepath.Join(root, "import-state")
 	info, err := os.Lstat(state)
 	if os.IsNotExist(err) {

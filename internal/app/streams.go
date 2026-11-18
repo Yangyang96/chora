@@ -433,7 +433,7 @@ func derivePiAgentReportedChecks(document speccoding.CoreContractDocument, event
 
 func (s *Service) populatePiAgentReportedChecks(ctx context.Context, runtime runtimeContext, terminal execution.TerminalResult) (execution.TerminalResult, error) {
 	profile := runtime.attempt.AgentExecutionProfileBinding().Profile()
-	if runtime.adapter.ID() != "pi" || (profile != domain.AgentExecutionProfileTrustedLocal && profile != domain.AgentExecutionProfileIsolatedLocal) || terminal.Kind == execution.TerminalFailed {
+	if runtime.adapter.ID() != "pi" || (profile != domain.AgentExecutionProfileTrustedLocal && profile != domain.AgentExecutionProfileIsolatedLocal && profile != domain.AgentExecutionProfileIsolatedBudgeted) || terminal.Kind == execution.TerminalFailed {
 		return terminal, nil
 	}
 	binding, err := s.deps.Store.Reader().GetSpecCodingBinding(ctx, runtime.run.TaskID())
@@ -973,7 +973,7 @@ func (s *Service) markFinalized(ctx context.Context, sessionID domain.RuntimeSes
 // Event paths are normalized against the execution boundary selected by Chora,
 // rather than a provider-supplied cwd or the host writeback workspace.
 func (r runtimeContext) eventWorkingRoot() string {
-	if r.attempt.AgentExecutionProfileBinding().Profile() == domain.AgentExecutionProfileIsolatedLocal {
+	if r.attempt.AgentExecutionProfileBinding().Profile() == domain.AgentExecutionProfileIsolatedLocal || r.attempt.AgentExecutionProfileBinding().Profile() == domain.AgentExecutionProfileIsolatedBudgeted {
 		return "/workspace/repository"
 	}
 	return r.session.WorkingRoot

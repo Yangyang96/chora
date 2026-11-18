@@ -11,6 +11,9 @@
 
 [按需应用预览](app-preview.zh-CN.md)：按需查看 Task Web 应用，不改变代码验收流程。
 
+[可选的先研究再编码](research-workflow.zh-CN.md)：带来源方案、持久确认与可恢复 Pi 交接，
+以及开发与真实验证边界。
+
 [macOS 应用](macos-application.zh-CN.md)：打包运行时、认证、迁移、更新与分发限制。
 
 ## 已接受的产品方向

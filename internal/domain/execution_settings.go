@@ -68,7 +68,7 @@ func (settings TaskExecutionSettings) Validate() error {
 }
 
 func currentExecutionSettingsProfile(profile AgentExecutionProfile) bool {
-	return profile == AgentExecutionProfileTrustedLocal || profile == AgentExecutionProfileIsolatedLocal
+	return profile == AgentExecutionProfileTrustedLocal || profile == AgentExecutionProfileIsolatedLocal || profile == AgentExecutionProfileIsolatedBudgeted
 }
 
 func validExecutionSettingsSource(source string) bool {

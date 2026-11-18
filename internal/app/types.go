@@ -229,6 +229,7 @@ type ReviewTechnicalPlanRevisionResult struct {
 }
 
 type CreateRunRequest struct {
+	workflowID         string
 	delegationPlanning bool
 	synthesize         bool
 	CommandMeta

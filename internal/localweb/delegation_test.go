@@ -2,13 +2,18 @@ package localweb
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
+	agentpi "github.com/Yangyang96/chora/internal/agent/pi"
 	"github.com/Yangyang96/chora/internal/app"
 	"github.com/Yangyang96/chora/internal/domain"
 	"github.com/Yangyang96/chora/internal/execution"
@@ -19,6 +24,9 @@ func delegationFixture(t *testing.T) (*Server, *taskResourceLifecycleSupervisor,
 	return delegationFixtureWithRequirement(t, "Research compatibility and migration risk.")
 }
 func delegationFixtureWithRequirement(t *testing.T, requirement string) (*Server, *taskResourceLifecycleSupervisor, taskRefView, string) {
+	return delegationFixtureWithModel(t, requirement, false)
+}
+func delegationFixtureWithModel(t *testing.T, requirement string, explicitModel bool) (*Server, *taskResourceLifecycleSupervisor, taskRefView, string) {
 	t.Helper()
 	server, runtime, dataRoot := newResourceTerminalIntegrationServer(t)
 	target, _ := execution.NewExecutionTarget("pi", domain.TrustedHostExecutionProvider)
@@ -33,7 +41,33 @@ func delegationFixtureWithRequirement(t *testing.T, requirement string) (*Server
 		t.Fatalf("room revisions: %v", err)
 	}
 	var task taskRefView
-	requestJSONWithHeaders(t, h, http.MethodPost, "/api/v2/rooms/"+project.DefaultRoomID+"/tasks", map[string]any{"revisionIds": []string{revisions[0].ID().String()}, "title": "Compare designs", "requirement": requirement, "agentExecutionProfile": "trusted_local", "outcomeKind": "document", "materials": []map[string]string{{"title": "Design", "locator": "supplied:design", "body": "Keep existing clients compatible. Unknown: deployment sequence."}}}, map[string]string{"Idempotency-Key": "delegation-parent"}, 201, &task)
+	input := map[string]any{"revisionIds": []string{revisions[0].ID().String()}, "title": "Compare designs", "requirement": requirement, "agentExecutionProfile": "trusted_local", "outcomeKind": "document", "materials": []map[string]string{{"title": "Design", "locator": "supplied:design", "body": "Keep existing clients compatible. Unknown: deployment sequence."}}}
+	if explicitModel {
+		path := filepath.Join(dataRoot, "pi")
+		body, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		source, err := agentpi.NewPathPiSource(agentpi.PathPiSourceParams{ExecutablePath: path, Version: "0.85.1", ExecutableSHA256: sha256.Sum256(body)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		catalog, err := domain.NewModelCatalog("path-pi", fmt.Sprintf("%x", source.SourceIdentity()), source.Version(), []domain.ModelIdentity{{Provider: "deepseek", ModelID: "deepseek-v4-pro"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		model, err := domain.NewModelBinding(catalog, catalog.Models[0], time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		bound, err := agentpi.New(agentpi.Config{PathPiSource: source, SessionRoot: filepath.Join(dataRoot, "pi-sessions"), ModelCatalog: func(context.Context, domain.AgentExecutionProfile) (domain.ModelCatalog, error) { return catalog, nil }})
+		if err != nil {
+			t.Fatal(err)
+		}
+		server.registry.Set(bound)
+		input["modelBinding"] = model
+	}
+	requestJSONWithHeaders(t, h, http.MethodPost, "/api/v2/rooms/"+project.DefaultRoomID+"/tasks", input, map[string]string{"Idempotency-Key": "delegation-parent"}, 201, &task)
 	return server, runtime, task, dataRoot
 }
 func delegationPlan() map[string]any {

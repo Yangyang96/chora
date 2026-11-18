@@ -2,6 +2,11 @@
 
 [English](ROADMAP.md) · [README](README.zh-CN.md)
 
+可选的[先研究再编码开发切片](docs/research-workflow.zh-CN.md)已接通公开文档研究、
+持久人工确认和幂等 Pi Run 交接。原生 Pi 启动保持关闭，等待受限提供商 transport 的组合；
+调用账本和截止部件不等于已接通的原生 Pi 预算保证。确定性、PG 和浏览器验证与尚待进行的真实模型/Pi
+及独立验收分开记录；这不表示整个 LangGraph、RAG 或多 Worker 路线已完成。
+
 状态（2026-09-21）：源码已公开的 Developer Alpha。真实多仓库交付技术验收、
 `M2_S3_PASS` 和本地 DA-1/O5 准备已完成。源码于 2026-09-10 公开，版本化预发布见
 [Releases 页面](https://github.com/Yangyang96/chora/releases)。整个 M2 继续进行；M2-S4-1 已于 2026-09-13 通过技术验收，M2-S4-2 已从必交付范围撤下，不记为 PASS。

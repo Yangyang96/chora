@@ -324,3 +324,51 @@ type routingTestSink struct{ launch execution.LaunchToken }
 func (sink routingTestSink) Binding() execution.LaunchToken { return sink.launch }
 func (routingTestSink) Notify(execution.StreamKind, int64)  {}
 func (routingTestSink) Exited()                             {}
+
+func TestBudgetedRoutingHasSeparateOwnerAndNeverFallsBack(t *testing.T) {
+	old, restricted := newRoutingProbeSupervisor(), newRoutingProbeSupervisor()
+	target := mustExecutionTarget(t, "pi", "docker")
+	router, err := newTargetRoutingSupervisor(map[execution.ExecutionTarget]execution.ProcessSupervisor{target: old})
+	if err != nil {
+		t.Fatal(err)
+	}
+	makeInv := func(id, profile string) execution.Invocation {
+		inv, err := execution.NewInvocation(execution.InvocationParams{AdapterID: "pi", Executable: "synthetic", WorkingRoot: t.TempDir(), LaunchToken: execution.LaunchToken{Value: id}, Target: target, Environment: map[string]string{"CHORA_AGENT_EXECUTION_PROFILE": profile}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return inv
+	}
+	inv := makeInv("missing-budgeted", "isolated_budgeted")
+	if got := router.Start(context.Background(), inv, routingTestSink{launch: inv.LaunchToken()}); got.Kind != execution.StartProvenNoChild || old.startCount() != 0 {
+		t.Fatal("budgeted source fell back", got)
+	}
+	router.budgeted = restricted
+	inv = makeInv("bound-budgeted", "isolated_budgeted")
+	b := router.Start(context.Background(), inv, routingTestSink{launch: inv.LaunchToken()})
+	if b.Kind != execution.Started {
+		t.Fatal(b)
+	}
+	inv = makeInv("old-isolated", "isolated_local")
+	n := router.Start(context.Background(), inv, routingTestSink{launch: inv.LaunchToken()})
+	if n.Kind != execution.Started || old.startCount() != 1 || restricted.startCount() != 1 {
+		t.Fatal("old route changed", n)
+	}
+	if _, err = router.Reconcile(context.Background(), b.Identity); err != nil {
+		t.Fatal(err)
+	}
+	if old.reconcileCount() != 0 || restricted.reconcileCount() != 1 {
+		t.Fatal("budgeted identity routed to legacy source")
+	}
+	restart, _ := newTargetRoutingSupervisor(map[execution.ExecutionTarget]execution.ProcessSupervisor{target: old})
+	restart.budgeted = restricted
+	if err = restart.RestoreBudgeted(context.Background(), b.Identity, b.LaunchToken); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = restart.Drain(context.Background(), b.Handle, execution.StreamOffsets{}, 1); err != nil {
+		t.Fatal(err)
+	}
+	if old.reconcileCount() != 0 {
+		t.Fatal("budgeted restore touched legacy owner")
+	}
+}

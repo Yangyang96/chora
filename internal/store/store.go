@@ -141,6 +141,7 @@ type Store interface {
 }
 
 type Reader interface {
+	WorkflowReader
 	DelegationReader
 	ProjectDocumentReader
 	ExecutionSettingsReader
@@ -234,6 +235,7 @@ type Reader interface {
 }
 
 type WriteTx interface {
+	WorkflowWriter
 	DelegationWriter
 	ProjectDocumentWriter
 	ExecutionSettingsWriter

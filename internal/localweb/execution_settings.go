@@ -70,6 +70,9 @@ func (server *Server) putProjectExecutionSettings(w http.ResponseWriter, r *http
 }
 
 func (server *Server) resolveExecutionModel(ctx context.Context, profile domain.AgentExecutionProfile, model *domain.ModelIdentity) (domain.ModelBinding, error) {
+	if profile == domain.AgentExecutionProfileIsolatedBudgeted {
+		return domain.ModelBinding{}, fmt.Errorf("%w: budgeted isolated execution requires verified model limits and runtime qualification", app.ErrInvalidCommand)
+	}
 	if !currentExecutionEnvironment(profile) {
 		return domain.ModelBinding{}, fmt.Errorf("%w: unsupported execution environment", app.ErrInvalidCommand)
 	}

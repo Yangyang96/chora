@@ -120,9 +120,10 @@ type Supervisor struct {
 }
 
 type processRecord struct {
-	mu            sync.Mutex
-	terminationMu sync.Mutex
-	persistMu     sync.Mutex
+	absoluteDeadline time.Time
+	mu               sync.Mutex
+	terminationMu    sync.Mutex
+	persistMu        sync.Mutex
 
 	root, workspace, outputDir string
 	stdoutPath, stderrPath     string
@@ -317,6 +318,12 @@ func (supervisor *Supervisor) Start(ctx context.Context, invocation execution.In
 		_ = removeOwnedPrepared(prepared)
 		return noChild(launch, "Runtime closure identity drift before spawn: "+closureErr.Error())
 	}
+	if !invocation.Deadline().IsZero() && !time.Now().Before(invocation.Deadline()) {
+		_ = stdoutFile.Close()
+		_ = stderrFile.Close()
+		_ = removeOwnedPrepared(prepared)
+		return noChild(launch, "absolute Run deadline expired before spawn")
+	}
 	child, startErr := supervisor.platform.Start(spec)
 	closeErr := errors.Join(stdoutFile.Close(), stderrFile.Close())
 	if startErr != nil {
@@ -355,6 +362,15 @@ func (supervisor *Supervisor) Start(ctx context.Context, invocation execution.In
 			LaunchToken: launch, Diagnostic: prepared.diagnostic,
 		}
 	}
+	if !invocation.Deadline().IsZero() && !time.Now().Before(invocation.Deadline()) {
+		_ = child.AbortGate()
+		supervisor.startLiveMonitors(prepared)
+		proved, diagnostic := supervisor.terminateAndProve(context.Background(), prepared, true)
+		if !proved {
+			supervisor.markUncertain(prepared, diagnostic)
+		}
+		return reconciliationRequired(prepared, "absolute Run deadline expired before gate release")
+	}
 	if err := child.Release(); err != nil {
 		prepared.diagnostic = joinDiagnostic(prepared.diagnostic, "release persisted launch gate: "+err.Error())
 		_ = child.AbortGate()
@@ -373,6 +389,9 @@ func (supervisor *Supervisor) Start(ctx context.Context, invocation execution.In
 }
 
 func (supervisor *Supervisor) validateInvocation(invocation execution.Invocation, sink execution.RuntimeSink) error {
+	if !invocation.Deadline().IsZero() && !time.Now().Before(invocation.Deadline()) {
+		return errors.New("absolute Run deadline expired")
+	}
 	if invocation.AdapterID() != supervisor.config.AllowedAdapterID || invocation.Executable() != supervisor.config.AllowedExecutable.Path {
 		return errors.New("invocation adapter or executable is not allowed")
 	}
@@ -521,7 +540,15 @@ func (supervisor *Supervisor) proveGroupGoneAfterReap(record *processRecord) (bo
 }
 
 func (supervisor *Supervisor) expire(record *processRecord) {
-	timer := supervisor.timers.NewTimer(supervisor.config.MaxRuntime)
+	duration := supervisor.config.MaxRuntime
+	if !record.absoluteDeadline.IsZero() && time.Until(record.absoluteDeadline) < duration {
+		duration = time.Until(record.absoluteDeadline)
+	}
+	if duration <= 0 {
+		_, _ = supervisor.Stop(context.Background(), record.handle, execution.StopIntent{Kind: execution.StopForCancel, Reason: "absolute Run deadline expired"})
+		return
+	}
+	timer := supervisor.timers.NewTimer(duration)
 	defer timer.Stop()
 	select {
 	case <-record.done:

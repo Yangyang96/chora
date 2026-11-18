@@ -1,8 +1,11 @@
-# Chora workflow M0
+# Chora research workflow
 
 An opt-in Python research harness with a LangGraph model/tool loop, a PostgreSQL
-operation journal, and a persisted review interrupt. It is not wired into Chora's
-Go service or UI. Existing Pi execution and Run/Attempt gates remain unchanged.
+operation journal, and a persisted review interrupt. The optional
+[product bridge](../../docs/research-workflow.md) connects it to Go and the UI
+for research, human confirmation and a recoverable Pi handoff. The manual M0
+harness remains available. Existing Pi execution and Run/Attempt gates retain
+their own authority.
 M0 acceptance requires a real authorized model tool round trip in addition to
 these deterministic tests; fixture results alone do not satisfy that requirement.
 
@@ -74,8 +77,25 @@ and a pinned public Chora corpus revision. Changing them prevents continuation.
 
 The official HTTPS `api.deepseek.com` endpoint selects the `deepseek.nonthinking.v1`
 profile for `deepseek-v4-pro`. It sends `thinking.type=disabled`, `tool_choice=required`
-and `max_tokens` capped at 2048. SDK and graph retries are zero. The default
-OpenAI-compatible profile continues to use `max_completion_tokens` and the
+and `max_tokens` capped at 2048. SDK and graph retries are zero. DeepSeek uses
+the explicitly pinned HTTPX transport with redirects and transport retries
+disabled, and with environment proxy discovery disabled. A redirect or connection
+failure leaves the reserved request unknown and prevents another dispatch after
+restart. This transport policy is part of the frozen model identity; an older
+paused workflow requires its original executable or a separately verified
+migration, rather than silently acquiring the new identity.
+
+Before opening the batch ledger or constructing a client, this profile rejects
+the presence of `OPENAI_ADMIN_KEY`, `OPENAI_ORG_ID`, `OPENAI_PROJECT_ID`,
+`OPENAI_WEBHOOK_SECRET` and `OPENAI_CUSTOM_HEADERS`, including empty values.
+The pinned SDK otherwise reads these alongside the explicit Chora key and URL;
+custom headers can override Authorization. Rejection checks names only and never
+reads or reports their values or changes the process environment. The
+`reject-ambient-config.v1` policy is also frozen in the model identity, so older
+checkpoints cannot silently resume with it. Existing ledgers and budgets are
+unchanged; a verified migration is required for an incompatible frozen identity.
+
+The default OpenAI-compatible profile continues to use `max_completion_tokens` and the
 workflow's bounded rate-limit retry policy. These request semantics, the output
 cap and the acceptance batch identity are frozen in each new workflow. Existing
 SDK checkpoints with an older identity require their matching executable or an
@@ -106,6 +126,22 @@ remaining allowances before network dispatch, then records actual prompt,
 completion and total usage. The ledger uses local SQLite transactions and permits
 one outstanding request across participating processes. Keep it on a durable
 local filesystem with reliable SQLite locking.
+
+New, separately authorized batches can use a smaller immutable v3 policy:
+`init-batch --batch-file <new-file> --authorization-file <policy.json>`.
+The JSON contains all keys of `batch.POLICY`, with `version: 3`, unchanged
+encoder/tokenizer/schema/framing identities, and only smaller or equal
+`max_requests`, `max_tokens`, `max_output_tokens` and `duration_seconds` ceilings.
+It additionally requires `authorization_ref`, numeric Unix `authorized_at` and
+`absolute_deadline`, and `max_total_output_tokens`. The deadline must be after
+authorization and no later than its duration ceiling; total output cannot exceed
+total tokens. Unlike v2, that absolute clock starts at authorization, even if no
+request has been sent. Requests before authorization or at/after expiry refuse.
+The model identity includes the exact policy and authorization digest. The v3
+policy has immutable SQLite records/triggers and cannot be resized or continued
+through the historical continuation operation. Existing ledger creation and
+continuation semantics remain unchanged. This option does not grant permission
+to create a real batch, reuse an expired balance or access credentials.
 
 Preflight policy `text-json-utf8-framing.v2` bounds the complete text/function
 payload by `2B + 4096 + 128M + 128C + 128A`, where B is its ASCII-escaped compact

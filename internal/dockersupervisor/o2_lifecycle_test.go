@@ -298,6 +298,14 @@ func TestStopConfirmedProvesNoAttemptDockerResourcesOrRuntimeRoot(t *testing.T) 
 		!commandsContain(commands, record.container+"-check-[0-9]+") {
 		t.Fatalf("confirmed Stop omitted zero-residue proof: %#v", commands)
 	}
+	stopped, err = supervisor.Stop(context.Background(), outcome.Handle, execution.StopIntent{Kind: execution.StopForCancel})
+	if err != nil || stopped.Kind != execution.StopConfirmed {
+		t.Fatalf("repeated legacy Stop() = %#v, %v", stopped, err)
+	}
+	drainAll(t, supervisor, outcome.Handle)
+	if err := supervisor.Finalize(context.Background(), outcome.Handle, execution.RetentionPolicy{}); err != nil {
+		t.Fatalf("Finalize after legacy Stop() = %v", err)
+	}
 }
 
 func TestCleanupPreservesExactNameCollisionWithMismatchedOwnership(t *testing.T) {

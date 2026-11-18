@@ -33,3 +33,10 @@ condition = "AND"
 paths = ['''(^|/)services/workflow/src/chora_workflow/batch\.py$''']
 regexTarget = "line"
 regexes = ['''^\s*"tokenizer_sha256": "8f9f37ca37fdc4f5fd36d5cf4d3b0e8392edb4e894fd10cc0d70b4957c8633cf",$''']
+
+[[rules.allowlists]]
+description = "Historical provider-design prose retained in assigned task history"
+condition = "AND"
+paths = ['''(^|/)docs/runtime-providers\.md$''']
+regexTarget = "match"
+regexes = ['''^auth failure, duplicate/reordered/unknown $''']

@@ -13,6 +13,7 @@ func TestAgentExecutionProfilesPreserveHistoryAndAddPublicIsolation(t *testing.T
 		AgentExecutionProfileStandard,
 		AgentExecutionProfileTrustedLocal,
 		AgentExecutionProfileIsolatedLocal,
+		AgentExecutionProfileIsolatedBudgeted,
 	}
 	if got := SupportedAgentExecutionProfiles(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("profiles = %#v", got)

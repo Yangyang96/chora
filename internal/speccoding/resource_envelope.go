@@ -213,10 +213,14 @@ func validateResourceCoreContract(d CoreContractDocument) error {
 	if !validLowerHex(d.Execution.Input.ContextSnapshotDigest, 64) || d.Execution.Input.ContextSnapshotDigest == SupersededPlaceholderContextDigest {
 		return bad("context digest")
 	}
-	if d.Execution.Output.ResultSchemaVersion != agent.ResultSchemaVersion || d.Execution.Output.ArtifactLocatorScope != "execution_workspace_relative" || d.Execution.Output.CheckBinding != "acceptance_criterion_id" || d.Execution.Output.UnknownPolicy != "explicit" || (!sameStringSet(d.Execution.RequiredCapabilities, requiredCapabilitiesLocalConnected) && !sameStringSet(d.Execution.RequiredCapabilities, isolatedCapabilities())) {
+	if d.Execution.Output.ResultSchemaVersion != agent.ResultSchemaVersion || d.Execution.Output.ArtifactLocatorScope != "execution_workspace_relative" || d.Execution.Output.CheckBinding != "acceptance_criterion_id" || d.Execution.Output.UnknownPolicy != "explicit" || (!sameStringSet(d.Execution.RequiredCapabilities, requiredCapabilitiesLocalConnected) && !sameStringSet(d.Execution.RequiredCapabilities, isolatedCapabilities()) && !sameStringSet(d.Execution.RequiredCapabilities, budgetedCapabilities())) {
 		return bad("execution")
 	}
-	if sameStringSet(d.Execution.RequiredCapabilities, isolatedCapabilities()) {
+	if sameStringSet(d.Execution.RequiredCapabilities, budgetedCapabilities()) {
+		if err := validateBudgetedCandidate(d.Candidate); err != nil {
+			return err
+		}
+	} else if sameStringSet(d.Execution.RequiredCapabilities, isolatedCapabilities()) {
 		if err := validateIsolatedCandidate(d.Candidate); err != nil {
 			return err
 		}
