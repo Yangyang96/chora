@@ -83,8 +83,19 @@ disabled, and with environment proxy discovery disabled. A redirect or connectio
 failure leaves the reserved request unknown and prevents another dispatch after
 restart. This transport policy is part of the frozen model identity; an older
 paused workflow requires its original executable or a separately verified
-migration, rather than silently acquiring the new identity. The default
-OpenAI-compatible profile continues to use `max_completion_tokens` and the
+migration, rather than silently acquiring the new identity.
+
+Before opening the batch ledger or constructing a client, this profile rejects
+the presence of `OPENAI_ADMIN_KEY`, `OPENAI_ORG_ID`, `OPENAI_PROJECT_ID`,
+`OPENAI_WEBHOOK_SECRET` and `OPENAI_CUSTOM_HEADERS`, including empty values.
+The pinned SDK otherwise reads these alongside the explicit Chora key and URL;
+custom headers can override Authorization. Rejection checks names only and never
+reads or reports their values or changes the process environment. The
+`reject-ambient-config.v1` policy is also frozen in the model identity, so older
+checkpoints cannot silently resume with it. Existing ledgers and budgets are
+unchanged; a verified migration is required for an incompatible frozen identity.
+
+The default OpenAI-compatible profile continues to use `max_completion_tokens` and the
 workflow's bounded rate-limit retry policy. These request semantics, the output
 cap and the acceptance batch identity are frozen in each new workflow. Existing
 SDK checkpoints with an older identity require their matching executable or an

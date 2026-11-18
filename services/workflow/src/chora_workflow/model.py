@@ -45,6 +45,27 @@ class SDKModel:
         self.batch = None
         self.batch_context = {}
         if self.deepseek:
+            # The pinned SDK reads these even with an explicit key and URL.
+            # Check presence only, before opening the ledger or any client;
+            # empty values are unsupported too. Never inspect their contents
+            # or temporarily mutate the process-wide environment.
+            # Snapshot keys: os.environ's mapping membership can fetch values.
+            present = frozenset(os.environ)
+            unsupported = [
+                name
+                for name in (
+                    "OPENAI_ADMIN_KEY",
+                    "OPENAI_ORG_ID",
+                    "OPENAI_PROJECT_ID",
+                    "OPENAI_WEBHOOK_SECRET",
+                    "OPENAI_CUSTOM_HEADERS",
+                )
+                if name in present
+            ]
+            if unsupported:
+                raise ValueError(
+                    "unsupported SDK environment configuration: " + ", ".join(unsupported)
+                )
             if (
                 endpoint.scheme != "https"
                 or endpoint.path.rstrip("/") not in {"", "/v1"}
@@ -93,6 +114,7 @@ class SDKModel:
                 transport=httpx.HTTPTransport(retries=0),
             )
             self.identity["physical_transport"] = "httpx.direct.no-redirect.v1"
+            self.identity["sdk_environment_policy"] = "reject-ambient-config.v1"
         self.client = OpenAI(**client_options)
 
     def bind_workflow(self, thread, code_revision):
