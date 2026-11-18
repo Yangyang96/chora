@@ -77,7 +77,13 @@ and a pinned public Chora corpus revision. Changing them prevents continuation.
 
 The official HTTPS `api.deepseek.com` endpoint selects the `deepseek.nonthinking.v1`
 profile for `deepseek-v4-pro`. It sends `thinking.type=disabled`, `tool_choice=required`
-and `max_tokens` capped at 2048. SDK and graph retries are zero. The default
+and `max_tokens` capped at 2048. SDK and graph retries are zero. DeepSeek uses
+the explicitly pinned HTTPX transport with redirects and transport retries
+disabled, and with environment proxy discovery disabled. A redirect or connection
+failure leaves the reserved request unknown and prevents another dispatch after
+restart. This transport policy is part of the frozen model identity; an older
+paused workflow requires its original executable or a separately verified
+migration, rather than silently acquiring the new identity. The default
 OpenAI-compatible profile continues to use `max_completion_tokens` and the
 workflow's bounded rate-limit retry policy. These request semantics, the output
 cap and the acceptance batch identity are frozen in each new workflow. Existing

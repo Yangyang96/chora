@@ -5,6 +5,8 @@ import os
 import time
 from urllib.parse import urlsplit
 
+import httpx
+
 from openai import (
     OpenAI,
     APIConnectionError,
@@ -76,9 +78,22 @@ class SDKModel:
             "graph_retries": self.retry_limit,
             "acceptance_batch": self.batch.identity if self.batch else None,
         }
-        self.client = OpenAI(
-            base_url=os.environ[names[0]], api_key=os.environ[names[2]], max_retries=0
-        )
+        client_options = {
+            "base_url": os.environ[names[0]],
+            "api_key": os.environ[names[2]],
+            "max_retries": 0,
+        }
+        if self.deepseek:
+            # SDK defaults can follow redirects even when SDK retries are zero.
+            # Pin one direct transport entry per reservation; do not discover
+            # proxies or credentials from the operator's environment.
+            client_options["http_client"] = httpx.Client(
+                trust_env=False,
+                follow_redirects=False,
+                transport=httpx.HTTPTransport(retries=0),
+            )
+            self.identity["physical_transport"] = "httpx.direct.no-redirect.v1"
+        self.client = OpenAI(**client_options)
 
     def bind_workflow(self, thread, code_revision):
         if self.batch:

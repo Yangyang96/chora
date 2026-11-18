@@ -100,6 +100,7 @@ name = "chora-workflow"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "httpx" },
     { name = "langgraph" },
     { name = "langgraph-checkpoint-postgres" },
     { name = "openai" },
@@ -116,6 +117,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "httpx", specifier = "==0.28.1" },
     { name = "langgraph", specifier = "==1.2.20" },
     { name = "langgraph-checkpoint-postgres", specifier = "==3.2.0" },
     { name = "openai", specifier = "==3.49.0" },

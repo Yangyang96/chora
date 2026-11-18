@@ -37,13 +37,15 @@ def sdk_setup(monkeypatch, tmp_path):
                 return handler(payload)
             return response()
 
-        monkeypatch.setattr(
-            model,
-            "OpenAI",
-            lambda **kwargs: OpenAI(
+        def fixture_client(**kwargs):
+            client = kwargs.pop("http_client", None)
+            if client is not None:
+                client.close()
+            return OpenAI(
                 **kwargs, http_client=httpx.Client(transport=httpx.MockTransport(respond))
-            ),
-        )
+            )
+
+        monkeypatch.setattr(model, "OpenAI", fixture_client)
         sdk = model.SDKModel()
         sdk.observation_mode = "mock"
         return sdk
