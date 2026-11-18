@@ -1,9 +1,9 @@
 package app_test
 
 import (
+	"bytes"
 	"context"
-	"os"
-	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Yangyang96/chora/internal/agent/codexexec"
@@ -12,26 +12,24 @@ import (
 	"github.com/Yangyang96/chora/internal/execution"
 )
 
-// Protocol fixtures exercise the real provider through persisted application
-// admission/stream/terminal/cancel paths; they do not qualify model access.
+// This test-only provider uses synthetic launch identity and the production
+// Codex codec through persisted application paths. It does not bypass the public
+// constructor's managed-policy gate or qualify native launch/model access.
+type codexProtocolFixture struct{ *syntheticProvider }
+
+func (p *codexProtocolFixture) DecodeEvent(c execution.EventChunk) (execution.DecodedChunk, error) {
+	return (&codexexec.Adapter{}).DecodeEvent(c)
+}
+func (p *codexProtocolFixture) Complete(r execution.CompletionRequest) (execution.TerminalResult, error) {
+	return (&codexexec.Adapter{}).Complete(r)
+}
+
 func TestCodexProviderPersistentLifecycle(t *testing.T) {
-	for _, mode := range []string{"complete", "cancel", "protocol_invalid", "model_failure"} {
+	for _, mode := range []string{"complete", "cancel", "protocol_invalid", "model_failure", "pending_tool", "orphan_tool", "duplicate_tool"} {
 		t.Run(mode, func(t *testing.T) {
 			ctx := context.Background()
-			root, _ := filepath.EvalSymlinks(t.TempDir())
-			for _, n := range []string{"home", "auth"} {
-				if err := os.Mkdir(filepath.Join(root, n), 0700); err != nil {
-					t.Fatal(err)
-				}
-			}
-			path := filepath.Join(root, "codex-fixture")
-			if err := os.WriteFile(path, []byte("#!/bin/sh\ncase \"$1\" in --version) echo 'codex-cli 0.155.1';; login) echo 'Logged in using ChatGPT';; esac\n"), 0700); err != nil {
-				t.Fatal(err)
-			}
-			provider, err := codexexec.New(ctx, codexexec.Config{Executable: path, AuthHome: filepath.Join(root, "auth"), Home: filepath.Join(root, "home")})
-			if err != nil {
-				t.Fatal(err)
-			}
+			provider := &codexProtocolFixture{syntheticProvider: &syntheticProvider{fakeAdapter: &fakeAdapter{id: codexexec.AdapterID, resumeMode: execution.ResumeUnsupported}}}
+
 			p := &syntheticProvider{providerOverride: provider}
 			sup := &fakeSupervisor{outcome: execution.StartOutcome{Kind: execution.Started, Handle: execution.RuntimeHandle{Value: "codex-handle"}, Identity: execution.ProcessIdentity{Value: "codex-process"}}}
 			service, db, run := newSyntheticFixture(t, p, sup)
@@ -58,6 +56,13 @@ func TestCodexProviderPersistentLifecycle(t *testing.T) {
 				return
 			}
 			stream := "{\"type\":\"thread.started\",\"thread_id\":\"fixture-thread\"}\n{\"type\":\"turn.started\"}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"agent_message\",\"text\":\"Synthetic bounded result\"}}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":1}}\n"
+			toolStart := "{\"type\":\"item.started\",\"item\":{\"id\":\"cmd\",\"type\":\"command_execution\",\"status\":\"in_progress\"}}\n"
+			toolResult := "{\"type\":\"item.completed\",\"item\":{\"id\":\"cmd\",\"type\":\"command_execution\",\"status\":\"completed\",\"exit_code\":0}}\n"
+			toolEvents := map[string]string{"pending_tool": toolStart, "orphan_tool": toolResult, "duplicate_tool": toolStart + toolResult + toolResult}[mode]
+			if toolEvents != "" {
+				stream = strings.Replace(stream, "{\"type\":\"item.completed\"", toolEvents+"{\"type\":\"item.completed\"", 1)
+			}
+
 			if mode == "model_failure" {
 				stream = "{\"type\":\"turn.failed\",\"error\":{\"message\":\"model_not_found\"}}\n"
 			}
@@ -74,6 +79,15 @@ func TestCodexProviderPersistentLifecycle(t *testing.T) {
 			}
 			if err != nil || result.Run.State() != expected || sup.finalizeCalls != 1 {
 				t.Fatalf("state=%s expected=%s finalized=%d err=%v", result.Run.State(), expected, sup.finalizeCalls, err)
+			}
+			if toolEvents != "" {
+				events, err := db.Reader().ListRunEvents(ctx, run.ID())
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(events) == 0 || !bytes.Contains(events[len(events)-1].NormalizedJSON(), []byte("protocol_invalid")) {
+					t.Fatal("specific tool protocol failure not persisted")
+				}
 			}
 		})
 	}

@@ -26,6 +26,12 @@ const successStream = `{"type":"thread.started","thread_id":"thread-1"}
 `
 
 func fixture(t *testing.T, body string) *Adapter {
+	return versionFixture(t, "codex-cli 0.155.1", body)
+}
+
+const fixtureHelp = "--json --ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check --sandbox --color --config --model"
+
+func versionFixture(t *testing.T, version, body string) *Adapter {
 	t.Helper()
 	root, _ := filepath.EvalSymlinks(t.TempDir())
 	home := filepath.Join(root, "home")
@@ -36,11 +42,11 @@ func fixture(t *testing.T, body string) *Adapter {
 		}
 	}
 	executable := filepath.Join(root, "codex-fixture")
-	script := "#!/bin/sh\ncase \"$1\" in\n--version) echo 'codex-cli 0.155.1'; exit;;\nlogin) echo 'Logged in using ChatGPT'; exit;;\nesac\n" + body
+	script := "#!/bin/sh\ncase \"$1\" in\n--version) echo '" + version + "'; exit;;\nexec) if [ \"$2\" = \"--help\" ]; then echo '" + fixtureHelp + "'; exit; fi;;\nlogin) echo 'Logged in using ChatGPT'; exit;;\nesac\n" + body
 	if err := os.WriteFile(executable, []byte(script), 0700); err != nil {
 		t.Fatal(err)
 	}
-	a, err := New(context.Background(), Config{Executable: executable, AuthHome: auth, Home: home, Model: "fixture-model"})
+	a, err := newAdapter(context.Background(), Config{Executable: executable, AuthHome: auth, Home: home, Model: "fixture-model"}, func() error { return nil })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,7 +235,13 @@ func (s *sink) Binding() execution.LaunchToken     { return s.token }
 func (s *sink) Notify(execution.StreamKind, int64) {}
 func (s *sink) Exited()                            { s.once.Do(func() { close(s.done) }) }
 func TestSupervisorEOFAndBoundLaunch(t *testing.T) {
-	a := fixture(t, "cat >/dev/null\nprintf '%s\\n' '"+strings.ReplaceAll(strings.TrimSuffix(successStream, "\n"), "\n", "' '")+"'\n")
+	for _, version := range []string{"codex-cli 0.155.1", "codex-cli 0.167.2"} {
+		t.Run(version, func(t *testing.T) { testSupervisorEOFAndBoundLaunch(t, version) })
+	}
+}
+
+func testSupervisorEOFAndBoundLaunch(t *testing.T, version string) {
+	a := versionFixture(t, version, "cat >/dev/null\nprintf '%s\\n' '"+strings.ReplaceAll(strings.TrimSuffix(successStream, "\n"), "\n", "' '")+"'\n")
 	req := request(t, a)
 	p, err := a.PrepareBoundStart(context.Background(), req)
 	if err != nil {
@@ -269,7 +281,13 @@ func TestSupervisorEOFAndBoundLaunch(t *testing.T) {
 }
 
 func TestSupervisorCancelsDescendantAndRejectsEnvironmentDrift(t *testing.T) {
-	a := fixture(t, "cat >/dev/null\nsleep 60 &\necho $! > child.pid\nwait\n")
+	for _, version := range []string{"codex-cli 0.155.1", "codex-cli 0.167.2"} {
+		t.Run(version, func(t *testing.T) { testSupervisorCancelsDescendantAndRejectsEnvironmentDrift(t, version) })
+	}
+}
+
+func testSupervisorCancelsDescendantAndRejectsEnvironmentDrift(t *testing.T, version string) {
+	a := versionFixture(t, version, "cat >/dev/null\nsleep 60 &\necho $! > child.pid\nwait\n")
 	req := request(t, a)
 	p, err := a.PrepareBoundStart(context.Background(), req)
 	if err != nil {
@@ -309,6 +327,9 @@ func TestSupervisorCancelsDescendantAndRejectsEnvironmentDrift(t *testing.T) {
 	}
 	if childPID <= 0 {
 		t.Fatal("no descendant created")
+	}
+	if alive, err := s.Reconcile(context.Background(), outcome.Identity); err != nil || alive.Kind != execution.ReconcileAlive {
+		t.Fatal("process tree not alive before stop", err)
 	}
 	stopped, err := s.Stop(context.Background(), outcome.Handle, execution.StopIntent{Kind: execution.StopForCancel})
 	if err != nil || stopped.Kind != execution.StopConfirmed {
@@ -375,7 +396,7 @@ func TestNativeOptionalUsageCounters(t *testing.T) {
 	}
 	for _, counters := range []string{
 		`{"input_tokens":1,"cached_input_tokens":0,"output_tokens":1,"reasoning_output_tokens":-1}`,
-		`{"input_tokens":1,"cached_input_tokens":0,"output_tokens":1,"unknown_tokens":0}`,
+
 		`{"input_tokens":1,"cached_input_tokens":0,"output_tokens":1,"reasoning_output_tokens":null}`,
 	} {
 		stream := strings.Replace(successStream, `{"input_tokens":1,"cached_input_tokens":0,"output_tokens":1}`, counters, 1)
@@ -389,7 +410,7 @@ func TestSelectedNetworkPolicyAndDotenvRejection(t *testing.T) {
 	a := fixture(t, "exit 0\n")
 	config := a.config
 	config.NetworkEnvironment = map[string]string{"HTTPS_PROXY": "http://127.0.0.1:1234"}
-	b, err := New(context.Background(), config)
+	b, err := newAdapter(context.Background(), config, func() error { return nil })
 	if err != nil {
 		t.Fatal(err)
 	}

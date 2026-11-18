@@ -112,10 +112,11 @@ type RecoveryPolicy struct {
 // Readiness fingerprints the explicitly configured installation without
 // installing, logging in, or making a model request.
 type Readiness struct {
-	RuntimeID   string
-	Ready       bool
-	Fingerprint RuntimeFingerprint
-	Failure     string
+	RuntimeID     string
+	Ready         bool
+	Fingerprint   RuntimeFingerprint
+	Failure       string
+	Qualification *QualificationReport
 }
 
 func Inspect(ctx context.Context, adapter AgentAdapter) Readiness {
